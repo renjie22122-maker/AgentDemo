@@ -150,6 +150,7 @@ export interface PendingInput {
   createdAt: number;
 }
 export interface Attachment {
+  messageEventId?: number;
   id: string;
   conversationId: string;
   name: string;
@@ -185,6 +186,7 @@ export interface ToolSpec {
   effect: 'read' | 'write' | 'execute' | 'network' | 'coordinate';
 }
 export interface ToolResult {
+  images?: string[];
   content: string;
   metadata?: Record<string, any>;
 }

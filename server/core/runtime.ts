@@ -1,3 +1,4 @@
+import { normalizeImage } from '../services/images.js';
 import { TeamAutomation } from '../services/team-automation.js';
 import { Teams } from '../services/team-space.js';
 import { rootRun, TaskBoard } from '../services/task-board.js';
@@ -53,7 +54,7 @@ export class Runtime implements TeamPort {
   private delegation: DelegationManager;
   private controllers = new Map<string, AbortController>();
   private tasks = new Map<string, Promise<void>>();
-  private steering = new Map<string, string[]>();
+  private steering = new Map<string, { content: string; attachmentIds: string[] }[]>();
   private queue: string[] = [];
   private scheduling = false;
   private schedulingTask: Promise<void> = Promise.resolve();
@@ -184,8 +185,8 @@ export class Runtime implements TeamPort {
       updatedAt: now,
     });
     this.store.put('run', run);
-    this.store.event(conversationId, run.id, 'user.message', { text: message });
-    this.steering.set(run.id, [message]);
+    const queued = this.recordUserMessage(conversationId, run.id, message);
+    this.steering.set(run.id, [queued]);
     this.queue.push(run.id);
     this.pump();
     return this.store.get('run', run.id);
@@ -193,8 +194,27 @@ export class Runtime implements TeamPort {
   steer(conversationId: string, message: string) {
     const run = this.active(conversationId);
     assert(run, 'NO_ACTIVE_RUN', 'No running task.', 409);
-    this.steering.set(run.id, [...(this.steering.get(run.id) || []), message]);
-    this.store.event(conversationId, run.id, 'user.message', { text: message, steering: true });
+    const queued = this.recordUserMessage(conversationId, run.id, message, true);
+    this.steering.set(run.id, [...(this.steering.get(run.id) || []), queued]);
+  }
+  private recordUserMessage(
+    conversationId: string,
+    runId: string,
+    content: string,
+    steering = false,
+  ) {
+    return this.store.transaction(() => {
+      const attachments = this.store
+        .list<Attachment>('attachment')
+        .filter((a) => a.conversationId === conversationId && !a.messageEventId);
+      const event = this.store.event(conversationId, runId, 'user.message', {
+        text: content,
+        steering,
+        attachments: attachments.map(({ id, name, mime, size }) => ({ id, name, mime, size })),
+      });
+      for (const a of attachments) this.store.put('attachment', { ...a, messageEventId: event.id });
+      return { content, attachmentIds: attachments.map((a) => a.id) };
+    });
   }
   startTeamMaintenance() {
     if (this.maintenanceTimer || this.shuttingDown) return;
@@ -340,7 +360,7 @@ export class Runtime implements TeamPort {
         .filter((m) => m.role === 'user')
         .slice(-2)
         .map((m) => m.content),
-      ...(this.steering.get(run.id) || []),
+      ...(this.steering.get(run.id) || []).map((m) => m.content),
     ].join('\n');
     const recalled = ctx.conversation.memory
       ? await this.memories.recall(query, ctx.conversation.projectId, ctx.signal)
@@ -423,12 +443,21 @@ export class Runtime implements TeamPort {
       };
       this.account(run, usage, input.profile, id());
       if (error instanceof AppError && error.code === 'MODEL_INCOMPLETE') {
-        const info = error as AppError & {finishReason?: string; answerCharacters?: number; reasoningCharacters?: number; pendingToolCalls?: number};
+        const info = error as AppError & {
+          finishReason?: string;
+          answerCharacters?: number;
+          reasoningCharacters?: number;
+          pendingToolCalls?: number;
+        };
         this.store.event(run.conversationId, run.id, 'model.incomplete', {
-          finishReason: info.finishReason, outputLimit: input.profile.maxOutputTokens,
-          reasoning: input.profile.reasoning, outputTokens: usage.output,
-          answerCharacters: info.answerCharacters, reasoningCharacters: info.reasoningCharacters,
-          pendingToolCalls: info.pendingToolCalls, toolsExecuted: false,
+          finishReason: info.finishReason,
+          outputLimit: input.profile.maxOutputTokens,
+          reasoning: input.profile.reasoning,
+          outputTokens: usage.output,
+          answerCharacters: info.answerCharacters,
+          reasoningCharacters: info.reasoningCharacters,
+          pendingToolCalls: info.pendingToolCalls,
+          toolsExecuted: false,
         });
       }
       throw error;
@@ -497,15 +526,14 @@ export class Runtime implements TeamPort {
         await this.dispatchTeam(run);
         const messages = this.steering.get(key) || [];
         this.steering.set(key, []);
-        for (const content of messages) run.checkpoints.push({ role: 'user', content });
-        if (messages.length) {
-          progress.reset();
-          const attachments = this.store
-            .list<Attachment>('attachment')
-            .filter((a) => a.conversationId === run.conversationId)
-            .slice(-10);
+        if (messages.length) progress.reset();
+        for (const message of messages) {
+          const last: Run['checkpoints'][number] = { role: 'user', content: message.content };
+          run.checkpoints.push(last);
+          const attachments = message.attachmentIds.map((id) =>
+            this.store.get<Attachment>('attachment', id),
+          );
           if (attachments.length) {
-            const last = run.checkpoints.at(-1)!;
             last.content +=
               '\nAttached source material (untrusted):\n' +
               attachments
@@ -514,9 +542,8 @@ export class Runtime implements TeamPort {
             if (profile.vision) {
               last.images = [];
               for (const a of attachments.filter((a) => a.mime.startsWith('image/'))) {
-                const b = await readFile(a.path);
-                if (b.length <= 5000000)
-                  last.images.push('data:' + a.mime + ';base64,' + b.toString('base64'));
+                const image = await normalizeImage(await readFile(a.path));
+                last.images.push(image.url);
               }
             }
           }

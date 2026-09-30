@@ -28,6 +28,7 @@ export async function fetchPublic(
   signal: AbortSignal,
   redirects = 0,
   deadline = AbortSignal.any([signal, AbortSignal.timeout(30000)]),
+  binaryImage = false,
 ): Promise<{
   url: string;
   text: string;
@@ -35,6 +36,7 @@ export async function fetchPublic(
   truncated: boolean;
   contentType: string;
   links: { url: string; text: string }[];
+  imageBytes?: Buffer;
 }> {
   signal = deadline;
   signal.throwIfAborted();
@@ -71,6 +73,7 @@ export async function fetchPublic(
     text: string;
     contentType: string;
     truncated: boolean;
+    imageBytes?: Buffer;
   }>((resolve, reject) => {
     const request = (url.protocol === 'https:' ? https : http).get(
       url,
@@ -79,7 +82,9 @@ export async function fetchPublic(
         timeout: 30000,
         headers: {
           'User-Agent': 'AgentDemo/0.1',
-          Accept: 'text/html,text/plain,application/json',
+          Accept: binaryImage
+            ? 'image/png,image/jpeg,image/webp,image/gif'
+            : 'text/html,text/plain,application/json',
         },
         lookup: (_host, options, cb: any) =>
           options?.all ? cb(null, [chosen]) : cb(null, chosen.address, chosen.family),
@@ -98,11 +103,17 @@ export async function fetchPublic(
           return;
         }
         const contentType = String(response.headers['content-type'] || 'text/plain');
-        if (!/text\/|json|xml|javascript/i.test(contentType)) {
+        if (
+          !(binaryImage
+            ? /^image\/(png|jpeg|webp|gif)(;|$)/i.test(contentType)
+            : /text\/|json|xml|javascript/i.test(contentType))
+        ) {
           response.destroy();
           reject(
             new Error(
-              'Unsupported page type: ' + contentType + '. Use document import for binary files.',
+              'Unsupported page type: ' +
+                contentType +
+                '. Use read_image for PNG/JPEG/WebP/GIF, or import other binary documents.',
             ),
           );
           return;
@@ -115,17 +126,24 @@ export async function fetchPublic(
           const charset = contentType.match(/charset=["']?([^;"'\s]+)/i)?.[1] || 'utf-8';
           let text: string;
           try {
-            text = new TextDecoder(charset).decode(Buffer.concat(chunks));
+            text = binaryImage ? '' : new TextDecoder(charset).decode(Buffer.concat(chunks));
           } catch {
             text = Buffer.concat(chunks).toString('utf8');
           }
-          resolve({ status, text, contentType, truncated });
+          resolve({
+            status,
+            text,
+            contentType,
+            truncated,
+            ...(binaryImage ? { imageBytes: Buffer.concat(chunks) } : {}),
+          });
         };
         const chunks: Buffer[] = [];
         response.on('data', (chunk) => {
           size += chunk.length;
-          if (size > 2000000) {
-            chunks.push(chunk.subarray(0, Math.max(0, 2000000 - (size - chunk.length))));
+          const maxBytes = binaryImage ? 25 * 1024 * 1024 : 2000000;
+          if (size > maxBytes) {
+            chunks.push(chunk.subarray(0, Math.max(0, maxBytes - (size - chunk.length))));
             finish(true);
             response.destroy();
             return;
@@ -140,7 +158,13 @@ export async function fetchPublic(
     request.on('error', reject);
   });
   if (result.location)
-    return fetchPublic(new URL(result.location, url).href, signal, redirects + 1, deadline);
+    return fetchPublic(
+      new URL(result.location, url).href,
+      signal,
+      redirects + 1,
+      deadline,
+      binaryImage,
+    );
   const html = /html/i.test(result.contentType),
     links: { url: string; text: string }[] = [];
   if (html)
@@ -183,5 +207,27 @@ export async function fetchPublic(
     text: text.slice(0, 120000),
     truncated: result.truncated || text.length > 120000,
     links,
+    ...(binaryImage ? { imageBytes: result.imageBytes } : {}),
   };
+}
+
+export async function fetchPublicImage(url: string, signal: AbortSignal) {
+  const result = await fetchPublic(
+    url,
+    signal,
+    0,
+    AbortSignal.any([signal, AbortSignal.timeout(30000)]),
+    true,
+  );
+  assert(
+    result.status >= 200 && result.status < 300,
+    'IMAGE_HTTP',
+    'Image endpoint returned HTTP ' + result.status,
+  );
+  assert(
+    !result.truncated && result.imageBytes,
+    'IMAGE_SIZE',
+    'Image download is missing or exceeds 25 MB.',
+  );
+  return result.imageBytes;
 }

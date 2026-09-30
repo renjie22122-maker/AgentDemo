@@ -117,3 +117,17 @@ Coordinator takeover is deterministic within this single host: after the previou
 Crash-window regression tests exercise reservation reconciliation and duplicate mutation suppression. Real API fixtures exercise a saved interrupted read-only member and a host-created replacement worker; these tests do not establish exactly-once semantics for arbitrary external side effects.
 
 Current automation validation: 89 regression checks and the policy-panel browser test passed. Real API fixtures passed for recovery (29.4 seconds) and bounded expansion with coordinator takeover (23.5 seconds); the fixtures model an interrupted member rather than claiming a full operating-system crash test.
+
+### Model discovery and team crash reconciliation
+
+Settings fetches the configured provider's model catalog automatically when saved credentials are available. Selecting a discovered model matches its declared context window, output ceiling, vision support and supported reasoning levels. Missing metadata retains manual fields; changing model clears unverified price estimates. **Add discovered models to chat selector** creates missing connections using the same provider credentials without duplicating existing models. Official DeepSeek currently lists Flash and V4 Pro; legacy V4 Flash / Vision Exp IDs are compatibility aliases, not additional independent current models.
+
+Local team mutations use durable call receipts committed in the same SQLite transaction as task/role/discussion state. Restart reconciliation restores missing completion records without invoking the tool again. Spawn reconciliation identifies created children by an exact run/call ticket. Recovery rebinds unfinished ownership to the replacement member. Legacy task updates are reconciled only when the exact revision and requested task state match; ambiguous legacy operations and unknown external effects remain blocked for inspection. Pending operations from the current live process are never treated as rolled back merely because a run has been marked interrupted.
+
+### Image tools and message attachments
+
+Vision-capable connections can use `read_image` to inspect workspace files (including extensionless images) or public image URLs. PNG, JPEG, WebP and GIF are decoded from actual bytes, normalized to at most 640,000 pixels / 1 MiB, and delivered as image content to the model. Animated images use the first frame. SVG and PDF require conversion. File scope checks and public-network DNS/address pinning remain enforced; declaring vision support alone does not prove a remote model accepts images.
+
+Uploaded files remain drafts until a user message accepts them. Drafts show image thumbnails and a remove control. Sent attachments are durably linked to that message, rendered in chat after reload, and no longer listed as pending or reattached to each follow-up. Image-only messages are supported. Deleting a draft cannot delete already-sent message attachments.
+
+Validation for this revision: 103 regression tests passed, including real subprocess crash windows, image normalization, private-address rejection and single-message attachment binding. Browser checks exercised model discovery and upload/remove/send/reload. Two real DeepSeek Flash trials identified different random raster codes and colors: one via upload and one exclusively through `read_image`. These small positive samples establish the tested pixel paths, not general visual accuracy.

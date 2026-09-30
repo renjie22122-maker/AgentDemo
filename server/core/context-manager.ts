@@ -71,7 +71,15 @@ export class ContextManager {
       ),
     };
     const chunks = splitSummaryText(
-      JSON.stringify(old),
+      JSON.stringify(
+        old.map((m) => ({
+          ...m,
+          images: m.images?.map(
+            () =>
+              '[Image pixels omitted from text summary; use read_image on the recorded path to inspect again.]',
+          ),
+        })),
+      ),
       Math.max(256, Math.floor((profile.contextWindow - p.maxOutputTokens - before.margin) * 0.45)),
     );
     let handoff = '';

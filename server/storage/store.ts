@@ -8,6 +8,8 @@ import { checkTransition, terminal } from '../core/lifecycle.js';
 export const id = () => randomUUID();
 export class Store {
   readonly db: DatabaseSync;
+  private transactionDepth = 0;
+  private pendingEvents: AgentEvent[] = [];
   onEvent: (event: AgentEvent) => void = () => {};
   constructor(path: string) {
     mkdirSync(dirname(path), { recursive: true });
@@ -63,15 +65,29 @@ export class Store {
     this.db.prepare('DELETE FROM records WHERE kind=? AND id=?').run(kind, key);
   }
   transaction<T>(fn: () => T): T {
-    this.db.exec('BEGIN IMMEDIATE');
+    const depth = this.transactionDepth,
+      mark = this.pendingEvents.length;
+    const savepoint = 'nested_' + depth;
+    this.db.exec(depth ? 'SAVEPOINT ' + savepoint : 'BEGIN IMMEDIATE');
+    this.transactionDepth++;
+    let value: T;
     try {
-      const value = fn();
-      this.db.exec('COMMIT');
-      return value;
+      value = fn();
+      if (value && typeof (value as any).then === 'function')
+        throw new Error('SQLite transactions must be synchronous.');
+      this.db.exec(depth ? 'RELEASE ' + savepoint : 'COMMIT');
     } catch (error) {
-      this.db.exec('ROLLBACK');
+      this.pendingEvents.length = mark;
+      this.db.exec(depth ? 'ROLLBACK TO ' + savepoint + '; RELEASE ' + savepoint : 'ROLLBACK');
       throw error;
+    } finally {
+      this.transactionDepth--;
     }
+    if (!depth) {
+      const events = this.pendingEvents.splice(0);
+      for (const event of events) this.onEvent(event);
+    }
+    return value;
   }
   event(
     conversationId: string,
@@ -91,7 +107,8 @@ export class Store {
       data,
       createdAt: now,
     };
-    this.onEvent(event);
+    if (this.transactionDepth) this.pendingEvents.push(event);
+    else this.onEvent(event);
     return event;
   }
   events(conversationId: string, after = 0): AgentEvent[] {

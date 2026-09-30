@@ -1,3 +1,4 @@
+import { reconcileCoordination } from './coordination-journal.js';
 import { z } from 'zod';
 import type { Run, Conversation } from '../../shared/types.js';
 import { Store, id } from '../storage/store.js';
@@ -35,6 +36,7 @@ export class TeamAutomation {
     return this.store.put('team-automation', { id: team.id, ...automationInput.parse(input) });
   }
   plan(run: Run) {
+    reconcileCoordination(this.store);
     const events = this.store.events(run.conversationId).filter((e) => e.runId === run.id);
     const completed = new Set(
       events.filter((e) => e.type === 'tool.completed').map((e) => e.data.callId),
@@ -50,6 +52,7 @@ export class TeamAutomation {
       'inspect_team',
       'await_team_task',
       'await_team_message',
+      'wait_agents',
       'fetch_url',
       'web_search',
       'search_knowledge',
@@ -251,6 +254,7 @@ export class TeamAutomation {
     });
   }
   async tick() {
+    reconcileCoordination(this.store);
     this.reconcile();
     this.reconcileScaling();
     for (const policy of this.store

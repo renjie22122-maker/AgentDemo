@@ -1,4 +1,12 @@
 export const zh: Record<string, string> = {
+  'Available models': '可用模型',
+  'Select a discovered model': '选择接口返回的模型',
+  'Selecting a model matches declared capabilities. Missing metadata keeps your manual settings.':
+    '选择后自动匹配接口声明的规格；缺失的规格保留手动设置。',
+  'Add discovered models to chat selector': '将发现的模型加入对话选项',
+  'Models added': '已添加模型',
+  'Already configured': '已配置，无需重复添加',
+
   'Output truncated; retrying one smaller step':
     '输出达到上限，正在尝试一个更小的步骤（仅重试一次）',
   'Correcting model tool arguments': '正在修正模型工具参数',

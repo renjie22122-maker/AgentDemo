@@ -1,3 +1,4 @@
+import { prepareCoordination } from '../services/coordination-journal.js';
 import { stamp } from '../services/verification.js';
 import { TaskBoard } from '../services/task-board.js';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -15,6 +16,7 @@ export class ToolExecutor {
   ) {}
   async batch(run: Run, calls: ToolCall[], ctx: ToolContext): Promise<string[]> {
     const observations = new Map<string, unknown>();
+    const images = new Map<string, string[]>();
     return executeBatch(
       calls,
       (name) => this.registry.parallelSafe(name),
@@ -22,7 +24,7 @@ export class ToolExecutor {
         const paths = new TaskBoard(this.store).get(run).tasks.flatMap((t) => t.artifacts || []);
         const observe = paths.length && ['read_file', 'run_command'].includes(call.name);
         const before = observe ? await stamp(ctx.files, paths) : undefined;
-        const output = await this.invoke(run, call, ctx);
+        const output = await this.invoke(run, call, ctx, images);
         const after = observe ? await stamp(ctx.files, paths) : undefined;
         let passed = call.name === 'read_file' && !output.startsWith('Tool error:');
         if (call.name === 'run_command')
@@ -50,7 +52,12 @@ export class ToolExecutor {
       },
       (call, output) => {
         run.status = 'running';
-        run.checkpoints.push({ role: 'tool', callId: call.id, content: output });
+        run.checkpoints.push({
+          role: 'tool',
+          callId: call.id,
+          content: output,
+          ...(images.has(call.id) ? { images: images.get(call.id) } : {}),
+        });
         this.store.put('run', run);
         this.store.event(run.conversationId, run.id, 'tool.completed', {
           callId: call.id,
@@ -62,13 +69,23 @@ export class ToolExecutor {
       ctx.signal,
     );
   }
-  private async invoke(run: Run, call: ToolCall, ctx: ToolContext): Promise<string> {
+  private async invoke(
+    run: Run,
+    call: ToolCall,
+    ctx: ToolContext,
+    images: Map<string, string[]>,
+  ): Promise<string> {
     const signal = ctx.signal;
     if (signal.aborted) throw abortError();
-    this.store.event(run.conversationId, run.id, 'tool.started', {
-      callId: call.id,
-      name: call.name,
-      arguments: call.arguments,
+    this.store.transaction(() => {
+      const mode = this.registry.coordinationMode(call.name);
+      if (mode)
+        prepareCoordination(this.store, run, call.id, call.name, call.arguments, mode === 'atomic');
+      this.store.event(run.conversationId, run.id, 'tool.started', {
+        callId: call.id,
+        name: call.name,
+        arguments: call.arguments,
+      });
     });
     const effect = this.registry.effect(call.name);
     let effectId: string | undefined;
@@ -78,11 +95,13 @@ export class ToolExecutor {
     try {
       const result = await this.registry.invoke(call.name, call.arguments, {
         ...ctx,
+        callId: call.id,
         beforeExecution: () => {
           if (!effectId) effectId = this.store.beginEffect(run.id, call.name, call.arguments);
         },
       });
       output = result.content;
+      if (result.images?.length) images.set(call.id, result.images);
       if (effectId) this.store.endEffect(effectId, output.slice(0, 20000));
     } catch (error) {
       output = 'Tool error: ' + errorMessage(error);

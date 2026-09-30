@@ -1,3 +1,4 @@
+import { withToolImages } from './protocol.js';
 import { assert } from '../core/errors.js';
 import type { ModelProvider, ModelRequest, ModelResult } from './protocol.js';
 import {
@@ -10,6 +11,7 @@ import {
   validateCalls,
 } from './protocol.js';
 export function responsesPayload({ profile, messages, tools }: ModelRequest) {
+  messages = withToolImages(messages);
   const input: any[] = [];
   for (const m of messages.filter((m) => m.role !== 'system')) {
     if (m.role === 'tool') {

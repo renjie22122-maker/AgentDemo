@@ -162,9 +162,13 @@ export function App() {
               });
             }
             if (
-              ['input.requested', 'input.answered', 'run.status', 'attachment.added'].includes(
-                e.type,
-              )
+              [
+                'input.requested',
+                'input.answered',
+                'run.status',
+                'attachment.added',
+                'attachment.removed',
+              ].includes(e.type)
             )
               void load(e.conversationId).catch(() => {});
           }
@@ -262,7 +266,9 @@ export function App() {
     await refresh();
   };
   async function send(text = draft) {
-    if (!text.trim()) return;
+    if (!text.trim() && !detail?.attachments.some((a) => !a.messageEventId)) return;
+    if (!text.trim())
+      text = t('settings') === 'Settings' ? 'Please examine the attached files.' : '请查看附件。';
     setSending(true);
     try {
       const key = selected || (await newChat());
@@ -278,9 +284,15 @@ export function App() {
       setSending(false);
     }
   }
+  async function removeAttachment(id: string) {
+    const key = selected;
+    await api('/attachments/' + id, undefined, 'DELETE');
+    if (key) await load(key);
+  }
   async function addFiles(files: FileList | File[]) {
+    const pendingFiles = Array.from(files);
     const key = selected || (await newChat());
-    for (const file of Array.from(files)) {
+    for (const file of pendingFiles) {
       const form = new FormData();
       form.append('file', file);
       await api('/upload?conversationId=' + key, form);
@@ -880,6 +892,7 @@ export function App() {
                   setDrag,
                   action,
                   addFiles,
+                  removeAttachment,
                   draftRef,
                   upload,
                   profile,

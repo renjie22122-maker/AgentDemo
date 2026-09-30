@@ -23,6 +23,7 @@ export function installPlanning(registry: ToolRegistry) {
   registry.add({
     name: 'configure_team',
     effect: 'coordinate',
+    atomic: true,
     description:
       'Create a persistent peer team in the user-selected host or creative mode. Enroll existing members including yourself. Host completion is computed, never voted into truth. Discussion limit is explicit per member.',
     schema: z.object({
@@ -30,7 +31,7 @@ export function installPlanning(registry: ToolRegistry) {
       members: z.array(z.string()).min(2).max(32),
       maxMessages: z.number().int().min(1).max(100).default(12),
     }),
-    run: async (a, c) => ({
+    run: (a, c) => ({
       content: JSON.stringify(
         new Teams(c.store).configure(c.run, a.mode, a.members, a.maxMessages),
       ),
@@ -39,6 +40,7 @@ export function installPlanning(registry: ToolRegistry) {
   registry.add({
     name: 'handoff_team_role',
     effect: 'coordinate',
+    atomic: true,
     description:
       'Transfer a team role with revision checking and an audit record. Changes coordination authority only, never file or command permissions.',
     schema: z.object({
@@ -47,7 +49,7 @@ export function installPlanning(registry: ToolRegistry) {
       revision: z.number().int(),
       reason: z.string().min(1).max(2000),
     }),
-    run: async (a, c) => ({
+    run: (a, c) => ({
       content: JSON.stringify(
         new Teams(c.store).handoff(c.run, a.role, a.targetRunId, a.revision, a.reason),
       ),
@@ -56,13 +58,14 @@ export function installPlanning(registry: ToolRegistry) {
   registry.add({
     name: 'team_discuss',
     effect: 'coordinate',
+    atomic: true,
     description:
       'Post an attributed, untrusted creative contribution. Empty recipients broadcasts to enrolled peers. Does not wake finished members, grant permission or establish factual consensus. Respect per-member message limit; use inspect_team for transcript.',
     schema: z.object({
       text: z.string().min(1).max(4000),
       recipients: z.array(z.string()).max(32).default([]),
     }),
-    run: async (a, c) => {
+    run: (a, c) => {
       const message = new Teams(c.store).post(c.run, a.text, a.recipients);
       const notified: string[] = [];
       for (const key of message.recipients) {
@@ -77,10 +80,11 @@ export function installPlanning(registry: ToolRegistry) {
   registry.add({
     name: 'end_team_participation',
     effect: 'coordinate',
+    atomic: true,
     description:
       'Record your final contribution and end your participation. Requires owned tasks completed and no unknown effects. Does not mark the whole team complete. After this tool give your final answer; no further mutations.',
     schema: z.object({ summary: z.string().min(1).max(6000) }),
-    run: async (a, c) => ({ content: JSON.stringify(new Teams(c.store).close(c.run, a.summary)) }),
+    run: (a, c) => ({ content: JSON.stringify(new Teams(c.store).close(c.run, a.summary)) }),
   });
 
   registry.add({
@@ -97,6 +101,7 @@ export function installPlanning(registry: ToolRegistry) {
   registry.add({
     name: 'configure_team_scheduler',
     effect: 'coordinate',
+    atomic: true,
     description:
       'Lead enables automatic assignment to explicitly enrolled existing workers. Ready unowned tasks are priority ordered and balanced by weighted active load. No spawning or replay. Mark write tasks execution=isolated; writable tasks with dependencies stay lead-managed. Default maxLoad=1. Disable with enabled=false.',
     schema: z.object({
@@ -104,7 +109,7 @@ export function installPlanning(registry: ToolRegistry) {
       maxLoad: z.number().int().min(1).max(8).default(1),
       enabled: z.boolean().default(true),
     }),
-    run: async (a, c) => ({
+    run: (a, c) => ({
       content: JSON.stringify(
         new TeamScheduler(c.store).configure(c.run, a.workerRunIds, a.maxLoad, a.enabled),
       ),
@@ -134,6 +139,7 @@ export function installPlanning(registry: ToolRegistry) {
   registry.add({
     name: 'handoff_task',
     effect: 'coordinate',
+    atomic: true,
     description:
       'Lead explicitly reassigns an unfinished task after its previous owner exits. Unknown effects block handoff. No operation is replayed or worker started.',
     schema: z.object({
@@ -142,7 +148,7 @@ export function installPlanning(registry: ToolRegistry) {
       targetRunId: z.string(),
       reason: z.string().min(1).max(2000),
     }),
-    run: async (a, c) => {
+    run: (a, c) => {
       const board = new TaskBoard(c.store).handoff(
         c.run,
         a.id,
@@ -178,7 +184,14 @@ export function installPlanning(registry: ToolRegistry) {
     }),
     run: async (a, c) => ({
       content: JSON.stringify(
-        await new Verification(c.store).record(c.run, c.files, a.id, a.revision, a.eventId),
+        await new Verification(c.store).record(
+          c.run,
+          c.files,
+          a.id,
+          a.revision,
+          a.eventId,
+          (board) => c.commitCoordination?.({ content: JSON.stringify(board) }),
+        ),
       ),
     }),
   });
@@ -203,19 +216,21 @@ export function installPlanning(registry: ToolRegistry) {
   registry.add({
     name: 'create_plan',
     effect: 'coordinate',
+    atomic: true,
     description:
       'Lead creates a shared DAG for a genuinely multi-step task, with explicit acceptance criteria. No automatic spawning or approvals. Plain questions need no plan.',
     schema: z.object({
       revision: z.number().int().min(0),
       tasks: z.array(taskInput).min(1).max(50),
     }),
-    run: async (a, c) => ({
+    run: (a, c) => ({
       content: JSON.stringify(new TaskBoard(c.store).create(c.run, a.tasks, a.revision)),
     }),
   });
   registry.add({
     name: 'update_task',
     effect: 'coordinate',
+    atomic: true,
     description:
       'Claim or update a shared task using the latest board revision. Only owner or lead can update it. Done requires tool-result evidence IDs; this records an author claim, not independent verification.',
     schema: z.object({
@@ -225,7 +240,7 @@ export function installPlanning(registry: ToolRegistry) {
       evidence: z.array(z.number().int().positive()).max(30).default([]),
       note: z.string().max(2000).default(''),
     }),
-    run: async (a, c) => ({
+    run: (a, c) => ({
       content: JSON.stringify(
         new TaskBoard(c.store).update(c.run, a.id, a.revision, a.status, a.evidence, a.note),
       ),

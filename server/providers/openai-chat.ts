@@ -1,3 +1,4 @@
+import { withToolImages } from './protocol.js';
 import { AppError, assert } from '../core/errors.js';
 import type { ModelProvider, ModelRequest, ModelResult } from './protocol.js';
 import {
@@ -11,6 +12,7 @@ import {
   validateCalls,
 } from './protocol.js';
 export function chatPayload({ profile, messages, tools }: ModelRequest) {
+  messages = withToolImages(messages);
   return {
     model: profile.model,
     stream: true,

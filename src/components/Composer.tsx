@@ -1,7 +1,7 @@
 import { TeamAutomationControls } from './TeamAutomationControls';
 import { DelegationControl } from './DelegationControl';
 import { ReasoningSlider } from './ReasoningSlider';
-import { ArrowDown, ArrowUp, Paperclip, Plus, Square } from 'lucide-react';
+import { ArrowDown, ArrowUp, Paperclip, Plus, Square, X } from 'lucide-react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import type { Conversation, Project, PublicProfile } from '../../shared/types';
 import { api } from '../api';
@@ -17,6 +17,7 @@ interface ComposerProps {
   drag: boolean;
   setDrag: Dispatch<SetStateAction<boolean>>;
   action: Action;
+  removeAttachment: (id: string) => Promise<void>;
   addFiles: (files: FileList | File[]) => Promise<void>;
   draftRef: RefObject<HTMLTextAreaElement | null>;
   upload: RefObject<HTMLInputElement | null>;
@@ -41,6 +42,7 @@ export function Composer({
   setDrag,
   action,
   addFiles,
+  removeAttachment,
   draftRef,
   upload,
   profile,
@@ -87,14 +89,33 @@ export function Composer({
             void action(() => addFiles(e.dataTransfer.files));
           }}
         >
-          {detail && detail.attachments.length > 0 && (
+          {detail && detail.attachments.some((a) => !a.messageEventId) && (
             <div className="attachment-chips">
-              {detail.attachments.map((a: any) => (
-                <a key={a.id} href={'/api/attachments/' + a.id}>
-                  <Paperclip size={12} />
-                  {a.name}
-                </a>
-              ))}
+              {detail.attachments
+                .filter((a) => !a.messageEventId)
+                .map((a: any) => (
+                  <span className="draft-attachment" key={a.id}>
+                    <a href={'/api/attachments/' + a.id} target="_blank" rel="noopener noreferrer">
+                      {['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(a.mime) ? (
+                        <img src={'/api/attachments/' + a.id + '?preview=1'} alt={a.name} />
+                      ) : (
+                        <Paperclip size={12} />
+                      )}
+                      {a.name}
+                    </a>
+                    <button
+                      type="button"
+                      disabled={sending}
+                      aria-label={
+                        (t('settings') === 'Settings' ? 'Remove attachment: ' : '删除附件：') +
+                        a.name
+                      }
+                      onClick={() => void action(() => removeAttachment(a.id))}
+                    >
+                      <X size={14} />
+                    </button>
+                  </span>
+                ))}
             </div>
           )}
           <textarea
@@ -201,7 +222,11 @@ export function Composer({
               <button
                 className="send-button"
                 aria-label={t('send')}
-                disabled={sending || !draft.trim() || !state.settings.profiles.length}
+                disabled={
+                  sending ||
+                  (!draft.trim() && !detail?.attachments.some((a) => !a.messageEventId)) ||
+                  !state.settings.profiles.length
+                }
                 onClick={() => void send()}
               >
                 <ArrowUp size={19} />

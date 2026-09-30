@@ -4,7 +4,7 @@ export async function api<T = any>(path: string, body?: unknown, method?: string
     signal: AbortSignal.timeout(body === undefined ? 20000 : 120000),
     method: method || (body === undefined ? 'GET' : 'POST'),
     headers:
-      body instanceof FormData
+      body === undefined || body instanceof FormData
         ? { 'X-CSRF-Token': csrf }
         : { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
     body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),

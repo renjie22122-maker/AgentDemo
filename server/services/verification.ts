@@ -38,7 +38,14 @@ export function sameStamp(a: ArtifactStamp, b: ArtifactStamp) {
 }
 export class Verification {
   constructor(private store: Store) {}
-  async record(run: Run, files: FileScope, taskId: string, revision: number, eventId: number) {
+  async record(
+    run: Run,
+    files: FileScope,
+    taskId: string,
+    revision: number,
+    eventId: number,
+    committed?: (board: Board) => void,
+  ) {
     const board = new TaskBoard(this.store).get(run),
       task = board.tasks.find((t) => t.id === taskId);
     assert(task && board.revision === revision, 'PLAN_CHANGED', 'Read the latest task board.');
@@ -105,6 +112,7 @@ export class Verification {
       target.verification = { status: 'checked', eventId, checkedBy: row.run_id, stamp: current };
       latest.revision++;
       this.store.put('task-board', latest);
+      committed?.(latest);
       return latest;
     });
   }

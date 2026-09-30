@@ -1,8 +1,10 @@
+import { withToolImages } from './protocol.js';
 import { randomUUID } from 'node:crypto';
 import { assert } from '../core/errors.js';
 import type { ModelProvider, ModelRequest, ModelResult } from './protocol.js';
 import { emptyUsage, reasoningFields, request, sse, validateCalls } from './protocol.js';
 export function geminiPayload({ profile, messages, tools }: ModelRequest) {
+  messages = withToolImages(messages);
   const names = new Map(
       messages.flatMap((m) => (m.calls || []).map((c) => [c.id, c.name] as const)),
     ),

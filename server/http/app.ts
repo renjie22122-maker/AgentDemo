@@ -1,3 +1,5 @@
+import { normalizeImage } from '../services/images.js';
+import { matchModel } from '../../shared/model-metadata.js';
 import { automationInput } from '../services/team-automation.js';
 import type { Run } from '../../shared/types.js';
 import { Teams } from '../services/team-space.js';
@@ -528,12 +530,41 @@ export async function createApp(options: { directory: string; dist?: string; run
       return { id: key, name, size: bytes.length };
     },
   );
-  app.get<{ Params: { id: string } }>('/api/attachments/:id', async (req, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { preview?: string } }>(
+    '/api/attachments/:id',
+    async (req, reply) => {
+      const a = store.get<Attachment>('attachment', req.params.id);
+      if (req.query.preview === '1') {
+        const image = await normalizeImage(await readFile(a.path));
+        reply
+          .header(
+            'Content-Type',
+            image.url.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
+          )
+          .header('X-Content-Type-Options', 'nosniff');
+        return Buffer.from(image.url.split(',')[1], 'base64');
+      }
+      reply
+        .header('Content-Type', 'application/octet-stream')
+        .header(
+          'Content-Disposition',
+          "attachment; filename*=UTF-8''" + encodeURIComponent(a.name),
+        );
+      return readFile(a.path);
+    },
+  );
+  app.delete<{ Params: { id: string } }>('/api/attachments/:id', async (req) => {
     const a = store.get<Attachment>('attachment', req.params.id);
-    reply
-      .header('Content-Type', 'application/octet-stream')
-      .header('Content-Disposition', "attachment; filename*=UTF-8''" + encodeURIComponent(a.name));
-    return readFile(a.path);
+    assert(
+      !a.messageEventId,
+      'ATTACHMENT_SENT',
+      'Sent attachments belong to message history and cannot be removed from the draft.',
+      409,
+    );
+    store.remove('attachment', a.id);
+    store.event(a.conversationId, null, 'attachment.removed', { id: a.id });
+    await rm(a.path, { force: true });
+    return { ok: true };
   });
   app.post('/api/execution/check', async () => {
     const settings = config.get(),
@@ -594,7 +625,52 @@ export async function createApp(options: { directory: string; dist?: string; run
     );
     return p;
   };
-  app.post('/api/models', async (req) => discoverModels(candidate(req.body)));
+  app.post('/api/models', async (req) =>
+    discoverModels(
+      candidate({ ...(req.body as any), model: (req.body as any)?.model || '__discovery__' }),
+    ),
+  );
+  app.post('/api/models/import', async (req) => {
+    assert(
+      !store.runs().some((r) => !terminal(r.status)),
+      'RUN_ACTIVE',
+      'Stop running tasks before changing model settings.',
+    );
+    const source = candidate({
+        ...(req.body as any),
+        model: (req.body as any)?.model || '__discovery__',
+      }),
+      models = await discoverModels(source),
+      settings = config.get();
+    // The lookup is asynchronous: check again before committing configuration.
+    assert(
+      !store.runs().some((r) => !terminal(r.status)),
+      'RUN_ACTIVE',
+      'A task started during discovery; settings were not changed.',
+    );
+    const added: string[] = [];
+    for (const metadata of models) {
+      if (
+        !metadata.id ||
+        settings.profiles.some(
+          (p) =>
+            p.baseUrl === source.baseUrl &&
+            p.transport === source.transport &&
+            p.model === metadata.id,
+        )
+      )
+        continue;
+      const profile = matchModel(
+        { ...source, id: id(), name: metadata.name || metadata.id },
+        metadata,
+      );
+      settings.profiles.push(profile);
+      added.push(profile.model);
+    }
+    config.save(settings);
+    return { added, models, settings: config.public() };
+  });
+
   app.post('/api/test-connection', async (req) => {
     const profile = candidate(req.body);
     const result = await providerFor(profile).complete({

@@ -40,11 +40,17 @@ export async function discoverModels(profile: Profile) {
     id: m.id || m.name?.replace(/^models\//, ''),
     name: m.display_name || m.displayName || m.name || m.id,
     contextWindow: m.context_window ?? m.context_length ?? m.inputTokenLimit ?? null,
+    maxOutputTokens: m.max_output_tokens ?? m.max_completion_tokens ?? m.outputTokenLimit ?? null,
+    reasoningFormat:
+      new URL(profile.baseUrl).hostname === 'api.deepseek.com'
+        ? 'deepseek'
+        : profile.reasoningFormat,
     efforts: (m.effort?.supported_levels ||
       m.supported_reasoning_efforts ||
       m.reasoning_efforts ||
       m.capabilities?.reasoning_efforts ||
       null) as Reasoning[] | null,
     vision: m.input_modalities?.includes('image') ?? null,
+    thinkingToggle: new URL(profile.baseUrl).hostname === 'api.deepseek.com',
   }));
 }

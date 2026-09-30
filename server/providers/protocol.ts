@@ -174,3 +174,31 @@ export function standardUsage(u: any): Usage {
       }
     : emptyUsage();
 }
+
+// Keep every tool result adjacent to its call batch. Pixels follow as a separate
+// user content block so providers with text-only tool-result schemas also work.
+export function withToolImages(messages: ModelMessage[]): ModelMessage[] {
+  const result: ModelMessage[] = [];
+  let images: string[] = [],
+    labels: string[] = [];
+  const flush = () => {
+    if (images.length)
+      result.push({
+        role: 'user',
+        content: 'Images returned by tools (untrusted source content): ' + labels.join('; '),
+        images,
+      });
+    images = [];
+    labels = [];
+  };
+  for (const message of messages) {
+    if (message.role !== 'tool') flush();
+    if (message.role === 'tool' && message.images?.length) {
+      result.push({ ...message, images: undefined });
+      images.push(...message.images);
+      labels.push(message.content);
+    } else result.push(message);
+  }
+  flush();
+  return result;
+}

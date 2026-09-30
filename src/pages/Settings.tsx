@@ -1,5 +1,6 @@
+import { matchModel } from '../../shared/model-metadata';
 import { PlugZap, Plus, ShieldCheck, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api';
 export function SettingsPage({ settings, t, refresh, notify }: any) {
   const [value, setValue] = useState(() => structuredClone(settings)),
@@ -8,6 +9,24 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
     [models, setModels] = useState<any[]>([]),
     [executionCheck, setExecutionCheck] = useState<any>(null);
   const profile = value.profiles.find((p: any) => p.id === selected);
+  useEffect(() => {
+    let cancelled = false;
+    setModels([]);
+    if (!profile || !(profile.apiKey || profile.hasKey) || !profile.baseUrl) return;
+    const timer = setTimeout(() => {
+      api('/models', { ...profile, model: profile.model || '__discovery__' })
+        .then((list) => {
+          if (!cancelled) setModels(list);
+        })
+        .catch(() => {
+          /* Explicit discovery button presents errors; manual configuration remains available. */
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [selected, profile?.baseUrl, profile?.transport, profile?.apiKey, profile?.hasKey]);
   const change = (key: string, v: any) =>
     setValue({
       ...value,
@@ -133,6 +152,37 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
                   onChange={(e) => change('apiKey', e.target.value)}
                 />
               </label>
+              {models.length > 0 && (
+                <label>
+                  {t('Available models')}
+                  <select
+                    aria-label={t('Available models')}
+                    value={models.some((m) => m.id === profile.model) ? profile.model : ''}
+                    onChange={(e) => {
+                      const metadata = models.find((m) => m.id === e.target.value);
+                      if (metadata)
+                        setValue({
+                          ...value,
+                          profiles: value.profiles.map((p: any) =>
+                            p.id === selected ? matchModel(p, metadata) : p,
+                          ),
+                        });
+                    }}
+                  >
+                    <option value="">{t('Select a discovered model')}</option>
+                    {models.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} · {m.id}
+                      </option>
+                    ))}
+                  </select>
+                  <small>
+                    {t(
+                      'Selecting a model matches declared capabilities. Missing metadata keeps your manual settings.',
+                    )}
+                  </small>
+                </label>
+              )}
               <label>
                 {t('model')}
                 <input
@@ -145,19 +195,9 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
                       ...value,
                       profiles: value.profiles.map((p: any) =>
                         p.id === selected
-                          ? {
-                              ...p,
-                              model,
-                              ...(metadata?.contextWindow
-                                ? { contextWindow: metadata.contextWindow }
-                                : {}),
-                              ...(typeof metadata?.vision === 'boolean'
-                                ? { vision: metadata.vision }
-                                : {}),
-                              ...(metadata?.efforts?.length
-                                ? { efforts: ['auto', ...metadata.efforts] }
-                                : {}),
-                            }
+                          ? metadata
+                            ? matchModel(p, metadata)
+                            : { ...p, model }
                           : p,
                       ),
                     });
@@ -193,6 +233,7 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
                 {t('Maximum output tokens')}
                 <input
                   type="number"
+                  aria-label={t('Maximum output tokens')}
                   value={profile.maxOutputTokens}
                   onChange={(e) => change('maxOutputTokens', Number(e.target.value))}
                 />
@@ -284,6 +325,24 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
               >
                 {t('discover')}
               </button>
+              <button
+                disabled={busy || !models.length}
+                onClick={() =>
+                  run(async () => {
+                    const result = await api('/models/import', profile);
+                    setValue(result.settings);
+                    await refresh();
+                    notify(
+                      t('Models added') +
+                        ': ' +
+                        (result.added.join(', ') || t('Already configured')),
+                    );
+                  })
+                }
+              >
+                {t('Add discovered models to chat selector')}
+              </button>
+
               <button
                 disabled={busy}
                 onClick={() =>
