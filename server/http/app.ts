@@ -1,3 +1,4 @@
+import { automationInput } from '../services/team-automation.js';
 import type { Run } from '../../shared/types.js';
 import { Teams } from '../services/team-space.js';
 import { rootRun, TaskBoard } from '../services/task-board.js';
@@ -31,6 +32,7 @@ export async function createApp(options: { directory: string; dist?: string; run
   if (!options.runtime) store.recover();
   const runtime = options.runtime || new Runtime(store, config, directory),
     skills = new Skills(store);
+  runtime.startTeamMaintenance();
   const app = Fastify({ logger: false, bodyLimit: 8 * 1024 * 1024 });
   const cookie = randomBytes(32).toString('hex'),
     csrf = randomBytes(32).toString('hex');
@@ -122,6 +124,20 @@ export async function createApp(options: { directory: string; dist?: string; run
         .list<Attachment>('attachment')
         .filter((a) => a.conversationId === c.id)
         .map(({ path, text, ...a }) => a),
+      teamAutomation: store.runs(c.id).at(-1)
+        ? store.maybe('team-automation', rootRun(store, store.runs(c.id).at(-1)!))
+        : null,
+      teamRecovery: store.runs(c.id).at(-1)
+        ? (new Teams(store).get(store.runs(c.id).at(-1)!)?.members || []).map((key) =>
+            runtime.teamAutomation.plan(store.get<Run>('run', key)),
+          )
+        : [],
+      teamControlEvents: store.runs(c.id).at(-1)
+        ? store
+            .list<any>('team-control-event')
+            .filter((e) => e.root === rootRun(store, store.runs(c.id).at(-1)!))
+            .slice(-20)
+        : [],
       teamSpace: store.runs(c.id).at(-1)
         ? new Teams(store).project(store.runs(c.id).at(-1)!)
         : null,
@@ -272,6 +288,29 @@ export async function createApp(options: { directory: string; dist?: string; run
   app.post<{ Params: { id: string } }>('/api/runs/:id/stop', async (req) => {
     runtime.stop(req.params.id);
     return { ok: true };
+  });
+  app.post<{ Params: { id: string } }>('/api/runs/:id/team-automation', async (req) => {
+    return runtime.teamAutomation.configure(
+      store.get<Run>('run', req.params.id),
+      automationInput.parse(req.body),
+    );
+  });
+  app.post<{ Params: { id: string } }>('/api/runs/:id/team-recovery-check', async (req) => {
+    const run = store.get<Run>('run', req.params.id);
+    await inspectEffects(
+      store,
+      await runtime.filesForConversation(
+        store.get<Conversation>('conversation', run.conversationId),
+      ),
+      run.conversationId,
+    );
+    return runtime.teamAutomation.plan(run);
+  });
+  app.post<{ Params: { id: string } }>('/api/runs/:id/team-recover', async (req) => {
+    const run = store.get<Run>('run', req.params.id);
+    const c = store.get<Conversation>('conversation', run.conversationId);
+    await inspectEffects(store, await runtime.filesForConversation(c), run.conversationId);
+    return runtime.teamAutomation.recover(run);
   });
   app.post<{ Params: { id: string } }>('/api/runs/:id/stop-team', async (req) => {
     runtime.stopTeam(req.params.id);

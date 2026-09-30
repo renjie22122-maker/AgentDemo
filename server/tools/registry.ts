@@ -135,6 +135,45 @@ export class ToolRegistry {
     const validation = def.schema.safeParse(args);
     if (!validation.success) throw new NotStartedError('TOOL_ARGUMENTS', validation.error.message);
     const parsed = validation.data;
+    if (ctx.run.recoveredFrom && ['write', 'execute'].includes(def.effect)) {
+      let prior = ctx.store.get<Run>('run', ctx.run.recoveredFrom);
+      const normalize = (v: any): any =>
+        Array.isArray(v)
+          ? v.map(normalize)
+          : v && typeof v === 'object'
+            ? Object.fromEntries(
+                Object.keys(v)
+                  .sort()
+                  .map((k) => [k, normalize(v[k])]),
+              )
+            : v;
+      const signature = (v: any) => JSON.stringify(normalize(v));
+      for (;;) {
+        const effects = ctx.store.db
+          .prepare('SELECT tool,args,result,state FROM effects WHERE run_id=?')
+          .all(prior.id) as any[];
+        const match = effects.find(
+          (e) =>
+            e.tool === name &&
+            e.state === 'completed' &&
+            signature(
+              (() => {
+                const a = def.schema.safeParse(JSON.parse(e.args));
+                return a.success ? a.data : JSON.parse(e.args);
+              })(),
+            ) === signature(parsed),
+        );
+        if (match)
+          return {
+            content:
+              'Previously completed operation; NOT executed again. Recorded result: ' +
+              match.result,
+          };
+        if (!prior.recoveredFrom) break;
+        prior = ctx.store.get<Run>('run', prior.recoveredFrom);
+      }
+    }
+
     const observe = ['write', 'execute'].includes(def.effect);
     const before = observe
       ? await snapshot(

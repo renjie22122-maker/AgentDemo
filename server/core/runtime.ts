@@ -1,3 +1,4 @@
+import { TeamAutomation } from '../services/team-automation.js';
 import { Teams } from '../services/team-space.js';
 import { rootRun, TaskBoard } from '../services/task-board.js';
 import { TeamScheduler } from '../services/team-scheduler.js';
@@ -37,6 +38,9 @@ import { terminal } from './lifecycle.js';
 import { ModelPool } from './pool.js';
 import { COMPACT, SYSTEM, TEAM_PROTOCOL } from './prompts.js';
 export class Runtime implements TeamPort {
+  readonly teamAutomation: TeamAutomation;
+  private maintenanceTimer?: ReturnType<typeof setInterval>;
+  private maintenanceTask: Promise<void> | null = null;
   readonly mcp = new McpHub();
   readonly bus = new EventEmitter();
   readonly inputs: Inputs;
@@ -77,6 +81,29 @@ export class Runtime implements TeamPort {
       pump: () => this.pump(),
       steer: (...args) => this.steer(...args),
     });
+    this.teamAutomation = new TeamAutomation(store, {
+      resume: (old, newId, prompt) =>
+        this.start(old.conversationId, prompt, old.maxSteps, {
+          parentRunId: old.parentRunId || old.id,
+          depth: old.depth || 1,
+          fresh: true,
+          runId: newId,
+          recoveredFrom: old.id,
+        }),
+      spawn: (source, prompt, ticket) =>
+        this.delegation.spawn(
+          source,
+          prompt,
+          'Complete assigned work with actual evidence.',
+          'read-only',
+          ticket,
+        ),
+      notify: (key, text) => {
+        const r = this.store.get<Run>('run', key);
+        if (!terminal(r.status)) this.steer(r.conversationId, text);
+      },
+      stop: (key) => this.stop(key, false),
+    });
     this.inputs = new Inputs(store);
     this.knowledge = new Knowledge(store, new Embeddings(() => config.get().embedding));
     this.memories = new MemoryIndex(store, new Embeddings(() => config.get().embedding));
@@ -94,7 +121,14 @@ export class Runtime implements TeamPort {
     conversationId: string,
     message: string,
     maxSteps = 0,
-    options: { parentRunId?: string; depth?: number; fresh?: boolean } = {},
+    options: {
+      parentRunId?: string;
+      depth?: number;
+      fresh?: boolean;
+      runId?: string;
+      recoveredFrom?: string;
+      controlTicket?: string;
+    } = {},
   ): Run {
     const c = this.store.get<Conversation>('conversation', conversationId);
     assert(
@@ -114,7 +148,9 @@ export class Runtime implements TeamPort {
     const previous = this.store.runs(conversationId).at(-1);
     const now = Date.now(),
       run: Run = {
-        id: id(),
+        id: options.runId || id(),
+        recoveredFrom: options.recoveredFrom,
+        controlTicket: options.controlTicket,
         recoveryOnly,
         conversationId,
         status: 'queued',
@@ -160,19 +196,54 @@ export class Runtime implements TeamPort {
     this.steering.set(run.id, [...(this.steering.get(run.id) || []), message]);
     this.store.event(conversationId, run.id, 'user.message', { text: message, steering: true });
   }
+  startTeamMaintenance() {
+    if (this.maintenanceTimer || this.shuttingDown) return;
+    this.maintenanceTimer = setInterval(() => this.maintainTeams(), 1000);
+    this.maintenanceTimer.unref();
+  }
+  private maintainTeams() {
+    if (this.shuttingDown || this.maintenanceTask) return;
+    this.maintenanceTask = this.teamAutomation
+      .tick()
+      .then(() => this.scheduleTeams())
+      .catch((error) => {
+        this.store.put('team-control-error', {
+          id: 'latest',
+          error: errorMessage(error),
+          at: Date.now(),
+        });
+      })
+      .finally(() => {
+        this.maintenanceTask = null;
+      });
+  }
   stopTeam(key: string) {
     const team = new Teams(this.store).get(this.store.get<Run>('run', key));
     assert(team, 'TEAM_MISSING', 'No peer team.');
+    const policy = this.store.maybe<any>('team-automation', team.id);
+    if (policy) this.store.put('team-automation', { ...policy, enabled: false });
     for (const member of team.members) this.stop(member);
   }
-  stop(key: string, cascade = true) {
+  stop(key: string, cascade = true, manual = true) {
     const run = this.store.get<Run>('run', key);
     if (terminal(run.status)) return;
+    if (manual && cascade) {
+      const t = new Teams(this.store).get(run);
+      if (t) {
+        const p = this.store.maybe<any>('team-automation', t.id);
+        if (p) this.store.put('team-automation', { ...p, enabled: false });
+      }
+    }
+    if (manual)
+      this.store.put('team-member-held', {
+        id: key,
+        reason: 'Explicit stop; automatic recovery suppressed.',
+      });
     if (cascade)
       for (const child of this.store
         .runs()
         .filter((c) => c.parentRunId === key && !terminal(c.status)))
-        this.stop(child.id);
+        this.stop(child.id, true, manual);
     const controller = this.controllers.get(key);
     if (controller) controller.abort();
     else {
@@ -765,7 +836,9 @@ export class Runtime implements TeamPort {
   message: TeamPort['message'] = (...args) => this.delegation.message(...args);
   async shutdown() {
     this.shuttingDown = true;
-    for (const key of this.controllers.keys()) this.stop(key);
+    clearInterval(this.maintenanceTimer);
+    await this.maintenanceTask;
+    for (const key of this.controllers.keys()) this.stop(key, true, false);
     await Promise.allSettled([...this.tasks.values()]);
     await this.schedulingTask;
     this.knowledge.close();

@@ -31,6 +31,9 @@ export interface UiState {
   };
 }
 export interface ConversationDetail {
+  teamAutomation?: any;
+  teamRecovery?: any[];
+  teamControlEvents?: any[];
   teamSpace?: {
     id: string;
     mode: 'host' | 'creative';

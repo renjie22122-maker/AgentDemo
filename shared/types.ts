@@ -104,6 +104,8 @@ export interface ContextSample {
   toolsDigest: string;
 }
 export interface Run {
+  recoveredFrom?: string;
+  controlTicket?: string;
   recoveryOnly?: boolean;
   executionBlock?: { signature: string; reason: string };
   contextSample?: ContextSample;

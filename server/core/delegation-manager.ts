@@ -12,7 +12,7 @@ interface DelegationHost {
     conversationId: string,
     message: string,
     maxSteps: number,
-    options: { parentRunId: string; depth: number; fresh: boolean },
+    options: { parentRunId: string; depth: number; fresh: boolean; controlTicket?: string },
   ): Run;
   signal(runId: string): AbortSignal | undefined;
   pump(): void;
@@ -33,6 +33,7 @@ export class DelegationManager {
     task: string,
     deliverable: string,
     mode: 'read-only' | 'isolated' = 'read-only',
+    controlTicket?: string,
   ) {
     const settings = this.config.get();
     assert(
@@ -91,7 +92,7 @@ export class DelegationManager {
           '\nRequired deliverable:\n' +
           deliverable,
         0,
-        { parentRunId: parent.id, depth: parent.depth + 1, fresh: true },
+        { parentRunId: parent.id, depth: parent.depth + 1, fresh: true, controlTicket },
       );
       this.store.event(c.id, parent.id, 'child.started', {
         runId: run.id,

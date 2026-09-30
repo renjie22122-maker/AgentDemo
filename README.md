@@ -100,6 +100,20 @@ Creative mode supports attributed broadcasts and directed contributions (`team_d
 
 The team panel separates individual completion from host-computed team status. Declared artifacts require version-bound evidence; isolated copies need integration; unresolved effects and failed members block completion. Existing version/conflict checks and merge approvals remain enforced. A read-only coordinator cannot gain merge permission through a role transfer.
 
-Limits: the roster is fixed after configuration. Execution ancestry and depth limits remain for provenance and permissions. There is no automatic election, resurrection, dynamic scaling or cross-session federation. Server restart preserves team records but does not silently resume commands or model requests.
+Limits: model-driven spawning stops after the initial roster is configured. Optional host automation may add bounded read-only workers or replace safely recoverable members. Execution ancestry and depth limits remain for provenance and permissions. Cross-session federation and arbitrary command replay are not supported.
 
 Validation: 81 regression checks passed. After fixing a missing-artifact-verification exit path exposed by a real-model trial, the host scenario completed in 53.3 seconds (creator ends early, two workers finish) and the creative role exchange in 36.1 seconds. These two samples validate exercised paths, not general multi-agent superiority.
+
+### Recovery, bounded scaling and coordinator takeover
+
+Open a team's **Recovery and automation** panel to enable its persisted policy. All automation is opt-in. The panel configures active worker capacity, a lifetime new-worker allowance, automatic recovery attempts per member, idle retirement time, and an optional measured-cost threshold. The threshold prevents additional starts/recoveries; it does not cancel in-flight requests or guarantee a final invoice ceiling. Unknown billed usage blocks new starts when a threshold is set. Global model concurrency and child/depth limits still apply.
+
+Recovery checks the operation journal and unfinished tool calls. It starts a fresh model turn referencing durable outcomes instead of resubmitting old tool calls. Identical recorded completed mutations return their previous result without executing again. Unknown commands/writes and incomplete coordination operations block recovery. Exact file-content inspection can reconcile matching writes. A later conversation prevents revival of its obsolete run. Automatic recovery is limited to read-only members and configured attempts; explicit recovery can continue other members only after unresolved outcomes are checked. Manual stops suppress automatic revival.
+
+Scaling is limited to ready read-only work and existing authority. The host records a ticket before spawning, reconciles that ticket after interruption, and never blindly duplicates the new member. Idle retirement applies only to host-created workers with no unfinished owned tasks, unknown effects, coordinator role or ready demand. Busy or user-created members are not terminated by scaling.
+
+Coordinator takeover is deterministic within this single host: after the previous holder terminates or ends participation, the host chooses an eligible active member, increments the team term/revision, and records/notifies the transfer. Current-role checks fence stale role authority. Slow responses alone never trigger an election. This is not a multi-server consensus protocol, and taking a role does not grant file, command or merge rights.
+
+Crash-window regression tests exercise reservation reconciliation and duplicate mutation suppression. Real API fixtures exercise a saved interrupted read-only member and a host-created replacement worker; these tests do not establish exactly-once semantics for arbitrary external side effects.
+
+Current automation validation: 89 regression checks and the policy-panel browser test passed. Real API fixtures passed for recovery (29.4 seconds) and bounded expansion with coordinator takeover (23.5 seconds); the fixtures model an interrupted member rather than claiming a full operating-system crash test.

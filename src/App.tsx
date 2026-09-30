@@ -1,3 +1,4 @@
+import { TeamAutomationControls } from './components/TeamAutomationControls';
 import { ConversationStatus } from './components/ConversationStatus';
 import { DisplaySettings } from './components/DisplaySettings';
 import { connectLive } from './live';
@@ -650,6 +651,16 @@ export function App() {
                           </button>
                         </div>
                       ))}
+                  {detail?.teamSpace && (
+                    <TeamAutomationControls
+                      id={detail.teamSpace.id}
+                      policy={detail.teamAutomation}
+                      recovery={detail.teamRecovery || []}
+                      events={detail.teamControlEvents || []}
+                      zh={language === 'zh'}
+                      action={action}
+                    />
+                  )}
                   {detail?.teamSpace && (
                     <details className="notice">
                       <summary>

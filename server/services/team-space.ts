@@ -7,6 +7,7 @@ export interface TeamSpace {
   id: string;
   mode: 'host' | 'creative';
   revision: number;
+  term?: number;
   members: string[];
   roles: Record<'coordinator' | 'planner' | 'reviewer' | 'summarizer', string>;
   closed: Record<string, string>;
@@ -203,7 +204,10 @@ export class Teams {
         blockers.push('Unfinished or unverified task: ' + task.id);
     if (t.mode === 'host' && !tasks.length) blockers.push('No declared tasks');
     const allEnded = members.every((r) => terminal(r.status));
-    const unclosed = members.filter((r) => terminal(r.status) && r.status !== 'completed');
+    const unclosed = members.filter(
+      (r) =>
+        terminal(r.status) && r.status !== 'completed' && !this.store.maybe('team-retired', r.id),
+    );
     for (const r of unclosed) blockers.push('Member interrupted or failed: ' + r.id);
     const status = allEnded ? (blockers.length ? 'blocked' : 'completed') : 'active';
     return {
