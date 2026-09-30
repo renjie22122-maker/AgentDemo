@@ -1,12 +1,17 @@
-import { contextBudget, sampleContext, messageUnits, splitSummaryText } from './context-budget.js';
+import { DelegationManager } from './delegation-manager.js';
+import { sampleContext } from './context-budget.js';
+import { ContextManager } from './context-manager.js';
+import { ToolExecutor } from './tool-executor.js';
+import { TaskBoard } from '../services/task-board.js';
+import { ProgressMonitor } from './progress-monitor.js';
+import { MemoryIndex } from '../services/memory-index.js';
 import { Isolations } from '../services/isolation.js';
 import { EventEmitter } from 'node:events';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type {
   Attachment,
   Conversation,
-  Memory,
   ModelMessage,
   Profile,
   Project,
@@ -14,7 +19,7 @@ import type {
   Skill,
   Usage,
 } from '../../shared/types.js';
-import type { ModelProvider, ModelRequest } from '../providers/protocol.js';
+import type { ModelProvider, ModelRequest, ModelResult } from '../providers/protocol.js';
 import { providerFor } from '../providers/registry.js';
 import { Inputs } from '../services/approvals.js';
 import { Embeddings } from '../services/embedding.js';
@@ -24,7 +29,7 @@ import { FileScope } from '../services/paths.js';
 import { Configuration } from '../services/settings.js';
 import { Store, id } from '../storage/store.js';
 import { tools, type TeamPort, type ToolContext } from '../tools/registry.js';
-import { abortError, assert, errorMessage, NotStartedError } from './errors.js';
+import { abortError, assert, errorMessage, AppError } from './errors.js';
 import { terminal } from './lifecycle.js';
 import { ModelPool } from './pool.js';
 import { COMPACT, SYSTEM } from './prompts.js';
@@ -33,10 +38,12 @@ export class Runtime implements TeamPort {
   readonly bus = new EventEmitter();
   readonly inputs: Inputs;
   readonly knowledge: Knowledge;
+  readonly memories: MemoryIndex;
   readonly registry = tools();
   private modelPool: ModelPool;
-  private pendingSpawns = new Map<string, number>();
-  private waitingOn = new Map<string, string[]>();
+  private contextManager: ContextManager;
+  private toolExecutor: ToolExecutor;
+  private delegation: DelegationManager;
   private controllers = new Map<string, AbortController>();
   private tasks = new Map<string, Promise<void>>();
   private steering = new Map<string, string[]>();
@@ -49,8 +56,23 @@ export class Runtime implements TeamPort {
     private resolveProvider: (p: Profile) => ModelProvider = providerFor,
   ) {
     this.modelPool = new ModelPool(() => config.get().maxParallelRuns);
+    this.contextManager = new ContextManager(
+      store,
+      () => config.get().compactionRatio,
+      this.modelPool,
+      (run, req) => this.complete(run, req),
+    );
+    this.toolExecutor = new ToolExecutor(store, this.registry, directory);
+    this.delegation = new DelegationManager(store, config, directory, this.bus, {
+      context: (run) => this.context(run),
+      start: (...args) => this.start(...args),
+      signal: (key) => this.controllers.get(key)?.signal,
+      pump: () => this.pump(),
+      steer: (...args) => this.steer(...args),
+    });
     this.inputs = new Inputs(store);
     this.knowledge = new Knowledge(store, new Embeddings(() => config.get().embedding));
+    this.memories = new MemoryIndex(store, new Embeddings(() => config.get().embedding));
     store.onEvent = (e) => this.bus.emit('event', e);
     this.bus.setMaxListeners(200);
   }
@@ -225,18 +247,23 @@ export class Runtime implements TeamPort {
       .list<Skill>('skill')
       .filter((s) => s.enabled && ctx.conversation.skillIds.includes(s.id))
       .map((s) => ({ id: s.id, name: s.name, description: s.description }));
-    const memories = ctx.conversation.memory
-      ? this.store
-          .list<Memory>('memory')
-          .filter(
-            (m) =>
-              m.active &&
-              (!m.expiresAt || m.expiresAt > Date.now()) &&
-              (m.scope === 'user' || m.scope === 'project:' + ctx.conversation.projectId),
-          )
-          .slice(-30)
-          .map((m) => ({ id: m.id, content: m.content, source: m.source }))
-      : [];
+    const query = [
+      ...run.checkpoints
+        .filter((m) => m.role === 'user')
+        .slice(-2)
+        .map((m) => m.content),
+      ...(this.steering.get(run.id) || []),
+    ].join('\n');
+    const recalled = ctx.conversation.memory
+      ? await this.memories.recall(query, ctx.conversation.projectId, ctx.signal)
+      : { memories: [], method: 'disabled', fallback: undefined };
+    const memories = recalled.memories;
+    this.store.event(run.conversationId, run.id, 'memory.recalled', {
+      ids: memories.map((m) => m.id),
+      method: recalled.method,
+      fallback: recalled.fallback,
+      queryCharacters: query.length,
+    });
     return (
       SYSTEM +
       '\n\nCurrent runtime configuration (established facts; use only what is relevant to the task): ' +
@@ -342,134 +369,6 @@ export class Runtime implements TeamPort {
       measured: usage.measured,
     });
   }
-  private async compact(
-    run: Run,
-    profile: Profile,
-    signal: AbortSignal,
-    tools: import('../../shared/types.js').ToolSpec[],
-  ) {
-    const before = contextBudget(
-      run.checkpoints,
-      tools,
-      profile,
-      this.config.get().compactionRatio,
-      run.contextSample,
-    );
-    assert(
-      before.threshold > 0,
-      'CONTEXT_CONFIGURATION',
-      'Output reservation leaves no usable input context. Reduce maximum output tokens.',
-    );
-    if (before.tokens < before.threshold) return;
-    const lastUser = run.checkpoints.findLastIndex((m) => m.role === 'user');
-    // Retain the latest user request and whole tool-call/result groups verbatim.
-    let cut = Math.max(2, run.checkpoints.length - 6);
-    while (cut > 1 && run.checkpoints[cut]?.role === 'tool') cut--;
-    assert(
-      cut > 1,
-      'CONTEXT_TOO_LARGE',
-      'The current request or tool schema exceeds the context budget. Reduce the input or increase model capacity; no messages were discarded.',
-    );
-    while (
-      cut < run.checkpoints.length - 1 &&
-      messageUnits(run.checkpoints.slice(cut)) > before.threshold * 0.35
-    ) {
-      let next = cut + 1;
-      while (next < run.checkpoints.length && run.checkpoints[next].role === 'tool') next++;
-      if (next >= run.checkpoints.length) break;
-      cut = next;
-    }
-    const preservedUser = lastUser > 0 && lastUser < cut ? [run.checkpoints[lastUser]] : [];
-    const old = run.checkpoints.slice(1, cut).filter((_, i) => i + 1 !== lastUser),
-      tail = run.checkpoints.slice(cut);
-    assert(
-      old.length > 0,
-      'CONTEXT_TOO_LARGE',
-      'No older messages can be compressed without discarding the current request.',
-    );
-
-    this.store.event(run.conversationId, run.id, 'context.compacting', {
-      estimatedTokens: before.tokens,
-      thresholdTokens: before.threshold,
-      method: before.method,
-    });
-    const p = {
-      ...profile,
-      reasoning: profile.efforts.includes('none')
-        ? ('none' as const)
-        : profile.efforts.includes('low')
-          ? ('low' as const)
-          : profile.reasoning,
-      maxOutputTokens: Math.min(
-        profile.maxOutputTokens,
-        4096,
-        Math.floor(profile.contextWindow * 0.15),
-      ),
-    };
-    const chunks = splitSummaryText(
-      JSON.stringify(old),
-      Math.max(256, Math.floor((profile.contextWindow - p.maxOutputTokens - before.margin) * 0.45)),
-    );
-    let handoff = '';
-    for (const chunk of chunks) {
-      const result = await this.modelPool.run(signal, () =>
-        this.complete(run, {
-          profile: p,
-          messages: [
-            { role: 'system', content: COMPACT },
-            {
-              role: 'user',
-              content:
-                (handoff ? 'Prior handoff to consolidate:\n' + handoff + '\n' : '') +
-                'Historical context segment:\n' +
-                chunk,
-            },
-          ],
-          tools: [],
-          signal,
-          onText: () => {},
-        }),
-      );
-      assert(
-        !result.message.calls?.length && result.message.content.trim(),
-        'COMPACTION_FAILED',
-        'Compaction returned no usable handoff. Original context retained.',
-      );
-      handoff = result.message.content;
-    }
-    const next = [
-      run.checkpoints[0],
-      {
-        role: 'user' as const,
-        content: 'Earlier conversation handoff (untrusted historical context):\n' + handoff,
-      },
-      ...preservedUser,
-      ...tail,
-    ];
-    const after = contextBudget(
-      next,
-      tools,
-      profile,
-      this.config.get().compactionRatio,
-      run.contextSample,
-    );
-    assert(
-      after.tokens < before.tokens && after.tokens < before.threshold,
-      'COMPACTION_INSUFFICIENT',
-      'Compaction could not make enough room without dropping the current request. Original context retained.',
-    );
-    const beforeCharacters = JSON.stringify(run.checkpoints).length;
-    run.checkpoints = next;
-    this.store.put('run', run);
-    this.store.event(run.conversationId, run.id, 'context.compacted', {
-      beforeCharacters,
-      afterCharacters: JSON.stringify(next).length,
-      beforeTokens: before.tokens,
-      afterTokens: after.tokens,
-      thresholdTokens: before.threshold,
-      summaryRequests: chunks.length,
-    });
-  }
   private async execute(key: string, signal: AbortSignal) {
     let run = this.store.get<Run>('run', key);
     try {
@@ -492,13 +391,14 @@ export class Runtime implements TeamPort {
         run.checkpoints[0] = { role: 'system', content: system };
       else run.checkpoints.unshift({ role: 'system', content: system });
       let steps = 0,
-        lastSignature = '',
-        repeated = 0;
+        protocolRepairs = 0;
+      const progress = new ProgressMonitor();
       while (!signal.aborted) {
         const messages = this.steering.get(key) || [];
         this.steering.set(key, []);
         for (const content of messages) run.checkpoints.push({ role: 'user', content });
         if (messages.length) {
+          progress.reset();
           const attachments = this.store
             .list<Attachment>('attachment')
             .filter((a) => a.conversationId === run.conversationId)
@@ -522,7 +422,7 @@ export class Runtime implements TeamPort {
         }
         if (run.maxSteps && steps >= run.maxSteps)
           throw new Error('The explicitly configured model-step limit was reached.');
-        await this.compact(run, profile, signal, this.registry.specs(ctx));
+        await this.contextManager.compact(run, profile, signal, this.registry.specs(ctx));
         this.store.put('run', run);
         steps++;
         const messageId = id();
@@ -531,24 +431,56 @@ export class Runtime implements TeamPort {
           messageId,
           model: profile.model,
         });
-        const result = await this.modelPool.run(signal, () =>
-          this.complete(run, {
-            profile,
-            messages: run.checkpoints,
-            tools: this.registry.specs(ctx),
-            signal,
-            onText: (text) => {
-              const stream = this.streams.get(key);
-              if (stream) stream.text += text;
-              this.bus.emit('delta', {
-                conversationId: run.conversationId,
-                runId: key,
+        let result: ModelResult;
+        try {
+          result = await this.modelPool.run(signal, () =>
+            this.complete(run, {
+              profile,
+              messages: run.checkpoints,
+              tools: this.registry.specs(ctx),
+              signal,
+              onText: (text) => {
+                const stream = this.streams.get(key);
+                if (stream) stream.text += text;
+                this.bus.emit('delta', {
+                  conversationId: run.conversationId,
+                  runId: key,
+                  messageId,
+                  text,
+                });
+              },
+            }),
+          );
+        } catch (error) {
+          if (
+            !signal.aborted &&
+            error instanceof AppError &&
+            ['INVALID_ARGUMENTS', 'DUPLICATE_CALL'].includes(error.code) &&
+            protocolRepairs++ < 1
+          ) {
+            const partial = this.streams.get(key);
+            if (partial?.text)
+              this.store.event(run.conversationId, key, 'assistant.message', {
                 messageId,
-                text,
+                text: partial.text,
+                final: false,
+                incomplete: true,
               });
-            },
-          }),
-        );
+            this.streams.delete(key);
+            this.store.event(run.conversationId, key, 'model.protocol-repair', {
+              code: error.code,
+              attempt: 1,
+              toolsExecuted: false,
+            });
+            run.checkpoints.push({
+              role: 'user',
+              content:
+                'Runtime protocol feedback: the previous response was rejected before any of its tools executed. Return valid JSON objects for tool arguments and unique call IDs. Correct that response once; do not replay earlier completed operations.',
+            });
+            continue;
+          }
+          throw error;
+        }
         if (signal.aborted) throw abortError();
         run.checkpoints.push(result.message);
         this.store.put('run', run);
@@ -598,74 +530,30 @@ export class Runtime implements TeamPort {
             'OUTCOME_UNKNOWN',
             'An operation has an unknown outcome. Inspect it before treating the task as complete.',
           );
+          const plan = new TaskBoard(this.store).get(run);
+          const unfinished = plan.tasks.filter(
+            (t) => t.status !== 'done' && (run.id === plan.id || t.owner === run.id),
+          );
+          assert(
+            !unfinished.length,
+            'PLAN_INCOMPLETE',
+            'Declared plan has unfinished tasks: ' +
+              unfinished.map((t) => t.id).join(', ') +
+              '. Inspect the board and continue or explain blockers.',
+          );
           this.store.transition(key, 'completed');
           return;
         }
-        const signature = JSON.stringify(result.message.calls.map((c) => [c.name, c.arguments]));
-        repeated = signature === lastSignature ? repeated + 1 : 0;
-        lastSignature = signature;
-        if (repeated >= 3)
+        const outputs = await this.toolExecutor.batch(run, result.message.calls, ctx);
+        if (
+          progress.observe(
+            result.message.calls.map((c) => [c.name, c.arguments]),
+            outputs,
+          )
+        )
           throw new Error(
-            'Repeated identical tool batches without a changed plan. Task interrupted to avoid an ineffective loop.',
+            'Repeated tool trajectories with unchanged results. Change the approach before continuing.',
           );
-        for (const call of result.message.calls) {
-          if (signal.aborted) throw abortError();
-          this.store.event(run.conversationId, key, 'tool.started', {
-            callId: call.id,
-            name: call.name,
-            arguments: call.arguments,
-          });
-          const effect = this.registry.effect(call.name);
-          let effectId: string | undefined;
-          // Persist intent before side effects. Unknown outcomes remain visible after crashes.
-          if (effect === 'write') effectId = this.store.beginEffect(key, call.name, call.arguments);
-          let output: string;
-          try {
-            const result = await this.registry.invoke(call.name, call.arguments, {
-              ...ctx,
-              beforeExecution: () => {
-                if (!effectId) effectId = this.store.beginEffect(key, call.name, call.arguments);
-              },
-            });
-            output = result.content;
-            if (effectId) this.store.endEffect(effectId, output.slice(0, 20000));
-          } catch (error) {
-            output = 'Tool error: ' + errorMessage(error);
-            if (effectId && error instanceof NotStartedError)
-              this.store.endEffect(effectId, output, 'not_started');
-            else if (effectId && !signal.aborted)
-              this.store.event(run.conversationId, key, 'effect.unknown', {
-                effectId,
-                tool: call.name,
-                reason: output,
-              });
-            if (signal.aborted) throw error;
-          }
-          if (output.length > 24000) {
-            const folder = join(this.directory, 'spills', run.conversationId);
-            await mkdir(folder, { recursive: true });
-            const spill = id();
-            await writeFile(join(folder, spill + '.txt'), output);
-            this.store.put('spill', {
-              id: spill,
-              conversationId: run.conversationId,
-              text: output,
-            });
-            output =
-              output.slice(0, 18000) +
-              '\n[Output truncated. Spill ID: ' +
-              spill +
-              '. Ask for a narrower read rather than repeating the entire output.]';
-          }
-          run.status = 'running';
-          run.checkpoints.push({ role: 'tool', callId: call.id, content: output });
-          this.store.put('run', run);
-          this.store.event(run.conversationId, key, 'tool.completed', {
-            callId: call.id,
-            name: call.name,
-            output,
-          });
-        }
       }
       throw abortError();
     } catch (error) {
@@ -686,187 +574,11 @@ export class Runtime implements TeamPort {
         this.stop(child.id);
     }
   }
-  async spawn(
-    parent: Run,
-    task: string,
-    deliverable: string,
-    mode: 'read-only' | 'isolated' = 'read-only',
-  ) {
-    const settings = this.config.get();
-    assert(
-      parent.depth < settings.maxAgentDepth,
-      'DEPTH_LIMIT',
-      'Configured delegation depth reached.',
-    );
-    const root = this.root(parent);
-    assert(
-      this.store.runs().filter((r) => r.parentRunId && this.root(r) === root).length +
-        (this.pendingSpawns.get(root) || 0) <
-        settings.maxChildren,
-      'CHILD_LIMIT',
-      'Configured total child limit reached for this run tree.',
-    );
-    this.pendingSpawns.set(root, (this.pendingSpawns.get(root) || 0) + 1);
-    try {
-      const c = this.store.get<Conversation>('conversation', parent.conversationId),
-        now = Date.now();
-      assert(c.teamStrategy !== 'off', 'DELEGATION_DISABLED', 'User disabled delegation.');
-      assert(
-        mode !== 'isolated' || (c.permission !== 'read-only' && !!c.projectId),
-        'DELEGATION_PERMISSION',
-        'Writable delegation requires a writable project task.',
-      );
-      const isolation =
-        mode === 'isolated'
-          ? await new Isolations(this.store, this.directory).create(
-              parent.id,
-              (await this.context(parent)).files,
-            )
-          : null;
-      const child = {
-        ...c,
-        isolationId: isolation?.id || c.isolationId,
-        id: id(),
-        title: task.slice(0, 65),
-        permission: mode === 'isolated' ? c.permission : ('read-only' as const),
-        parentId: c.id,
-        forkEvent: null,
-        createdAt: now,
-        updatedAt: now,
-      };
-      assert(
-        !this.controllers.get(parent.id)?.signal.aborted,
-        'CANCELLED',
-        'Parent was cancelled during copy preparation.',
-      );
-      this.store.put('conversation', child);
-      const run = this.start(
-        child.id,
-        (mode === 'isolated'
-          ? 'Independent isolated task. Write only to this copy; the parent must review and merge changes.\n'
-          : 'Independent read-only task:\n') +
-          task +
-          '\nRequired deliverable:\n' +
-          deliverable,
-        0,
-        { parentRunId: parent.id, depth: parent.depth + 1, fresh: true },
-      );
-      this.store.event(c.id, parent.id, 'child.started', {
-        runId: run.id,
-        conversationId: child.id,
-        task,
-        deliverable,
-      });
-      return run.id;
-    } finally {
-      this.pendingSpawns.set(root, Math.max(0, (this.pendingSpawns.get(root) || 1) - 1));
-    }
-  }
-  async reviewChanges(parent: Run, key: string, version?: string) {
-    const child = this.store.get<Run>('run', key);
-    assert(
-      child.parentRunId === parent.id && child.status === 'completed',
-      'MERGE_SCOPE',
-      'Only a completed direct child can be integrated.',
-    );
-    assert(
-      !this.store.runs().some((r) => r.parentRunId === child.id && !terminal(r.status)),
-      'CHILD_ACTIVE',
-      'Child has active descendants.',
-    );
-    const conversation = this.store.get<Conversation>('conversation', child.conversationId);
-    assert(conversation.isolationId, 'NOT_ISOLATED', 'Child has no isolated copy.');
-    const service = new Isolations(this.store, this.directory);
-    assert(
-      service.get(conversation.isolationId).parentRunId === parent.id,
-      'MERGE_SCOPE',
-      'Not owned by this parent.',
-    );
-    return version
-      ? service.merge(conversation.isolationId, version)
-      : service.inspect(conversation.isolationId);
-  }
-  private root(run: Run): string {
-    let r = run;
-    while (r.parentRunId) r = this.store.get<Run>('run', r.parentRunId);
-    return r.id;
-  }
-  async wait(parent: Run, keys: string[], signal: AbortSignal) {
-    for (const key of keys)
-      assert(
-        this.root(this.store.get<Run>('run', key)) === this.root(parent) && key !== parent.id,
-        'TEAM_SCOPE',
-        'Cannot wait on an unrelated task.',
-      );
-    const reaches = (from: string, target: string, seen = new Set<string>()): boolean => {
-      if (from === target) return true;
-      if (seen.has(from)) return false;
-      seen.add(from);
-      return (this.waitingOn.get(from) || []).some((k) => reaches(k, target, seen));
-    };
-    for (const key of keys) {
-      let ancestor = parent.parentRunId;
-      while (ancestor) {
-        assert(ancestor !== key, 'WAIT_CYCLE', 'A child cannot wait on its ancestor.');
-        ancestor = this.store.get<Run>('run', ancestor).parentRunId;
-      }
-      assert(!reaches(key, parent.id), 'WAIT_CYCLE', 'Delegation wait would create a cycle.');
-    }
-    this.waitingOn.set(parent.id, keys);
-    this.store.transition(parent.id, 'waiting_children');
-    this.pump();
-    try {
-      await Promise.all(
-        keys.map(
-          (key) =>
-            new Promise<void>((resolve, reject) => {
-              const done = () => {
-                if (terminal(this.store.get<Run>('run', key).status)) {
-                  cleanup();
-                  resolve();
-                }
-              };
-              const abort = () => {
-                cleanup();
-                reject(abortError());
-              };
-              const cleanup = () => {
-                this.bus.off('finished', done);
-                signal.removeEventListener('abort', abort);
-              };
-              this.bus.on('finished', done);
-              signal.addEventListener('abort', abort, { once: true });
-              if (signal.aborted) abort();
-              else done();
-            }),
-        ),
-      );
-    } finally {
-      this.waitingOn.delete(parent.id);
-      if (!signal.aborted && this.store.get<Run>('run', parent.id).status === 'waiting_children')
-        this.store.transition(parent.id, 'running');
-    }
-    return keys.map((key) => {
-      const r = this.store.get<Run>('run', key);
-      return {
-        runId: key,
-        status: r.status,
-        error: r.error,
-        answer:
-          this.store
-            .events(r.conversationId)
-            .filter((e) => e.type === 'assistant.message')
-            .at(-1)?.data.text || '',
-        usage: { input: r.inputTokens, output: r.outputTokens, cost: r.estimatedUsd },
-      };
-    });
-  }
-  message(parent: Run, key: string, message: string) {
-    const target = this.store.get<Run>('run', key);
-    assert(this.root(target) === this.root(parent), 'TEAM_SCOPE', 'Cannot message unrelated tasks');
-    assert(!terminal(target.status), 'TASK_FINISHED', 'Task already finished');
-    this.steer(target.conversationId, '[Team message from ' + parent.id + '] ' + message);
-  }
+  spawn: TeamPort['spawn'] = (...args) => this.delegation.spawn(...args);
+  reviewChanges = (parent: Run, key: string, version?: string) =>
+    this.delegation.reviewChanges(parent, key, version);
+  wait: TeamPort['wait'] = (...args) => this.delegation.wait(...args);
+  message: TeamPort['message'] = (...args) => this.delegation.message(...args);
   async shutdown() {
     for (const key of this.controllers.keys()) this.stop(key);
     await Promise.allSettled([...this.tasks.values()]);

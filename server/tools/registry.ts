@@ -1,3 +1,4 @@
+import { installPlanning } from './planning.js';
 import { inspectEffects } from '../services/recovery.js';
 import { snapshot, changes } from '../services/changes.js';
 import { dirname } from 'node:path';
@@ -138,6 +139,12 @@ export class ToolRegistry {
           });
       }
     }
+  }
+  parallelSafe(name: string) {
+    return (
+      ['list_files', 'read_file', 'read_skill', 'read_skill_file', 'read_spill'].includes(name) &&
+      this.definitions.get(name)?.effect === 'read'
+    );
   }
   effect(name: string) {
     return this.definitions.get(name)?.effect;
@@ -502,5 +509,6 @@ export function tools() {
       return text(output);
     },
   });
+  installPlanning(registry);
   return registry;
 }

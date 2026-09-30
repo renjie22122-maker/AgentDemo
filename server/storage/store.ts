@@ -24,6 +24,11 @@ export class Store {
       CREATE TABLE IF NOT EXISTS ledger(request_id TEXT PRIMARY KEY,run_id TEXT NOT NULL,data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS effects(id TEXT PRIMARY KEY,run_id TEXT NOT NULL,tool TEXT NOT NULL,args TEXT NOT NULL,state TEXT NOT NULL,result TEXT);
     `);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY,applied_at INTEGER NOT NULL);
+      CREATE INDEX IF NOT EXISTS records_runs_conversation ON records(json_extract(data,'$.conversationId'),json_extract(data,'$.createdAt')) WHERE kind='run';
+      INSERT OR IGNORE INTO schema_migrations VALUES(1,unixepoch()*1000);
+    `);
   }
   close() {
     this.db.close();
@@ -109,9 +114,18 @@ export class Store {
     );
   }
   runs(conversationId?: string) {
-    return this.list<Run>('run')
-      .filter((r) => !conversationId || r.conversationId === conversationId)
-      .sort((a, b) => a.createdAt - b.createdAt);
+    const rows = conversationId
+      ? this.db
+          .prepare(
+            "SELECT data FROM records WHERE kind='run' AND json_extract(data,'$.conversationId')=? ORDER BY json_extract(data,'$.createdAt')",
+          )
+          .all(conversationId)
+      : this.db
+          .prepare(
+            "SELECT data FROM records WHERE kind='run' ORDER BY json_extract(data,'$.createdAt')",
+          )
+          .all();
+    return (rows as { data: string }[]).map((r) => JSON.parse(r.data) as Run);
   }
   transition(runId: string, status: Run['status'], error: string | null = null) {
     const run = this.get<Run>('run', runId);

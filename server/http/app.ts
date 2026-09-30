@@ -1,3 +1,4 @@
+import { TaskBoard } from '../services/task-board.js';
 import { inspectEffects } from '../services/recovery.js';
 import { execute as executeCommand } from '../services/process.js';
 import { inspectionRoutes } from './inspection.js';
@@ -119,6 +120,9 @@ export async function createApp(options: { directory: string; dist?: string; run
         .list<Attachment>('attachment')
         .filter((a) => a.conversationId === c.id)
         .map(({ path, text, ...a }) => a),
+      taskBoard: store.runs(c.id).at(-1)
+        ? new TaskBoard(store).get(store.runs(c.id).at(-1)!)
+        : null,
       unknownEffects: store.unknownEffects(c.id),
       streams: [...runtime.streams.entries()]
         .filter(([, v]) => v.conversationId === c.id)
@@ -350,6 +354,7 @@ export async function createApp(options: { directory: string; dist?: string; run
     store.remove('skill', req.params.id);
     return { ok: true };
   });
+  app.post('/api/memories/index', async () => runtime.memories.index());
   app.post('/api/memories', async (req) => {
     const data = z
       .object({
@@ -381,6 +386,7 @@ export async function createApp(options: { directory: string; dist?: string; run
   });
   app.delete<{ Params: { id: string } }>('/api/memories/:id', async (req) => {
     store.remove('memory', req.params.id);
+    store.remove('memory-vector', req.params.id);
     return { ok: true };
   });
   function checkScope(scope: string) {

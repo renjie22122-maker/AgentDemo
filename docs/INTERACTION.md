@@ -33,7 +33,7 @@ Old events without snapshots cannot reconstruct before-images.
 
 Validation:
 
-- `pnpm test`: lifecycle, provider, permissions, runtime and UI transport tests.
+- Local-only test fixtures cover lifecycle, provider, permissions, runtime and UI transport. They are not included in the public repository.
 - `node --import tsx scripts/browser-reliability.ts`: Edge integration with
   deterministic model responses; real disconnect and offline catch-up, cross-chat
   input navigation, formulas, diffs, timers, mobile overflow and code copying.
@@ -79,3 +79,10 @@ Uncertain side effects no longer prevent starting a conversation turn. The next 
 Unresolved commands are never assumed safe to replay. Users can select Allow another attempt instead of writing a manual inspection note. This records retry_authorized while explicitly retaining that the previous outcome is unknown; it does not execute the operation. Subsequent attempts still use normal permissions and approvals.
 Commands enter the side-effect journal after approval and immediately before execution, so cancelling an unanswered approval does not create an uncertain operation.
 File changes are grouped by run in a default-collapsed section. Individual observed changes remain separately expandable, with red deletions, green additions, line numbers, counts, and unified/before-after views. Snapshot limits still apply.
+
+
+## Plans and memory recall
+
+A shared task plan appears as a collapsible card in the conversation after the agent creates one. It displays task status, acceptance criteria, owner and evidence event IDs. Status is author-reported; evidence IDs do not constitute an independent review verdict. Simple conversations need no plan.
+
+The Memory page offers an explicit semantic-index action. It sends active confirmed memory text to the configured embedding service; inactive suggestions are excluded. Subsequent recall can send the current task query to that service. Without an index, memory recall uses local lexical relevance. Indexing does not activate memories or automatically resolve conflicting facts.

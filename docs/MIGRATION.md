@@ -62,3 +62,15 @@ The checks above used local regression and integration fixtures, which are exclu
 Settings offers a fixed harmless execution readiness check using the saved backend. It does not change policy, install Docker, or prove all security properties. Docker runs use --pull=never; install the chosen image explicitly before use.
 Strict-offline bootstrap reports its actual connection result and OS error code before any requested command starts. A timeout is not treated as a proven OS denial. A structured pre-command result is used to distinguish this from untrusted command output.
 A proven launch failure (including missing docker executable) is recorded as not_started, not an unknown effect. Further commands in the same run and unchanged backend are suppressed after the first such failure, preventing repeated approvals. Settings changes and a new run allow another attempt. Command results identify the selected backend, shell and execution directory; no backend fallback exists.
+
+
+## Runtime refinement validation (2026-09-30)
+
+- Local regression: 70 passed, 0 failed; TypeScript check and production build passed.
+- Browser integration: passed, fixture browser-ulaqQ2.
+- Live model deepseek-flash: three tasks (file reads, dependency plan with evidence, scoped memory), three repetitions. Initial iteration 8/9; one response had malformed tool JSON. After bounded protocol repair, 9/9. Both local reports retained.
+- Slowest final sample: 119.9 seconds. Success does not imply efficient planning.
+- Embedding-index scope and invalidation were tested with deterministic vectors, not a real embedding endpoint. Live memory samples used lexical recall.
+- These are integration checks, not held-out coding benchmarks or a comparative score. They do not establish a 9.5/10 rating.
+- Still open: broad unseen task evaluation, independent outcome grading, efficient autonomous team scheduling, exact provider-specific token counting, learned reranking/conflict resolution, multi-provider live verification, and additional OS sandbox validation. No new Docker or strict-offline success is claimed.
+- Local test code and diagnostic records remain excluded from the public repository by user preference.

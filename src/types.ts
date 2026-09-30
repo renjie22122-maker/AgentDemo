@@ -31,6 +31,19 @@ export interface UiState {
   };
 }
 export interface ConversationDetail {
+  taskBoard?: {
+    revision: number;
+    tasks: {
+      id: string;
+      title: string;
+      acceptance: string;
+      status: string;
+      owner: string | null;
+      dependsOn: string[];
+      evidence: number[];
+      note: string;
+    }[];
+  } | null;
   conversation: Conversation;
   events: AgentEvent[];
   inputs: PendingInput[];

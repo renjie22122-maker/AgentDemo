@@ -241,6 +241,11 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
               {t('create')}
             </button>
           </section>
+          <button disabled={busy} onClick={() => go(() => api('/memories/index', {}))}>
+            {t('settings') !== 'Settings'
+              ? '为已确认记忆建立语义索引（发送到已配置的 embedding 服务）'
+              : 'Index confirmed memories (sends them to the configured embedding service)'}
+          </button>
           {state.memories.map((m: any) => (
             <article className="panel" key={m.id}>
               <div className="section-title">

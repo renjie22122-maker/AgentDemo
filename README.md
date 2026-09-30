@@ -42,7 +42,9 @@ Plain answers can finish directly. There is no required `finish` tool or fixed â
 - Recursive read-only or isolated writable subagents with depth/tree limits, shared model concurrency, scoped knowledge, messages, waiting and cancellation propagation.
 - YAML-aware skill directory import, namespaced identities, multiple selected skills and supporting-file reads.
 - Project/session knowledge with SQLite FTS5 retrieval, optional embedding indexing and hybrid ranking. Text, CSV, DOCX, XLSX and text-based PDF extraction; images are passed to a vision-capable model.
-- Confirmed user/project memories, inactive suggestions, revisions, expiration support and deletion.
+- Confirmed user/project memories with relevance-based recall, explicit semantic indexing, inactive suggestions, revision/model invalidation, expiration and deletion.
+- Optional shared task DAG with dependencies, optimistic ownership updates and tool-event evidence; plain answers still finish directly.
+- Bounded parallel observational file reads, serial mutation barriers and result-aware repeated-trajectory detection.
 - Explicitly enabled local stdio MCP servers; each MCP operation still requires user approval.
 - A local supervisor with bounded crash restart. Interrupted tasks are recovered as interrupted, never silently replayed.
 

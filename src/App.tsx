@@ -650,6 +650,33 @@ export function App() {
                           </button>
                         </div>
                       ))}
+                  {!!detail?.taskBoard?.tasks?.length && (
+                    <details className="notice">
+                      <summary>
+                        {language === 'zh'
+                          ? '任务计划（执行者记录）'
+                          : 'Task plan (author-reported)'}{' '}
+                        · {detail.taskBoard.tasks.filter((t: any) => t.status === 'done').length}/
+                        {detail.taskBoard.tasks.length}
+                      </summary>
+                      {detail.taskBoard.tasks.map((task: any) => (
+                        <div className="notice" key={task.id}>
+                          <strong>{task.title}</strong> <span className="pill">{task.status}</span>
+                          <p>{task.acceptance}</p>
+                          <small>
+                            {task.id} · {task.dependsOn.join(', ')} · {task.owner || '—'}
+                          </small>
+                          {task.note && <p>{task.note}</p>}
+                          {!!task.evidence.length && (
+                            <p>
+                              {language === 'zh' ? '证据事件' : 'Evidence events'}:{' '}
+                              {task.evidence.join(', ')}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </details>
+                  )}
                   {!!detail?.unknownEffects.length && (
                     <details className="notice recovery-card" key={selected}>
                       <summary>
