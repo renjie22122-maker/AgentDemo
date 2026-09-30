@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -24,7 +24,7 @@ test('strict tool arguments reject malformed JSON and arrays', () => {
 });
 test('SSE handles every byte boundary including CRLF and Chinese UTF-8', async () => {
   const bytes = new TextEncoder().encode(
-    'event: delta\r\ndata: {"text":"你好"}\r\n\r\ndata: [DONE]\r\n\r\n',
+    'event: delta\r\ndata: {"text":"浣犲ソ"}\r\n\r\ndata: [DONE]\r\n\r\n',
   );
   const response = new Response(
     new ReadableStream({
@@ -36,7 +36,7 @@ test('SSE handles every byte boundary including CRLF and Chinese UTF-8', async (
   );
   const out = [];
   for await (const e of sse(response)) out.push(e);
-  assert.deepEqual(out, [{ text: '你好' }]);
+  assert.deepEqual(out, [{ text: '浣犲ソ' }]);
 });
 test('SSE rejects an interrupted JSON frame', async () => {
   await assert.rejects(async () => {
@@ -124,4 +124,18 @@ test('effect journal preserves unknown operations until explicit inspection', as
   store.resolveEffect(key, 'Confirmed x contains the new text.');
   assert.equal(store.unknownEffects('chat').length, 0);
   store.close();
+});
+
+test('real root spelling differences do not disable file access; ancestor links remain denied', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'agentdemo-root-spelling-'));
+  const root = join(dir, 'MixedCaseRoot');
+  await mkdir(root);
+  const spelling = process.platform === 'win32' ? root.toUpperCase() : root;
+  const scope = new FileScope([spelling]);
+  await scope.write('result.txt', 'ok');
+  assert.equal(await scope.read('result.txt'), 'ok');
+  const link = join(dir, 'alias');
+  await symlink(root, link, process.platform === 'win32' ? 'junction' : 'dir');
+  await mkdir(join(root, 'nested'));
+  await assert.rejects(new FileScope([join(link, 'nested')]).list(), { code: 'LINKED_ROOT' });
 });

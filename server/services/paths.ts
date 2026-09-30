@@ -68,7 +68,13 @@ export class FileScope {
     );
     let current = root;
     const rootReal = await realpath(root);
-    assert(rootReal === path.resolve(root), 'LINKED_ROOT', 'Project root changed to a link.', 403);
+    // Windows realpath expands 8.3 names and canonicalizes case. String inequality
+    // is not evidence of a link; inspect each existing ancestor instead.
+    for (let ancestor = path.resolve(root); ; ancestor = path.dirname(ancestor)) {
+      const stat = await lstat(ancestor);
+      assert(!stat.isSymbolicLink(), 'LINKED_ROOT', 'Project root changed to a link.', 403);
+      if (ancestor === path.dirname(ancestor)) break;
+    }
     for (const part of relative.filter(Boolean)) {
       current = path.join(current, part);
       try {
@@ -80,7 +86,7 @@ export class FileScope {
           403,
         );
         assert(
-          inside(root, await realpath(current)),
+          inside(rootReal, await realpath(current)),
           'OUTSIDE_PROJECT',
           'Resolved path leaves the project.',
           403,
