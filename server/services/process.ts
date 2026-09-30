@@ -1,0 +1,152 @@
+import { executeNative } from './native-process.js';
+import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import type { Settings } from '../../shared/types.js';
+import { AppError, NotStartedError } from '../core/errors.js';
+export interface CommandResult {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+  truncated: boolean;
+  execution?: { backend: string; shell: string; cwd: string };
+}
+export function execute(
+  command: string,
+  cwd: string,
+  signal: AbortSignal,
+  timeoutMs: number,
+  settings: Settings,
+): Promise<CommandResult> {
+  if (signal.aborted) return Promise.reject(new AppError('CANCELLED', 'Cancelled'));
+  if (settings.commandBackend === 'native-windows')
+    return executeNative(command, cwd, signal, timeoutMs, settings);
+  const docker = settings.commandBackend === 'docker',
+    container = 'agentdemo-' + randomUUID();
+  const executable = docker
+    ? 'docker'
+    : process.platform === 'win32'
+      ? 'C:\\Windows\\System32\\cmd.exe'
+      : '/bin/sh';
+  const args = docker
+    ? [
+        'run',
+        '--pull=never',
+        '--rm',
+        '--name',
+        container,
+        '--network=none',
+        '--cap-drop=ALL',
+        '--security-opt=no-new-privileges',
+        '--pids-limit=128',
+        '--memory=1g',
+        '--cpus=2',
+        '--read-only',
+        '--tmpfs',
+        '/tmp:rw,noexec,nosuid,size=128m',
+        '--mount',
+        'type=bind,source=' + cwd + ',target=/workspace',
+        '--workdir',
+        '/workspace',
+        settings.dockerImage,
+        'sh',
+        '-lc',
+        command,
+      ]
+    : process.platform === 'win32'
+      ? ['/d', '/s', '/c', '"' + command + '"']
+      : ['-c', command];
+  // Deliberately omit API keys and service secrets. This is environment hygiene, not host isolation.
+  const env: NodeJS.ProcessEnv = {};
+  for (const k of [
+    'PATH',
+    'Path',
+    'PATHEXT',
+    'SystemRoot',
+    'WINDIR',
+    'COMSPEC',
+    'TEMP',
+    'TMP',
+    'USERPROFILE',
+    'HOME',
+    'LOCALAPPDATA',
+    'APPDATA',
+    'LANG',
+  ])
+    if (process.env[k]) env[k] = process.env[k];
+  return new Promise((resolve, reject) => {
+    const child = spawn(executable, args, {
+      cwd,
+      env,
+      windowsHide: true,
+      windowsVerbatimArguments: process.platform === 'win32' && !docker,
+      detached: process.platform !== 'win32',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '',
+      stderr = '',
+      timedOut = false,
+      truncated = false,
+      settled = false;
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    const take = (s: string, v: string) => {
+      if (s.length + v.length > 1000000) truncated = true;
+      return (s + v).slice(0, 1000000);
+    };
+    child.stdout.on('data', (v) => (stdout = take(stdout, v)));
+    child.stderr.on('data', (v) => (stderr = take(stderr, v)));
+    const kill = () => {
+      if (docker)
+        spawn('docker', ['rm', '-f', container], { windowsHide: true, stdio: 'ignore' }).on(
+          'error',
+          () => {},
+        );
+      if (child.pid) {
+        if (process.platform === 'win32')
+          spawn('C:\\Windows\\System32\\taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
+            windowsHide: true,
+            stdio: 'ignore',
+          }).on('error', () => child.kill());
+        else
+          try {
+            process.kill(-child.pid, 'SIGKILL');
+          } catch {
+            child.kill('SIGKILL');
+          }
+      }
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      kill();
+    }, timeoutMs);
+    signal.addEventListener('abort', kill, { once: true });
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', kill);
+    };
+    child.on('error', (e) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new NotStartedError('EXECUTION_UNAVAILABLE', e.message));
+    });
+    child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({
+        code,
+        stdout,
+        stderr,
+        timedOut,
+        truncated,
+        execution: {
+          backend: settings.commandBackend,
+          shell: docker ? 'sh' : process.platform === 'win32' ? 'cmd.exe' : 'sh',
+          cwd: docker ? '/workspace' : cwd,
+        },
+      });
+    });
+  });
+}

@@ -1,0 +1,52 @@
+{
+  "name": "agentdemo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch server/main.ts",
+    "web": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "start": "tsx server/main.ts",
+    "check": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@fastify/multipart": "^9.2.0",
+    "@fastify/static": "^8.3.0",
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "diff": "^9.0.0",
+    "exceljs": "^4.4.0",
+    "fastify": "^5.6.0",
+    "highlight.js": "^11.12.0",
+    "hnswlib-node": "^3.0.0",
+    "katex": "^0.18.9",
+    "lucide-react": "^0.468.0",
+    "mammoth": "^1.10.0",
+    "pdfjs-dist": "^5.4.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "yaml": "^2.8.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "prettier": "^3.9.9",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.1.0"
+  }
+}

@@ -1,0 +1,77 @@
+import type { Settings } from '../../shared/types.js';
+import { assert } from '../core/errors.js';
+export class Embeddings {
+  constructor(private settings: () => Settings['embedding']) {}
+  enabled() {
+    const s = this.settings();
+    return !!(s.baseUrl && s.model);
+  }
+  fingerprint() {
+    const s = this.settings();
+    return s.baseUrl.replace(/\/$/, '') + '#' + s.model;
+  }
+  async encode(texts: string[], signal?: AbortSignal): Promise<number[][]> {
+    const s = this.settings();
+    assert(this.enabled(), 'EMBEDDING_DISABLED', 'Configure an embedding connection first.');
+    const u = new URL(s.baseUrl);
+    assert(
+      u.protocol === 'https:' ||
+        (u.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname)),
+      'EMBEDDING_ENDPOINT',
+      'Use HTTPS or a local embedding endpoint.',
+    );
+    assert(
+      !u.username && !u.password && !u.search && !u.hash,
+      'EMBEDDING_ENDPOINT',
+      'Embedding URL cannot contain embedded credentials.',
+    );
+    const base = s.baseUrl.replace(/\/$/, '');
+    const response = await fetch(base.endsWith('/embeddings') ? base : base + '/embeddings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(s.apiKey ? { Authorization: 'Bearer ' + s.apiKey } : {}),
+      },
+      body: JSON.stringify({ model: s.model, input: texts }),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(60000)])
+        : AbortSignal.timeout(60000),
+    });
+    assert(response.ok, 'EMBEDDING_FAILED', 'Embedding endpoint returned HTTP ' + response.status);
+    const data = (await response.json()) as any;
+    assert(
+      Array.isArray(data.data) && data.data.length === texts.length,
+      'EMBEDDING_SHAPE',
+      'Invalid embedding result count.',
+    );
+    const vectors = data.data
+      .sort((a: any, b: any) => a.index - b.index)
+      .map((x: any) => x.embedding);
+    const dimension = vectors[0]?.length;
+    assert(
+      dimension > 0 &&
+        dimension <= 16384 &&
+        vectors.every(
+          (v: any) =>
+            Array.isArray(v) &&
+            v.length === dimension &&
+            v.every((n: any) => typeof n === 'number' && Number.isFinite(n)),
+        ),
+      'EMBEDDING_SHAPE',
+      'Invalid embedding vectors.',
+    );
+    return vectors;
+  }
+}
+export function cosine(a: number[], b: number[]) {
+  if (a.length !== b.length) return 0;
+  let dot = 0,
+    aa = 0,
+    bb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    aa += a[i] * a[i];
+    bb += b[i] * b[i];
+  }
+  return aa && bb ? dot / Math.sqrt(aa * bb) : 0;
+}

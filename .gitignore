@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.data/
+.diagnostics/
+.env
+.env.*
+!.env.example
+*.log
+
+# Local verification and migration fixtures (retained locally)
+/tests/
+/scripts/*
+!/scripts/supervisor.mjs
+/docs/VERIFICATION.md
+__pycache__/
+*.py[cod]
+*.sqlite
+*.sqlite-*
+*.zip
