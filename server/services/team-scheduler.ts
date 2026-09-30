@@ -93,6 +93,15 @@ export class TeamScheduler {
             ),
         )
         .sort((a, b) => (b.priority || 0) - (a.priority || 0) || a.id.localeCompare(b.id));
+      const blocked = ready
+        .filter((t) => (t.weight || 1) > policy.maxLoad)
+        .map((t) => ({
+          taskId: t.id,
+          reason: 'Task weight exceeds configured per-worker capacity',
+          weight: t.weight,
+          maxLoad: policy.maxLoad,
+        }));
+      this.store.put('team-scheduler-diagnostics', { id: root, blocked });
       for (const task of ready) {
         const eligible = candidates
           .filter((r) => {
@@ -100,7 +109,12 @@ export class TeamScheduler {
             if (load(r.id) + (task.weight || 1) > policy.maxLoad) return false;
             if (task.execution === 'isolated') {
               // Copy contents can become stale after predecessor work. Integration stays lead-managed.
-              return !task.dependsOn.length && !!c.isolationId && c.permission !== 'read-only';
+              return (
+                !task.dependsOn.length &&
+                !!c.isolationId &&
+                c.permission !== 'read-only' &&
+                this.store.maybe<any>('isolation', c.isolationId)?.state === 'ready'
+              );
             }
             return true;
           })
@@ -115,6 +129,7 @@ export class TeamScheduler {
         if (!member) continue;
         task.owner = member.id;
         task.status = 'running';
+        this.store.remove('team-worker-idle', member.id);
         task.note = 'Automatically assigned by ready-task scheduler.';
         assignments.push({
           taskId: task.id,

@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import type { ModelMessage, Profile, ToolCall, ToolSpec, Usage } from '../../shared/types.js';
 import { AppError, assert } from '../core/errors.js';
 export interface ModelRequest {
@@ -86,27 +87,67 @@ export async function request(
   signal: AbortSignal,
   headers: Record<string, string> = {},
 ) {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(profile.apiKey ? { Authorization: 'Bearer ' + profile.apiKey } : {}),
-      ...headers,
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.any([signal, AbortSignal.timeout(profile.timeoutMs)]),
-  });
-  if (!response.ok) {
-    await response.body?.cancel();
+  const deadline = AbortSignal.any([signal, AbortSignal.timeout(profile.timeoutMs)]);
+  for (let attempt = 0; ; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(profile.apiKey ? { Authorization: 'Bearer ' + profile.apiKey } : {}),
+          ...headers,
+        },
+        body: JSON.stringify(body),
+        signal: deadline,
+      });
+    } catch (error) {
+      if (!signal.aborted && deadline.aborted)
+        throw new AppError(
+          'MODEL_TIMEOUT',
+          'Model connection timed out before a response was received.',
+          504,
+        );
+      throw error;
+    }
+    if (response.ok) return response;
+    if ([429, 500, 502, 503, 504].includes(response.status) && attempt < 2) {
+      const retryAfter = Number(response.headers.get('retry-after'));
+      await response.body?.cancel();
+      await delay(
+        Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(retryAfter * 1000, 5000)
+          : 250 * 2 ** attempt,
+        undefined,
+        { signal: deadline },
+      );
+      continue;
+    }
+    let detail = '';
+    const reader = response.body?.getReader();
+    if (reader)
+      try {
+        const value = await reader.read();
+        detail = new TextDecoder().decode(value.value?.subarray(0, 4096));
+      } finally {
+        await reader.cancel().catch(() => {});
+      }
+    try {
+      const parsed = JSON.parse(detail);
+      detail = String(parsed.error?.message || parsed.message || '');
+    } catch {
+      detail = '';
+    }
+    if (profile.apiKey) detail = detail.split(profile.apiKey).join('[redacted]');
+    detail = detail.replace(/Bearer\s+\S+|sk-[A-Za-z0-9_-]+/gi, '[redacted]').slice(0, 500);
     throw new AppError(
       'MODEL_HTTP_' + response.status,
       'Model endpoint returned HTTP ' +
         response.status +
-        '. Check the endpoint, key, model and supported reasoning options. No simulator fallback.',
+        (detail ? ': ' + detail : '. Check endpoint, credentials and model configuration.'),
       502,
     );
   }
-  return response;
 }
 export async function* sse(response: Response): AsyncGenerator<any> {
   assert(response.body, 'EMPTY_RESPONSE', 'Model returned no response body.', 502);
@@ -151,6 +192,14 @@ export async function* sse(response: Response): AsyncGenerator<any> {
         }
       }
     }
+  } catch (error) {
+    if (error instanceof Error && error.name === 'TimeoutError')
+      throw new AppError(
+        'MODEL_TIMEOUT',
+        'Model stream timed out; partial tool calls were not executed.',
+        504,
+      );
+    throw error;
   } finally {
     await reader.cancel().catch(() => {});
     reader.releaseLock();

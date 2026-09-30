@@ -53,6 +53,10 @@ export function executeNative(
     child.on('close', () => {
       try {
         const r = JSON.parse(out);
+        if (r.error && r.commandStarted === false) {
+          finish(new NotStartedError('NATIVE_NOT_STARTED', String(r.error)));
+          return;
+        }
         if (r.error) throw new Error(r.error);
         if (typeof r.stdout !== 'string' || typeof r.timedOut !== 'boolean')
           throw new Error('Invalid adapter response');

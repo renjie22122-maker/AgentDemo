@@ -55,8 +55,17 @@ export function commitCoordination(
     return result;
   });
 }
-export function reconcileCoordination(store: Store) {
-  for (const run of store.runs().filter((r) => terminal(r.status))) {
+export function reconcileCoordination(store: Store, onlyRun?: Run) {
+  const candidates = onlyRun
+    ? [onlyRun]
+    : (
+        store.db
+          .prepare(
+            `SELECT DISTINCT s.run_id FROM events s WHERE s.type='tool.started' AND NOT EXISTS(SELECT 1 FROM events c WHERE c.run_id=s.run_id AND c.type='tool.completed' AND json_extract(c.data,'$.callId')=json_extract(s.data,'$.callId'))`,
+          )
+          .all() as { run_id: string }[]
+      ).map((r) => store.runHeader(r.run_id));
+  for (const run of candidates.filter((r) => terminal(r.status))) {
     const events = store.events(run.conversationId).filter((e) => e.runId === run.id);
     const completed = new Set(
       events.filter((e) => e.type === 'tool.completed').map((e) => e.data.callId),

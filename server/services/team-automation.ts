@@ -36,7 +36,7 @@ export class TeamAutomation {
     return this.store.put('team-automation', { id: team.id, ...automationInput.parse(input) });
   }
   plan(run: Run) {
-    reconcileCoordination(this.store);
+    reconcileCoordination(this.store, run);
     const events = this.store.events(run.conversationId).filter((e) => e.runId === run.id);
     const completed = new Set(
       events.filter((e) => e.type === 'tool.completed').map((e) => e.data.callId),
@@ -77,7 +77,7 @@ export class TeamAutomation {
       );
     };
     const later = this.store
-      .runs(run.conversationId)
+      .runMetadata(run.conversationId)
       .some((r) => r.id !== run.id && r.createdAt > run.createdAt);
     const blockers = [
       ...(later ? ['Conversation has advanced; do not resume this obsolete run.'] : []),
@@ -85,7 +85,7 @@ export class TeamAutomation {
       ...pending
         .filter((e) => !safeReads.includes(e.data.name) && !known(e))
         .map((e) => 'Unsettled tool: ' + e.data.name),
-      ...(this.store.runs().some((r) => r.parentRunId === run.id && !terminal(r.status))
+      ...(this.store.runMetadata().some((r) => r.parentRunId === run.id && !terminal(r.status))
         ? ['Active descendants']
         : []),
     ];
@@ -128,6 +128,19 @@ export class TeamAutomation {
         p.workers = p.workers.map((k: string) => (k === old.id ? next.id : k));
         this.store.put('team-scheduling', p);
       }
+      for (const child of this.store
+        .runs()
+        .filter((r) => r.parentRunId === old.id && r.id !== next.id)) {
+        this.store.put('run', { ...child, parentRunId: next.id });
+        this.store.put('run-reparented', {
+          id: child.id,
+          previousParent: old.id,
+          parent: next.id,
+          at: this.clock(),
+        });
+      }
+      for (const copy of this.store.list<any>('isolation').filter((i) => i.parentRunId === old.id))
+        this.store.put('isolation', { ...copy, parentRunId: next.id });
       this.store.put('team-superseded', { id: old.id, next: next.id, teamId: t.id });
       this.record(t.id, 'recovered', { previous: old.id, next: next.id });
     });
@@ -313,7 +326,7 @@ export class TeamAutomation {
       if (!scheduling?.enabled) continue;
       const active = scheduling.workers
         .map((k: string) => this.store.get<Run>('run', k))
-        .filter((r: Run) => !terminal(r.status) && !t!.closed[r.id]);
+        .filter((r: Run) => !terminal(r.status) && !t!.closed[r.id] && !r.recoveryOnly);
       const pending = board.tasks.filter(
         (x) =>
           x.status === 'pending' &&
@@ -346,7 +359,7 @@ export class TeamAutomation {
         );
       const created = this.store
         .list<any>('team-control-operation')
-        .filter((o) => o.root === t!.id && o.kind === 'scale');
+        .filter((o) => o.root === t!.id && o.kind === 'scale' && o.state !== 'not_started');
       if (
         pending.reduce((n, x) => n + (x.weight || 1), 0) > free &&
         active.length < policy.maxWorkers &&
@@ -388,7 +401,8 @@ export class TeamAutomation {
           this.store.maybe('team-worker-ready', r.id) &&
           !board.tasks.some((x) => x.owner === r.id && x.status !== 'done') &&
           !this.store.unknownEffects(r.conversationId).length &&
-          this.clock() - r.updatedAt >= policy.idleSeconds * 1000
+          this.clock() - (this.store.maybe<any>('team-worker-idle', r.id)?.since ?? r.updatedAt) >=
+            policy.idleSeconds * 1000
         ) {
           const current = teams.get(origin)!;
           if (Object.values(current.roles).includes(r.id)) continue;

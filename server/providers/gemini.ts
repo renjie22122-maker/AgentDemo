@@ -1,3 +1,4 @@
+import { AppError as LimitError } from '../core/errors.js';
 import { withToolImages } from './protocol.js';
 import { randomUUID } from 'node:crypto';
 import { assert } from '../core/errors.js';
@@ -101,6 +102,15 @@ export class GeminiProvider implements ModelProvider {
           };
         }
       }
+      if (finish === 'MAX_TOKENS')
+        throw Object.assign(
+          new LimitError(
+            'MODEL_INCOMPLETE',
+            'Model output reached its limit; incomplete tool calls were not executed.',
+            502,
+          ),
+          { finishReason: 'length' },
+        );
       assert(
         finish === 'STOP',
         'MODEL_INCOMPLETE',

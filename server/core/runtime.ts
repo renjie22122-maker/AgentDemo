@@ -213,7 +213,15 @@ export class Runtime implements TeamPort {
         attachments: attachments.map(({ id, name, mime, size }) => ({ id, name, mime, size })),
       });
       for (const a of attachments) this.store.put('attachment', { ...a, messageEventId: event.id });
-      return { content, attachmentIds: attachments.map((a) => a.id) };
+      const queued = { content, attachmentIds: attachments.map((a) => a.id) };
+      this.store.put('user-inbox', {
+        id: String(event.id),
+        conversationId,
+        runId,
+        state: 'pending',
+        ...queued,
+      });
+      return queued;
     });
   }
   startTeamMaintenance() {
@@ -524,13 +532,17 @@ export class Runtime implements TeamPort {
       const progress = new ProgressMonitor();
       while (!signal.aborted) {
         await this.dispatchTeam(run);
-        const messages = this.steering.get(key) || [];
+        const pending = this.store
+          .list<any>('user-inbox')
+          .filter((m) => m.conversationId === run.conversationId && m.state === 'pending')
+          .sort((a, b) => Number(a.id) - Number(b.id));
+        const messages = pending;
         this.steering.set(key, []);
         if (messages.length) progress.reset();
         for (const message of messages) {
           const last: Run['checkpoints'][number] = { role: 'user', content: message.content };
           run.checkpoints.push(last);
-          const attachments = message.attachmentIds.map((id) =>
+          const attachments = (message.attachmentIds as string[]).map((id) =>
             this.store.get<Attachment>('attachment', id),
           );
           if (attachments.length) {
@@ -548,6 +560,15 @@ export class Runtime implements TeamPort {
             }
           }
         }
+        if (pending.length)
+          this.store.transaction(() => {
+            this.store.put('run', run);
+            for (const item of pending)
+              this.store.put('user-inbox', { ...item, state: 'delivered', deliveredRunId: run.id });
+            this.store.event(run.conversationId, run.id, 'user.delivered', {
+              eventIds: pending.map((m) => Number(m.id)),
+            });
+          });
         if (run.maxSteps && steps >= run.maxSteps)
           throw new Error('The explicitly configured model-step limit was reached.');
         await this.contextManager.compact(run, profile, signal, this.registry.specs(ctx));
@@ -849,6 +870,8 @@ export class Runtime implements TeamPort {
     assert(run.parentRunId, 'TEAM_WORKER', 'Only a worker waits for team assignments.');
     signal.throwIfAborted();
     this.store.put('team-worker-ready', { id: run.id });
+    if (!this.store.maybe('team-worker-idle', run.id))
+      this.store.put('team-worker-idle', { id: run.id, since: Date.now() });
     this.store.transition(run.id, 'waiting_children');
     this.pump();
     try {
@@ -865,6 +888,7 @@ export class Runtime implements TeamPort {
             assigned.length ||
             (board.tasks.length > 0 && board.tasks.every((t) => t.status === 'done'))
           ) {
+            if (assigned.length) this.store.remove('team-worker-idle', run.id);
             cleanup();
             resolve({
               status: assigned.length ? 'assigned' : 'no_remaining_tasks',

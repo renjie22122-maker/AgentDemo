@@ -186,7 +186,7 @@ export class Teams {
     const t = this.get(run);
     if (!t) return null;
     const tasks = new TaskBoard(this.store).get(run).tasks;
-    const members = t.members.map((k) => this.store.get<Run>('run', k));
+    const members = t.members.map((k) => this.store.runHeader(k));
     const blockers: string[] = [];
     for (const r of members) {
       if (this.store.unknownEffects(r.conversationId).length)

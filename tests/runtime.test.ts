@@ -1,0 +1,969 @@
+import { AppError } from '../server/core/errors.js';
+import assert from 'node:assert/strict';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+import { Runtime } from '../server/core/runtime.js';
+import { createApp } from '../server/http/app.js';
+import type { ModelProvider } from '../server/providers/protocol.js';
+import { Configuration } from '../server/services/settings.js';
+import { Store } from '../server/storage/store.js';
+async function setup(provider: ModelProvider) {
+  const dir = await mkdtemp(join(tmpdir(), 'agentdemo-runtime-'));
+  const store = new Store(join(dir, 'db.sqlite')),
+    config = new Configuration(join(dir, 'config.json'));
+  config.save({
+    ...config.get(),
+    profiles: [
+      {
+        id: 'test',
+        name: 'Test',
+        transport: 'openai-chat',
+        baseUrl: 'https://example.com',
+        model: 'test',
+      },
+    ],
+    defaultProfileId: 'test',
+  });
+  store.put('conversation', {
+    id: 'chat',
+    title: 'New chat',
+    projectId: null,
+    profileId: 'test',
+    reasoning: 'auto',
+    permission: 'ask',
+    createdAt: 1,
+    updatedAt: 1,
+    pinned: false,
+    archived: false,
+    parentId: null,
+    forkEvent: null,
+    skillIds: [],
+    knowledge: true,
+    memory: true,
+  });
+  return { dir, store, config, runtime: new Runtime(store, config, dir, () => provider) };
+}
+const result = (content: string, calls?: any[]) => ({
+  message: { role: 'assistant' as const, content, calls },
+  usage: { input: 10, output: 2, cached: 0, measured: true },
+});
+async function until(fn: () => boolean, ms = 3000) {
+  const end = Date.now() + ms;
+  while (!fn()) {
+    if (Date.now() > end) throw new Error('Timed out');
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+test('plain answer finishes in one model call without compulsory finish or review', async () => {
+  const f = await setup({
+    complete: async (r) => {
+      r.onText('Hello');
+      return result('Hello');
+    },
+  });
+  const r = f.runtime.start('chat', 'Hi');
+  await until(() => f.store.get<any>('run', r.id).status === 'completed');
+  const done = f.store.get<any>('run', r.id);
+  assert.equal(done.modelCalls, 1);
+  assert.equal(done.inputTokens, 10);
+  assert.equal(done.estimatedUsd, null);
+  assert.equal(f.store.events('chat').filter((e) => e.type === 'tool.started').length, 0);
+  await f.runtime.shutdown();
+  f.store.close();
+});
+test('question waits for user and resumes same run', async () => {
+  let n = 0;
+  const f = await setup({
+    complete: async () =>
+      ++n === 1
+        ? result('', [
+            {
+              id: 'q',
+              name: 'ask_user',
+              arguments: { question: 'Which format?', options: ['CSV', 'JSON'] },
+            },
+          ])
+        : result('Selected JSON'),
+  });
+  const r = f.runtime.start('chat', 'Prepare output');
+  await until(() => f.store.get<any>('run', r.id).status === 'waiting_user');
+  assert.equal(n, 1);
+  const q = f.store.list<any>('input')[0];
+  f.runtime.inputs.answer(q.id, 'JSON', true);
+  await until(() => f.store.get<any>('run', r.id).status === 'completed');
+  assert.equal(n, 2);
+  assert(
+    f.store
+      .get<any>('run', r.id)
+      .checkpoints.some((m: any) => m.role === 'tool' && m.content === 'JSON'),
+  );
+  await f.runtime.shutdown();
+  f.store.close();
+});
+test('approval denial does not execute command and model sees denial', async () => {
+  let n = 0;
+  const f = await setup({
+    complete: async () =>
+      ++n === 1
+        ? result('', [
+            {
+              id: 'cmd',
+              name: 'run_command',
+              arguments: { command: 'echo forbidden', reason: 'Testing authorization' },
+            },
+          ])
+        : result('Command was denied'),
+  });
+  const work = await mkdtemp(join(tmpdir(), 'agentdemo-approved-project-'));
+  f.store.put('project', { id: 'p', name: 'p', folders: [work], createdAt: 1 });
+  f.store.put('conversation', { ...f.store.get<any>('conversation', 'chat'), projectId: 'p' });
+  const r = f.runtime.start('chat', 'Try command');
+  await until(() => f.store.get<any>('run', r.id).status === 'waiting_approval');
+  f.runtime.inputs.answer(f.store.list<any>('input')[0].id, 'Do not execute', false);
+  await until(() => f.store.get<any>('run', r.id).status === 'completed');
+  assert(
+    f.store
+      .get<any>('run', r.id)
+      .checkpoints.some((m: any) => m.role === 'tool' && m.content.startsWith('DENIED')),
+  );
+  assert.equal(f.store.unknownEffects('chat').length, 0);
+  await f.runtime.shutdown();
+  f.store.close();
+});
+test('steering arrives at a model boundary and is not lost at completion', async () => {
+  let release: () => void = () => {},
+    count = 0;
+  const gate = new Promise<void>((r) => (release = r));
+  const f = await setup({
+    complete: async (r) => {
+      count++;
+      if (count === 1) await gate;
+      else assert(r.messages.some((m) => m.content.includes('Use blue')));
+      return result(count === 1 ? 'Initial' : 'Blue');
+    },
+  });
+  const r = f.runtime.start('chat', 'Design');
+  await until(() => count === 1);
+  f.runtime.steer('chat', 'Use blue');
+  release();
+  await until(() => f.store.get<any>('run', r.id).status === 'completed');
+  assert.equal(count, 2);
+  await f.runtime.shutdown();
+  f.store.close();
+});
+test('child receives parent session knowledge, minimal context and no write tools', async () => {
+  let parentCalls = 0;
+  const f = await setup({
+    complete: async (r) => {
+      const facts = r.messages[0].content;
+      const isChild = facts.includes('"depth":1');
+      if (isChild) {
+        assert(!r.tools.some((t) => t.name === 'write_file' || t.name === 'run_command'));
+        assert(facts.includes('session:chat'));
+        return result('Child inspected evidence');
+      }
+      parentCalls++;
+      if (parentCalls === 1)
+        return result('', [
+          {
+            id: 'spawn',
+            name: 'spawn_agent',
+            arguments: {
+              task: 'Independently inspect the provided knowledge for a bounded answer.',
+              deliverable: 'Return one sourced finding.',
+            },
+          },
+        ]);
+      return result('Parent incorporates child');
+    },
+  });
+  f.runtime.knowledge.import('session:chat', 'notes', 'cobalt = blue');
+  const r = f.runtime.start('chat', 'Delegate this evidence check');
+  await until(() => f.store.get<any>('run', r.id).status === 'completed', 5000);
+  const children = f.store.runs().filter((x) => x.parentRunId === r.id);
+  assert.equal(children.length, 1);
+  assert.equal(children[0].status, 'completed');
+  await f.runtime.shutdown();
+  f.store.close();
+});
+test('service recovery marks live tasks interrupted and does not replay', async () => {
+  const f = await setup({ complete: async () => result('unused') });
+  f.store.put('run', {
+    id: 'dead',
+    conversationId: 'chat',
+    status: 'running',
+    createdAt: 1,
+    updatedAt: 1,
+  });
+  f.store.beginEffect('dead', 'run_command', { command: 'unknown' });
+  f.store.recover();
+  assert.equal(f.store.get<any>('run', 'dead').status, 'interrupted');
+  const resumed = f.runtime.start('chat', 'Explain the interrupted operation');
+  assert.equal(resumed.recoveryOnly, true);
+  await until(() => f.store.get<any>('run', resumed.id).status === 'interrupted');
+  assert.equal(f.store.unknownEffects('chat').length, 1);
+  f.store.close();
+});
+test('HTTP requires local host, cookie and CSRF for state changes', async () => {
+  const f = await setup({ complete: async () => result('test') });
+  const { app } = await createApp({ directory: f.dir, runtime: f.runtime });
+  const denied = await app.inject({
+    method: 'GET',
+    url: '/api/state',
+    headers: { host: '127.0.0.1:8810' },
+  });
+  assert.equal(denied.statusCode, 401);
+  assert.equal(
+    (await app.inject({ url: '/api/bootstrap', headers: { host: 'evil.test' } })).statusCode,
+    403,
+  );
+  const boot = await app.inject({ url: '/api/bootstrap', headers: { host: '127.0.0.1:8810' } });
+  const cookie = String(boot.headers['set-cookie']).split(';')[0],
+    csrf = boot.json().csrf;
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/conversations',
+        headers: { host: '127.0.0.1:8810', cookie },
+        payload: {},
+      })
+    ).statusCode,
+    403,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/conversations',
+        headers: { host: '127.0.0.1:8810', cookie, 'x-csrf-token': csrf },
+        payload: {},
+      })
+    ).statusCode,
+    200,
+  );
+  await app.close();
+});
+
+test('failed stream retains partial text and measured usage without claiming completion', async () => {
+  const f = await setup({
+    complete: async (r) => {
+      r.onText('Partial answer');
+      throw Object.assign(new Error('truncated'), {
+        usage: { input: 70, output: 30, cached: 0, measured: true },
+      });
+    },
+  });
+  const run = f.runtime.start('chat', 'Test interruption');
+  await until(() => f.store.get<any>('run', run.id).status === 'failed');
+  const r = f.store.get<any>('run', run.id);
+  assert.equal(r.modelCalls, 1);
+  assert.equal(r.inputTokens, 70);
+  assert.equal(r.outputTokens, 30);
+  assert(
+    f.store
+      .events('chat')
+      .some(
+        (e) =>
+          e.type === 'assistant.message' && e.data.incomplete && e.data.text === 'Partial answer',
+      ),
+  );
+  await f.runtime.shutdown();
+  f.store.close();
+});
+test('missing provider usage is marked incomplete, not known zero', async () => {
+  const f = await setup({
+    complete: async () => {
+      throw new Error('network failure');
+    },
+  });
+  const run = f.runtime.start('chat', 'Test network failure');
+  await until(() => f.store.get<any>('run', run.id).status === 'failed');
+  assert.equal(f.store.get<any>('run', run.id).usageComplete, false);
+  assert.equal(f.store.get<any>('run', run.id).estimatedUsd, null);
+  await f.runtime.shutdown();
+  f.store.close();
+});
+
+test('recursive children finish under one shared model pool', async () => {
+  const f = await setup({
+    complete: async (request) => {
+      const facts = request.messages[0].content;
+      if (facts.includes('"depth":2')) return result('Grandchild result');
+      const spawned = request.messages.some(
+        (m) => m.role === 'tool' && m.content.includes('runId'),
+      );
+      if (!spawned)
+        return result('', [
+          {
+            id: 'delegate-' + (facts.includes('"depth":1') ? 'child' : 'root'),
+            name: 'spawn_agent',
+            arguments: {
+              task: 'Inspect one independent detail and return a compact observation.',
+              deliverable: 'Return exactly one useful finding.',
+            },
+          },
+        ]);
+      return result('Incorporated delegated result');
+    },
+  });
+  const r = f.runtime.start('chat', 'Delegate a bounded tree check');
+  await until(() => f.store.get<any>('run', r.id).status === 'completed', 5000);
+  const runs = f.store.runs();
+  assert.equal(runs.length, 3);
+  assert(runs.every((r) => r.status === 'completed'));
+  assert.equal(Math.max(...runs.map((r) => r.depth)), 2);
+  await f.runtime.shutdown();
+  f.store.close();
+});
+
+test('isolated worker tools, project preservation and delegation off are enforced by host', async () => {
+  const { writeFile, readFile } = await import('node:fs/promises');
+  const f = await setup({
+    complete: async (r) => {
+      const child = r.messages[0].content.includes('"depth":1');
+      if (child) {
+        assert.ok(r.tools.some((t) => t.name === 'write_file'));
+        assert.ok(
+          !r.tools.some((t) => t.name === 'run_command'),
+          'Host backend must never be exposed to child',
+        );
+        if (!r.messages.some((m) => m.role === 'tool'))
+          return result('', [
+            {
+              id: 'child-write',
+              name: 'write_file',
+              arguments: { path: 'child.txt', content: 'isolated' },
+            },
+          ]);
+        return result('child complete');
+      }
+      if (!r.messages.some((m) => m.role === 'tool'))
+        return result('', [
+          {
+            id: 'spawn',
+            name: 'spawn_agent',
+            arguments: {
+              task: 'Write a bounded child file in your isolated copy.',
+              deliverable: 'Create child.txt and report.',
+              mode: 'isolated',
+            },
+          },
+        ]);
+      return result('parent complete');
+    },
+  });
+  const project = await mkdtemp(join(tmpdir(), 'agentdemo-project-'));
+  await writeFile(join(project, 'base.txt'), 'parent');
+  f.store.put('project', { id: 'p', name: 'p', folders: [project], createdAt: 1 });
+  f.store.put('conversation', { ...f.store.get<any>('conversation', 'chat'), projectId: 'p' });
+  const run = f.runtime.start('chat', 'delegate');
+  await until(() => f.store.get<any>('run', run.id).status === 'completed', 5000);
+  const child = f.store.runs().find((r) => r.parentRunId === run.id)!;
+  assert.equal(child.status, 'completed');
+  await assert.rejects(readFile(join(project, 'child.txt')));
+  const review: any = await f.runtime.reviewChanges(run, child.id);
+  assert.equal(review.changes[0].path, '@0/child.txt');
+  f.store.put('conversation', { ...f.store.get<any>('conversation', 'chat'), teamStrategy: 'off' });
+  const context = await f.runtime.context(run);
+  assert.ok(!f.runtime.registry.specs(context).some((t) => t.name === 'spawn_agent'));
+  await assert.rejects(
+    f.runtime.spawn(run, 'Another independent task here', 'Return a real result'),
+    /disabled/,
+  );
+  await f.runtime.shutdown();
+  f.store.close();
+});
+
+test('inspection shows request usage separately from totals and enforces file/run scope', async () => {
+  const f = await setup({ complete: async () => result('A direct answer') });
+  const first = f.runtime.start('chat', 'First question');
+  await until(() => f.store.get<any>('run', first.id).status === 'completed');
+  const second = f.runtime.start('chat', 'Second question');
+  await until(() => f.store.get<any>('run', second.id).status === 'completed');
+  const { app } = await createApp({ directory: f.dir, runtime: f.runtime });
+  try {
+    const boot = await app.inject({ url: '/api/bootstrap', headers: { host: '127.0.0.1:8810' } });
+    const headers = {
+      host: '127.0.0.1:8810',
+      cookie: String(boot.headers['set-cookie']).split(';')[0],
+    };
+    const response = await app.inject({ url: '/api/conversations/chat/context', headers });
+    assert.equal(response.statusCode, 200);
+    const view = response.json();
+    assert.equal(view.measuredInput, 10);
+    assert.ok(view.messages.some((m: any) => m.role === 'system'));
+    assert.ok(view.characters > 0);
+    assert.equal(view.capacity, 65536);
+    const summary = await app.inject({ url: '/api/conversations/chat/context?summary=1', headers });
+    assert.equal(summary.json().messages.length, 0);
+    assert.equal(summary.json().total, view.total);
+    f.store.put('run', {
+      ...f.store.get<any>('run', first.id),
+      id: 'foreign',
+      conversationId: 'other',
+    });
+    assert.equal(
+      (await app.inject({ url: '/api/conversations/chat/context?runId=foreign', headers }))
+        .statusCode,
+      403,
+    );
+    const scope = await f.runtime.filesForConversation(f.store.get<any>('conversation', 'chat'));
+    await scope.write('preview.html', '<button>Preview</button>');
+    assert.equal(
+      (
+        await app.inject({
+          url: '/api/conversations/chat/files?view=text&path=preview.html',
+          headers,
+        })
+      ).json().text,
+      '<button>Preview</button>',
+    );
+    assert.equal(
+      (
+        await app.inject({
+          url: '/api/conversations/chat/files?view=text&path=..%2F..%2Fsettings.json',
+          headers,
+        })
+      ).statusCode,
+      403,
+    );
+    assert.notEqual(
+      (
+        await app.inject({
+          url: '/api/conversations/chat/files?view=asset&path=preview.html',
+          headers,
+        })
+      ).statusCode,
+      200,
+    );
+    assert.equal(
+      (
+        await app.inject({
+          url: '/api/conversations/chat/files',
+          headers: { host: '127.0.0.1:8810' },
+        })
+      ).statusCode,
+      401,
+    );
+  } finally {
+    await app.close();
+  }
+});
+
+test('proven pre-execution rejection does not leave an unknown effect', async () => {
+  const { NotStartedError } = await import('../server/core/errors.js');
+  let count = 0;
+  const f = await setup({
+    complete: async () =>
+      ++count === 1
+        ? result('', [{ id: 'blocked', name: 'preflight_test', arguments: {} }])
+        : result('Not executed.'),
+  });
+  const { z } = await import('zod');
+  f.runtime.registry.add({
+    name: 'preflight_test',
+    description: 'test',
+    effect: 'write',
+    schema: z.object({}),
+    run: async () => {
+      throw new NotStartedError('NOT_STARTED', 'preflight refused before launch');
+    },
+  });
+  const c = f.store.get<any>('conversation', 'chat');
+  f.store.put('conversation', { ...c, permission: 'trusted' });
+  const run = f.runtime.start('chat', 'test');
+  await until(() => f.store.get<any>('run', run.id).status === 'completed');
+  assert.equal(f.store.unknownEffects('chat').length, 0);
+  assert.equal(
+    (f.store.db.prepare('SELECT state FROM effects WHERE run_id=?').get(run.id) as any).state,
+    'not_started',
+  );
+  f.store.close();
+});
+
+test('compaction retains current request and complete tool groups; failed summaries retain history', async () => {
+  const { COMPACT } = await import('../server/core/prompts.js');
+  let fail = false;
+  const f = await setup({
+    complete: async (req) => {
+      assert.equal(req.messages[0].content, COMPACT);
+      return result(fail ? '' : 'Original requirement: Cedar-73, retention 17 days.');
+    },
+  });
+  const profile = { ...f.config.profile(), contextWindow: 32768, maxOutputTokens: 2048 };
+  const messages: any[] = [
+    { role: 'system', content: 'System' },
+    { role: 'user', content: 'Current requirement must remain verbatim.' },
+  ];
+  for (let i = 0; i < 12; i++)
+    messages.push(
+      {
+        role: 'assistant',
+        content: 'old '.repeat(1500),
+        calls: [{ id: 'c' + i, name: 'read_file', arguments: {} }],
+      },
+      { role: 'tool', callId: 'c' + i, content: 'data '.repeat(1500) },
+    );
+  const run: any = {
+    id: 'compact-fixture',
+    conversationId: 'chat',
+    status: 'running',
+    checkpoints: messages,
+    inputTokens: 0,
+    outputTokens: 0,
+    cachedTokens: 0,
+    modelCalls: 0,
+    estimatedUsd: null,
+  };
+  await (f.runtime as any).contextManager.compact(run, profile, new AbortController().signal, []);
+  assert.ok(
+    run.checkpoints.some((m: any) => m.content === 'Current requirement must remain verbatim.'),
+  );
+  const calls = new Set(run.checkpoints.flatMap((m: any) => (m.calls || []).map((c: any) => c.id)));
+  for (const m of run.checkpoints) if (m.role === 'tool') assert.ok(calls.has(m.callId));
+  run.checkpoints = structuredClone(messages);
+  const before = JSON.stringify(run.checkpoints);
+  fail = true;
+  await assert.rejects(
+    (f.runtime as any).contextManager.compact(run, profile, new AbortController().signal, []),
+    /no usable handoff/,
+  );
+  assert.equal(JSON.stringify(run.checkpoints), before);
+  f.store.close();
+});
+
+test('unavailable execution backend suppresses later commands in the same batch without repeat approval', async () => {
+  let count = 0;
+  const f = await setup({
+    complete: async (req) => {
+      if (++count === 1)
+        return result(
+          '',
+          [1, 2, 3].map((i) => ({
+            id: 'cmd' + i,
+            name: 'run_command',
+            arguments: { command: 'echo never', reason: 'readiness test' },
+          })),
+        );
+      assert.ok(!req.tools.some((t) => t.name === 'run_command'));
+      return result('Backend unavailable; no commands executed.');
+    },
+  });
+  const work = await mkdtemp(join(tmpdir(), 'agentdemo-blocked-'));
+  f.store.put('project', { id: 'p', name: 'p', folders: [work], createdAt: 1 });
+  f.store.put('conversation', { ...f.store.get<any>('conversation', 'chat'), projectId: 'p' });
+  // Deliberately load old invalid configuration: runtime must handle it, even if new saves reject it.
+  const original = f.config.get.bind(f.config);
+  f.config.get = () => ({ ...original(), commandBackend: 'native-windows', nativePython: '' });
+  const run = f.runtime.start('chat', 'Probe the command backend');
+  await until(() => f.store.get<any>('run', run.id).status === 'waiting_approval');
+  f.runtime.inputs.answer(f.store.list<any>('input')[0].id, 'Approved', true);
+  await until(() => f.store.get<any>('run', run.id).status === 'completed');
+  assert.equal(f.store.list<any>('input').length, 1);
+  assert.equal(f.store.unknownEffects('chat').length, 0);
+  assert.ok(f.store.get<any>('run', run.id).executionBlock);
+  f.store.close();
+});
+
+test('edit preconditions and invalid arguments do not create uncertain writes', async () => {
+  let count = 0;
+  const f = await setup({
+    complete: async () =>
+      ++count === 1
+        ? result('', [
+            {
+              id: 'missing',
+              name: 'edit_file',
+              arguments: { path: 'file.txt', oldText: 'absent', newText: 'changed' },
+            },
+            { id: 'invalid', name: 'write_file', arguments: { path: 'file.txt' } },
+          ])
+        : result('No edits applied.'),
+  });
+  const { writeFile, readFile } = await import('node:fs/promises');
+  const run: any = { id: 'placeholder', conversationId: 'chat' };
+  const ctx = await f.runtime.context(run);
+  await writeFile(join(ctx.files.roots[0], 'file.txt'), 'original');
+  const r = f.runtime.start('chat', 'Try invalid edits');
+  await until(() => f.store.get<any>('run', r.id).status === 'completed');
+  assert.equal(f.store.unknownEffects('chat').length, 0);
+  assert.equal(await readFile(join(ctx.files.roots[0], 'file.txt'), 'utf8'), 'original');
+  f.store.close();
+});
+
+test('waiting for command approval has no started effect and cancellation needs no inspection', async () => {
+  const f = await setup({
+    complete: async () =>
+      result('', [
+        {
+          id: 'pending',
+          name: 'run_command',
+          arguments: { command: 'echo never', reason: 'Approval journal test' },
+        },
+      ]),
+  });
+  const work = await mkdtemp(join(tmpdir(), 'agentdemo-awaiting-'));
+  f.store.put('project', { id: 'p', name: 'p', folders: [work], createdAt: 1 });
+  f.store.put('conversation', { ...f.store.get<any>('conversation', 'chat'), projectId: 'p' });
+  const r = f.runtime.start('chat', 'Wait for approval');
+  await until(() => f.store.get<any>('run', r.id).status === 'waiting_approval');
+  assert.equal(f.store.unknownEffects('chat').length, 0);
+  f.runtime.stop(r.id);
+  await until(() => f.store.get<any>('run', r.id).status === 'interrupted');
+  assert.equal(f.store.unknownEffects('chat').length, 0);
+  f.store.close();
+});
+
+test('recovery reconciles exact file contents but leaves arbitrary commands uncertain', async () => {
+  const { inspectEffects } = await import('../server/services/recovery.js');
+  const f = await setup({
+    complete: async (req) => {
+      assert.ok(
+        req.tools.every((t) => ['read', 'network'].includes(t.effect) || t.name === 'ask_user'),
+      );
+      return result('Inspection only.');
+    },
+  });
+  f.store.put('run', {
+    id: 'old',
+    conversationId: 'chat',
+    status: 'interrupted',
+    createdAt: 1,
+    updatedAt: 1,
+  });
+  const write = f.store.beginEffect('old', 'write_file', { path: 'done.txt', content: 'expected' });
+  f.store.beginEffect('old', 'run_command', { command: 'unknown side effect' });
+  const ctx = await f.runtime.context({ id: 'old', conversationId: 'chat' } as any);
+  await ctx.files.write('done.txt', 'expected');
+  const checked = await inspectEffects(f.store, ctx.files, 'chat');
+  assert.deepEqual(checked.resolved, [write]);
+  assert.equal(checked.unresolved.length, 1);
+  const run = f.runtime.start('chat', 'Inspect results');
+  await until(() => f.store.get<any>('run', run.id).status === 'interrupted');
+  assert.equal(f.store.unknownEffects('chat').length, 1);
+  f.store.close();
+});
+
+test('retry authorization records uncertainty without replaying the operation', async () => {
+  const f = await setup({
+    complete: async () => {
+      throw new Error('must not run');
+    },
+  });
+  f.store.put('run', {
+    id: 'uncertain',
+    conversationId: 'chat',
+    status: 'interrupted',
+    createdAt: 1,
+    updatedAt: 1,
+  });
+  const effect = f.store.beginEffect('uncertain', 'run_command', { command: 'unknown' });
+  const { app } = await createApp({ directory: f.dir, runtime: f.runtime });
+  const boot = await app.inject({ url: '/api/bootstrap', headers: { host: '127.0.0.1:8810' } });
+  const headers = {
+    host: '127.0.0.1:8810',
+    cookie: String(boot.headers['set-cookie']).split(';')[0],
+    'x-csrf-token': boot.json().csrf,
+  };
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/effects/' + effect + '/allow-retry',
+    headers,
+    payload: {},
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.json().executed, false);
+  const row = f.store.db.prepare('SELECT state,result FROM effects WHERE id=?').get(effect) as any;
+  assert.equal(row.state, 'retry_authorized');
+  assert.match(row.result, /remains unknown/);
+  assert.equal(f.store.runs().length, 1);
+  await app.close();
+});
+
+test('protocol repair corrects once and accounts both calls without executing tools', async () => {
+  let calls = 0;
+  const f = await setup({
+    complete: async () => {
+      if (++calls === 1) throw new AppError('INVALID_ARGUMENTS', 'bad JSON', 502);
+      return result('Corrected answer');
+    },
+  });
+  try {
+    const r = f.runtime.start('chat', 'Hello');
+    await until(() => f.store.get<any>('run', r.id).status === 'completed');
+    assert.equal(calls, 2);
+    assert.equal(
+      f.store.events('chat').filter((e) => e.type === 'model.protocol-repair').length,
+      1,
+    );
+    assert.equal(f.store.events('chat').filter((e) => e.type === 'tool.started').length, 0);
+    assert.equal(f.store.get<any>('run', r.id).modelCalls, 2);
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});
+test('malformed responses are not retried indefinitely', async () => {
+  let calls = 0;
+  const f = await setup({
+    complete: async () => {
+      calls++;
+      throw new AppError('INVALID_ARGUMENTS', 'bad JSON', 502);
+    },
+  });
+  try {
+    const r = f.runtime.start('chat', 'Hello');
+    await until(() => f.store.get<any>('run', r.id).status === 'failed');
+    assert.equal(calls, 2);
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});
+
+test('idle worker waits without model polling, wakes on assignment and releases listeners on abort', async () => {
+  const f = await setup({
+    complete: async () => {
+      throw new Error('No model call expected');
+    },
+  });
+  try {
+    const lead = {
+      id: 'lead-wait',
+      conversationId: 'chat',
+      parentRunId: null,
+      status: 'running',
+      createdAt: 1,
+      depth: 0,
+    } as any;
+    const worker = { ...lead, id: 'worker-wait', parentRunId: lead.id, depth: 1 };
+    f.store.put('run', lead);
+    f.store.put('run', worker);
+    const { TaskBoard } = await import('../server/services/task-board.js');
+    const board = new TaskBoard(f.store);
+    board.create(
+      lead,
+      [
+        { id: 'read', title: 'read', acceptance: 'read', dependsOn: [] },
+        { id: 'next', title: 'next', acceptance: 'next', dependsOn: [] },
+      ],
+      0,
+    );
+    const before = f.runtime.bus.listenerCount('event'),
+      control = new AbortController();
+    const wait = f.runtime.awaitAssignment(worker, control.signal);
+    assert.equal(f.store.get<any>('run', worker.id).status, 'waiting_children');
+    board.update(worker, 'read', 1, 'running', [], 'assigned');
+    f.store.event('chat', worker.id, 'team.assigned', {});
+    const result: any = await wait;
+    assert.equal(result.status, 'assigned');
+    assert.equal(f.runtime.bus.listenerCount('event'), before);
+    assert.equal(f.store.maybe('team-worker-ready', worker.id), undefined);
+    const evidence = f.store.event('chat', worker.id, 'tool.completed', {
+      name: 'read_file',
+      output: 'read',
+    });
+    board.update(worker, 'read', 2, 'done', [evidence.id], 'done');
+    const cancel = new AbortController(),
+      pending = f.runtime.awaitAssignment(worker, cancel.signal);
+    cancel.abort();
+    await assert.rejects(pending);
+    assert.equal(f.runtime.bus.listenerCount('event'), before);
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});
+
+test('peer message wait is event driven and member stop does not cancel peers', async () => {
+  const f = await setup({
+    complete: async () => {
+      throw new Error('No model polling');
+    },
+  });
+  try {
+    const { Teams } = await import('../server/services/team-space.js');
+    const lead = {
+      id: 'discussion-root',
+      conversationId: 'chat',
+      parentRunId: null,
+      status: 'running',
+      createdAt: 1,
+      depth: 0,
+    } as any;
+    const peer = {
+      ...lead,
+      id: 'discussion-peer',
+      conversationId: 'peer-chat',
+      parentRunId: lead.id,
+      depth: 1,
+    };
+    f.store.put('conversation', {
+      ...f.store.get<any>('conversation', 'chat'),
+      teamMode: 'creative',
+      teamStrategy: 'auto',
+    });
+    f.store.put('conversation', { ...f.store.get<any>('conversation', 'chat'), id: 'peer-chat' });
+    f.store.put('run', lead);
+    f.store.put('run', peer);
+    const teams = new Teams(f.store);
+    teams.configure(lead, 'creative', [lead.id, peer.id], 3);
+    const control = new AbortController(),
+      before = f.runtime.bus.listenerCount('event');
+    const pending = f.runtime.awaitDiscussion(peer, control.signal, undefined, 1);
+    const m = teams.post(lead, 'fictional clue', [peer.id]);
+    const response: any = await pending;
+    assert.equal(response.messages[0].id, m.id);
+    assert.equal(f.runtime.bus.listenerCount('event'), before);
+    const next = f.runtime.awaitDiscussion(peer, control.signal, m.id, 1);
+    control.abort();
+    await assert.rejects(next);
+    assert.equal(f.runtime.bus.listenerCount('event'), before);
+    f.runtime.stop(lead.id, false);
+    assert.equal(f.store.get<any>('run', lead.id).status, 'interrupted');
+    assert.equal(f.store.get<any>('run', peer.id).status, 'waiting_children');
+    f.runtime.stopTeam(lead.id);
+    assert.equal(f.store.get<any>('run', peer.id).status, 'interrupted');
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});
+
+test('newly requested operation after recovery is not deduplicated by matching arguments', async () => {
+  const f = await setup({ complete: async () => result('unused') });
+  try {
+    const old = {
+      id: 'previous-write',
+      conversationId: 'chat',
+      parentRunId: null,
+      status: 'interrupted',
+      createdAt: 1,
+      depth: 0,
+    } as any;
+    const next = { ...old, id: 'resumed-write', recoveredFrom: old.id, status: 'running' };
+    f.store.put('run', old);
+    f.store.put('run', next);
+    const args = { path: 'already.txt', content: 'old result' };
+    const effect = f.store.beginEffect(old.id, 'write_file', args);
+    f.store.endEffect(effect, 'Saved already.txt');
+    const context = await f.runtime.context(next);
+    await context.files.write('already.txt', 'newer user edit');
+    const output = await f.runtime.registry.invoke('write_file', args, context);
+    assert.doesNotMatch(output.content, /NOT executed again/);
+    assert.equal(await context.files.read('already.txt'), 'old result');
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});
+
+test('output truncation retries once, records both costs and preserves completed checkpoints', async () => {
+  let n = 0;
+  const f = await setup({
+    complete: async (req) => {
+      n++;
+      if (n === 1)
+        throw Object.assign(new AppError('MODEL_INCOMPLETE', 'length', 502), {
+          finishReason: 'length',
+          usage: { input: 10, output: 8192, cached: 0, measured: true },
+        });
+      assert.match(req.messages.at(-1)!.content, /None of its tool calls executed/);
+      return result('Recovered answer');
+    },
+  });
+  try {
+    const run = f.runtime.start('chat', 'Hello');
+    await until(() => ['completed', 'failed'].includes(f.store.get<any>('run', run.id).status));
+    const done = f.store.get<any>('run', run.id);
+    assert.equal(done.status, 'completed');
+    assert.equal(done.modelCalls, 2);
+    assert.equal(done.outputTokens, 8194);
+    assert.equal(f.store.events('chat').filter((e) => e.type === 'tool.started').length, 0);
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});
+test('repeated length failures stop after one recovery, missing finish never retries', async () => {
+  for (const finishReason of ['length', '']) {
+    let n = 0;
+    const f = await setup({
+      complete: async () => {
+        n++;
+        throw Object.assign(new AppError('MODEL_INCOMPLETE', 'truncated', 502), { finishReason });
+      },
+    });
+    try {
+      const run = f.runtime.start('chat', 'Hello');
+      await until(() => f.store.get<any>('run', run.id).status === 'failed');
+      assert.equal(n, finishReason === 'length' ? 2 : 1);
+    } finally {
+      await f.runtime.shutdown();
+      f.store.close();
+    }
+  }
+});
+
+test('attachments bind once to user messages, including steering', async () => {
+  const f = await setup({ complete: async () => result('ok') });
+  f.store.put('attachment', {
+    id: 'a',
+    conversationId: 'chat',
+    name: 'note.txt',
+    mime: 'text/plain',
+    size: 1,
+    path: 'unused',
+    text: 'unique source',
+    createdAt: 1,
+  });
+  const run = f.runtime.start('chat', 'first');
+  await until(() => f.store.get<any>('run', run.id).status === 'completed');
+  const event = f.store.events('chat').find((e) => e.type === 'user.message')!;
+  assert.equal(event.data.attachments[0].id, 'a');
+  assert.equal(f.store.get<any>('attachment', 'a').messageEventId, event.id);
+  const second = f.runtime.start('chat', 'second');
+  await until(() => f.store.get<any>('run', second.id).status === 'completed');
+  const events = f.store.events('chat').filter((e) => e.type === 'user.message');
+  assert.equal(events[1].data.attachments.length, 0);
+  const messages = f.store
+    .get<any>('run', second.id)
+    .checkpoints.filter((m: any) => m.role === 'user');
+  assert.equal(messages.filter((m: any) => m.content.includes('unique source')).length, 1);
+  await f.runtime.shutdown();
+  f.store.close();
+});
+
+test('steering arriving during failed model call is durably delivered on continuation', async () => {
+  let unblock!: () => void,
+    entered!: () => void,
+    calls = 0;
+  const ready = new Promise<void>((r) => (entered = r)),
+    gate = new Promise<void>((_, reject) => (unblock = () => reject(Error('injected failure'))));
+  const f = await setup({
+    complete: async (req) => {
+      if (++calls === 1) {
+        entered();
+        await gate;
+      }
+      assert.ok(JSON.stringify(req.messages).includes('late-message-marker'));
+      return result('ok');
+    },
+  });
+  try {
+    const first = f.runtime.start('chat', 'begin');
+    await ready;
+    f.runtime.steer('chat', 'late-message-marker');
+    unblock();
+    await until(() => f.store.get<any>('run', first.id).status === 'failed');
+    const second = f.runtime.start('chat', 'continue');
+    await until(() => f.store.get<any>('run', second.id).status === 'completed');
+    assert.equal(f.store.list<any>('user-inbox').filter((m) => m.state === 'pending').length, 0);
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});

@@ -57,6 +57,7 @@ export function App() {
   const [connection, setConnection] = useState('Connecting');
   const reconnect = useRef<() => void>(() => {});
   const [anchor, setAnchor] = useState('');
+  const [visibleTurns, setVisibleTurns] = useState(6);
   const jump = useCallback((conversation: string, input: string) => {
     stick.current = false;
     setPage('chat');
@@ -72,7 +73,7 @@ export function App() {
       target.focus({ preventScroll: true });
       setAnchor('');
     }
-  }, [anchor, detail]);
+  }, [anchor, detail, visibleTurns]);
   const finishedMessages = useRef(new Set<string>());
   const selectedRef = useRef(selected),
     scroll = useRef<HTMLDivElement>(null),
@@ -90,15 +91,32 @@ export function App() {
     setState(value);
     return value;
   }, []);
+  const detailCache = useRef(new Map<string, ConversationDetail>());
+  const loading = useRef(new Map<string, Promise<any>>());
   const load = useCallback(async (id: string) => {
-    const value = await api('/conversations/' + id);
+    let request = loading.current.get(id);
+    if (!request) {
+      request = api('/conversations/' + id);
+      loading.current.set(id, request);
+    }
+    let value: any;
+    try {
+      value = await request;
+    } finally {
+      if (loading.current.get(id) === request) loading.current.delete(id);
+    }
+    detailCache.current.delete(id);
+    detailCache.current.set(id, value);
+    if (detailCache.current.size > 5)
+      detailCache.current.delete(detailCache.current.keys().next().value!);
+    const receivedIds = new Set(value.events.map((e: any) => e.id));
     if (selectedRef.current === id) {
       setDetail((old: any) => ({
         ...value,
         events: [
           ...value.events,
           ...(old?.conversation.id === id
-            ? old.events.filter((e: any) => !value.events.some((v: any) => v.id === e.id))
+            ? old.events.filter((e: any) => !receivedIds.has(e.id))
             : []),
         ].sort((a: any, b: any) => a.id - b.id),
       }));
@@ -119,7 +137,8 @@ export function App() {
   useEffect(() => {
     selectedRef.current = selected;
     localStorage.setItem('agentdemo.chat', selected || '');
-    setDetail(null);
+    setVisibleTurns(anchor ? Number.MAX_SAFE_INTEGER : 6);
+    setDetail(selected ? detailCache.current.get(selected) || null : null);
     setStreams({});
     stick.current = !anchor;
     setDraft(localStorage.getItem('agentdemo.draft.' + selected) || '');
@@ -137,6 +156,27 @@ export function App() {
     localStorage.setItem('agentdemo.language', language);
   }, [language]);
   useEffect(() => {
+    let flushTimer: ReturnType<typeof setTimeout> | undefined;
+    const chunks = new Map<string, { event: any; parts: string[] }>();
+    const flush = () => {
+      flushTimer = undefined;
+      const pending = [...chunks.values()];
+      chunks.clear();
+      setStreams((old) => {
+        let next = old;
+        for (const { event: e, parts } of pending) {
+          if (e.conversationId !== selectedRef.current || finishedMessages.current.has(e.messageId))
+            continue;
+          if (next === old) next = { ...old };
+          next[e.runId] = {
+            ...e,
+            text:
+              (next[e.runId]?.messageId === e.messageId ? next[e.runId].text : '') + parts.join(''),
+          };
+        }
+        return next;
+      });
+    };
     const live = connectLive(
       '/api/events',
       {
@@ -168,6 +208,7 @@ export function App() {
                 'run.status',
                 'attachment.added',
                 'attachment.removed',
+                'user.delivered',
               ].includes(e.type)
             )
               void load(e.conversationId).catch(() => {});
@@ -186,14 +227,12 @@ export function App() {
         },
         delta: (event) => {
           const e = JSON.parse((event as MessageEvent).data);
-          if (e.conversationId === selectedRef.current)
-            setStreams((s) => ({
-              ...s,
-              [e.runId]: {
-                ...e,
-                text: (s[e.runId]?.messageId === e.messageId ? s[e.runId].text : '') + e.text,
-              },
-            }));
+          if (e.conversationId !== selectedRef.current || finishedMessages.current.has(e.messageId))
+            return;
+          const batch = chunks.get(e.messageId) || { event: e, parts: [] };
+          batch.parts.push(e.text);
+          chunks.set(e.messageId, batch);
+          if (!flushTimer) flushTimer = setTimeout(flush, 80);
         },
         heartbeat: () => {
           void refresh().catch(() => {});
@@ -210,7 +249,11 @@ export function App() {
       },
     );
     reconnect.current = live.retry;
-    return () => live.close();
+    return () => {
+      live.close();
+      if (flushTimer) clearTimeout(flushTimer);
+      chunks.clear();
+    };
   }, [refresh, load, notify]);
   useEffect(() => {
     if (stick.current) bottom.current?.scrollIntoView({ behavior: 'instant' });
@@ -306,6 +349,7 @@ export function App() {
       <div
         key={c.id}
         className={'chat-link ' + (selected === c.id && page === 'chat' ? 'active' : '')}
+        data-conversation-id={c.id}
       >
         <button
           className="chat-select"
@@ -390,7 +434,30 @@ export function App() {
         activity = [];
       }
     };
-    for (const e of detail?.events || []) {
+    const all = detail?.events || [];
+    const starts = all.map((e, i) => (e.type === 'user.message' ? i : -1)).filter((i) => i >= 0);
+    const offset = starts.length > visibleTurns ? starts[starts.length - visibleTurns] : 0;
+    if (offset > 0)
+      nodes.push(
+        <button
+          key="older"
+          className="load-older"
+          onClick={() => {
+            stick.current = false;
+            const container = scroll.current,
+              height = container?.scrollHeight || 0,
+              top = container?.scrollTop || 0;
+            setVisibleTurns((n) => n + 6);
+            requestAnimationFrame(() => {
+              if (container) container.scrollTop = top + container.scrollHeight - height;
+            });
+          }}
+        >
+          {language === 'zh' ? '加载较早的对话' : 'Load earlier messages'} ·{' '}
+          {starts.length - visibleTurns}
+        </button>,
+      );
+    for (const e of all.slice(offset)) {
       if (e.type === 'user.message' || e.type === 'assistant.message') {
         flush();
         nodes.push(
@@ -538,9 +605,8 @@ export function App() {
                 defaultValue=""
                 onChange={(e) => {
                   stick.current = false;
-                  document
-                    .getElementById('event-' + e.target.value)
-                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  setVisibleTurns(Number.MAX_SAFE_INTEGER);
+                  setAnchor('event-' + e.target.value);
                 }}
               >
                 <option value="">↳ Turns</option>
@@ -657,7 +723,7 @@ export function App() {
                             <span className="working-dot" />
                           </div>
                           <div className="message-body">
-                            <Markdown text={s.text} />
+                            <Markdown text={s.text} live />
                           </div>
                         </article>
                       ),
@@ -726,6 +792,22 @@ export function App() {
                             <option value="">
                               {language === 'zh' ? '交接角色…' : 'Transfer role…'}
                             </option>
+                            {detail.teamScheduling?.enabled && (
+                              <div className="notice">
+                                Scheduling 路 max load {detail.teamScheduling.maxLoad}
+                                {detail.teamScheduling.loads?.map((m) => (
+                                  <div key={m.runId}>
+                                    {m.runId.slice(0, 8)} 路 {m.load}/
+                                    {detail.teamScheduling!.maxLoad}
+                                  </div>
+                                ))}
+                                {detail.teamScheduling.blocked?.map((b) => (
+                                  <div key={b.taskId}>
+                                    {b.taskId}: {b.reason}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                             {detail.teamMembers
                               ?.filter(
                                 (m) =>

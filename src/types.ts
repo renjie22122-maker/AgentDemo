@@ -45,7 +45,13 @@ export interface ConversationDetail {
     closed: Record<string, string>;
     messages: { id: string; sender: string; text: string }[];
   } | null;
-  teamScheduling?: { enabled: boolean; workers: string[]; maxLoad: number } | null;
+  teamScheduling?: {
+    enabled: boolean;
+    workers: string[];
+    maxLoad: number;
+    blocked?: { taskId: string; reason: string }[];
+    loads?: { runId: string; load: number }[];
+  } | null;
   teamMembers?: {
     runId: string;
     status: string;

@@ -104,13 +104,19 @@ export function Diff({ data }: { data: any }) {
 }
 
 export function DiffGroup({ events, zh }: { events: any[]; zh: boolean }) {
+  const [expanded, setExpanded] = useState(false);
   const changes = events.filter((e) => e.type === 'file.changed'),
     files = new Set(changes.map((e) => e.data.path));
   const notes = [
     ...new Set(events.filter((e) => e.type === 'file.changes-limited').map((e) => e.data.note)),
   ];
   return (
-    <details className="diff-group">
+    <details
+      className="diff-group"
+      onToggle={(e) => {
+        if (e.target === e.currentTarget) setExpanded(e.currentTarget.open);
+      }}
+    >
       <summary>
         <span>
           {zh ? '文件改动' : 'File changes'} · {files.size} {zh ? '个文件' : 'files'} ·{' '}
@@ -119,9 +125,7 @@ export function DiffGroup({ events, zh }: { events: any[]; zh: boolean }) {
         <small>{zh ? '展开 / 收起' : 'Expand / collapse'}</small>
       </summary>
       <div className="diff-group-body">
-        {changes.map((e) => (
-          <Diff key={e.id} data={e.data} />
-        ))}
+        {expanded && changes.map((e) => <Diff key={e.id} data={e.data} />)}
         {notes.map((note, i) => (
           <p key={i} className="muted">
             {note}

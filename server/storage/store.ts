@@ -20,6 +20,7 @@ export class Store {
       CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT,conversation_id TEXT NOT NULL,run_id TEXT,type TEXT NOT NULL,data TEXT NOT NULL,created_at INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS events_conversation ON events(conversation_id,id);
       CREATE INDEX IF NOT EXISTS events_run ON events(run_id,id);
+      CREATE INDEX IF NOT EXISTS events_tool_result ON events(run_id,json_extract(data,'$.callId')) WHERE type='tool.completed';
       CREATE TABLE IF NOT EXISTS chunks(id TEXT PRIMARY KEY,scope TEXT NOT NULL,document_id TEXT NOT NULL,name TEXT NOT NULL,ordinal INTEGER NOT NULL,text TEXT NOT NULL,vector TEXT,source_hash TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS chunks_scope ON chunks(scope);
       CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(id UNINDEXED,terms);
@@ -30,12 +31,59 @@ export class Store {
       CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY,applied_at INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS records_runs_conversation ON records(json_extract(data,'$.conversationId'),json_extract(data,'$.createdAt')) WHERE kind='run';
       INSERT OR IGNORE INTO schema_migrations VALUES(1,unixepoch()*1000);
+      CREATE TABLE IF NOT EXISTS run_metadata(id TEXT PRIMARY KEY,conversation_id TEXT NOT NULL,created_at INTEGER NOT NULL,data TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS run_metadata_conversation ON run_metadata(conversation_id,created_at);
+      INSERT OR IGNORE INTO run_metadata SELECT id,COALESCE(json_extract(data,'$.conversationId'),''),COALESCE(json_extract(data,'$.createdAt'),0),json_remove(data,'$.checkpoints') FROM records WHERE kind='run';
+      CREATE INDEX IF NOT EXISTS effects_unfinished ON effects(run_id) WHERE state='started';
+      CREATE TABLE IF NOT EXISTS run_checkpoints(id TEXT PRIMARY KEY,data TEXT NOT NULL);
+      INSERT OR IGNORE INTO run_checkpoints SELECT id,COALESCE(json_extract(data,'$.checkpoints'),'[]') FROM records WHERE kind='run';
     `);
+  }
+  // Metadata projections never contain model checkpoints. Keep them transactionally
+  // alongside records so UI reads do not deserialize every historical prompt.
+  runMetadata(conversationId?: string): Run[] {
+    const rows = conversationId
+      ? this.db
+          .prepare('SELECT data FROM run_metadata WHERE conversation_id=? ORDER BY created_at')
+          .all(conversationId)
+      : this.db.prepare('SELECT data FROM run_metadata ORDER BY created_at').all();
+    return (rows as { data: string }[]).map((r) => ({ ...JSON.parse(r.data), checkpoints: [] }));
+  }
+  runHeader(key: string): Run {
+    const row = this.db.prepare('SELECT data FROM run_metadata WHERE id=?').get(key) as
+      { data: string } | undefined;
+    assert(row, 'NOT_FOUND', 'run not found', 404);
+    return { ...JSON.parse(row.data), checkpoints: [] };
   }
   close() {
     this.db.close();
   }
   put<T extends { id: string }>(kind: string, value: T): T {
+    if (kind === 'run')
+      return this.transaction(() => {
+        const { checkpoints, ...metadata } = value as unknown as Run;
+        this.db
+          .prepare(
+            'INSERT INTO records(kind,id,data) VALUES(?,?,?) ON CONFLICT(kind,id) DO UPDATE SET data=excluded.data',
+          )
+          .run(kind, value.id, JSON.stringify(metadata));
+        this.db
+          .prepare(
+            'INSERT INTO run_checkpoints VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data WHERE data<>excluded.data',
+          )
+          .run(value.id, JSON.stringify(checkpoints || []));
+        this.db
+          .prepare(
+            'INSERT INTO run_metadata VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET conversation_id=excluded.conversation_id,created_at=excluded.created_at,data=excluded.data',
+          )
+          .run(
+            value.id,
+            metadata.conversationId || '',
+            metadata.createdAt || 0,
+            JSON.stringify(metadata),
+          );
+        return value;
+      });
     this.db
       .prepare(
         'INSERT INTO records(kind,id,data) VALUES(?,?,?) ON CONFLICT(kind,id) DO UPDATE SET data=excluded.data',
@@ -47,7 +95,13 @@ export class Store {
     const row = this.db.prepare('SELECT data FROM records WHERE kind=? AND id=?').get(kind, key) as
       { data: string } | undefined;
     assert(row, 'NOT_FOUND', kind + ' not found', 404);
-    return JSON.parse(row.data) as T;
+    const value = JSON.parse(row.data);
+    if (kind === 'run') {
+      const payload = this.db.prepare('SELECT data FROM run_checkpoints WHERE id=?').get(key) as
+        { data: string } | undefined;
+      value.checkpoints = payload ? JSON.parse(payload.data) : value.checkpoints || [];
+    }
+    return value as T;
   }
   maybe<T>(kind: string, key: string): T | undefined {
     try {
@@ -62,7 +116,13 @@ export class Store {
     ).map((row) => JSON.parse(row.data));
   }
   remove(kind: string, key: string) {
-    this.db.prepare('DELETE FROM records WHERE kind=? AND id=?').run(kind, key);
+    this.transaction(() => {
+      this.db.prepare('DELETE FROM records WHERE kind=? AND id=?').run(kind, key);
+      if (kind === 'run') {
+        this.db.prepare('DELETE FROM run_metadata WHERE id=?').run(key);
+        this.db.prepare('DELETE FROM run_checkpoints WHERE id=?').run(key);
+      }
+    });
   }
   transaction<T>(fn: () => T): T {
     const depth = this.transactionDepth,
@@ -142,7 +202,7 @@ export class Store {
             "SELECT data FROM records WHERE kind='run' ORDER BY json_extract(data,'$.createdAt')",
           )
           .all();
-    return (rows as { data: string }[]).map((r) => JSON.parse(r.data) as Run);
+    return (rows as { data: string }[]).map((r) => this.get<Run>('run', JSON.parse(r.data).id));
   }
   transition(runId: string, status: Run['status'], error: string | null = null) {
     const run = this.get<Run>('run', runId);
@@ -175,10 +235,11 @@ export class Store {
     this.db.prepare('UPDATE effects SET state=?,result=? WHERE id=?').run(state, result, key);
   }
   unknownEffects(conversationId: string) {
-    const runs = new Set(this.runs(conversationId).map((r) => r.id));
-    return (this.db.prepare("SELECT * FROM effects WHERE state='started'").all() as any[]).filter(
-      (e) => runs.has(e.run_id),
-    );
+    return this.db
+      .prepare(
+        "SELECT e.* FROM effects e JOIN run_metadata r ON r.id=e.run_id WHERE e.state='started' AND r.conversation_id=?",
+      )
+      .all(conversationId) as any[];
   }
   reconcileKnownEffects(conversationId: string): string[] {
     const unresolved = this.unknownEffects(conversationId),

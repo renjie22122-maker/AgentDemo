@@ -1,3 +1,4 @@
+import { AppError as LimitError } from '../core/errors.js';
 import { withToolImages } from './protocol.js';
 import { assert } from '../core/errors.js';
 import type { ModelProvider, ModelRequest, ModelResult } from './protocol.js';
@@ -80,7 +81,7 @@ export class ResponsesProvider implements ModelProvider {
         if (['response.completed', 'response.incomplete', 'response.failed'].includes(e.type))
           final = e.response;
         assert(
-          !['error', 'response.failed', 'response.incomplete'].includes(e.type),
+          !['error', 'response.failed'].includes(e.type),
           'MODEL_INCOMPLETE',
           'Responses API did not complete; no tools executed.',
           502,
@@ -90,8 +91,17 @@ export class ResponsesProvider implements ModelProvider {
           input.onText(e.delta);
         }
         if (e.type.includes('reasoning')) input.onThinking?.();
-        if (e.type === 'response.completed') final = e.response;
+        if (e.type === 'response.completed' || e.type === 'response.incomplete') final = e.response;
       }
+      if (final?.incomplete_details?.reason === 'max_output_tokens')
+        throw Object.assign(
+          new LimitError(
+            'MODEL_INCOMPLETE',
+            'Model output reached its limit; incomplete tool calls were not executed.',
+            502,
+          ),
+          { finishReason: 'length' },
+        );
       assert(
         final?.status === 'completed',
         'MODEL_INCOMPLETE',

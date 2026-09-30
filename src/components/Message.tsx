@@ -42,6 +42,11 @@ export function Message({
         </time>
         {event.data.incomplete && <span className="pill">{t('Interrupted output')}</span>}
         {event.data.steering && <span className="pill">↳</span>}
+        {user && event.data.delivery === 'pending' && (
+          <span className="pill">
+            {t('settings') === 'Settings' ? 'Waiting for model delivery' : '等待送入模型上下文'}
+          </span>
+        )}
       </div>
       <div className="message-body">
         <Markdown text={event.data.text || ''} />
@@ -115,6 +120,7 @@ export function Message({
   );
 }
 export function Activity({ events, t }: { events: AgentEvent[]; t: (s: string) => string }) {
+  const [expanded, setExpanded] = useState(false);
   const label = (e: AgentEvent) =>
     e.type === 'model.protocol-repair'
       ? t(
@@ -134,7 +140,12 @@ export function Activity({ events, t }: { events: AgentEvent[]; t: (s: string) =
                 ? 'Delegated · ' + e.data.task
                 : e.type;
   return (
-    <details className="activity">
+    <details
+      className="activity"
+      onToggle={(e) => {
+        if (e.target === e.currentTarget) setExpanded(e.currentTarget.open);
+      }}
+    >
       <summary>
         <Terminal size={14} />
         <span>
@@ -148,16 +159,17 @@ export function Activity({ events, t }: { events: AgentEvent[]; t: (s: string) =
         ))}
       </div>
       <div className="activity-full">
-        {events.map((e) => (
-          <details key={e.id}>
-            <summary>
-              <span className="dot" />
-              <span>{label(e)}</span>
-              <time>{new Date(e.createdAt).toLocaleTimeString()}</time>
-            </summary>
-            <pre>{JSON.stringify(e.data, null, 2)}</pre>
-          </details>
-        ))}
+        {expanded &&
+          events.map((e) => (
+            <details key={e.id}>
+              <summary>
+                <span className="dot" />
+                <span>{label(e)}</span>
+                <time>{new Date(e.createdAt).toLocaleTimeString()}</time>
+              </summary>
+              <pre>{JSON.stringify(e.data, null, 2)}</pre>
+            </details>
+          ))}
       </div>
     </details>
   );

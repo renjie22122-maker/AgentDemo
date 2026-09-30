@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { writePrivate } from './private-file.js';
+import { existsSync, mkdirSync, readFileSync, renameSync } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
 import { z } from 'zod';
 import type { Profile, Settings } from '../../shared/types.js';
@@ -67,7 +68,10 @@ const schema = z.object({
 });
 export class Configuration {
   private value: Settings;
-  constructor(private path: string) {
+  constructor(
+    private path: string,
+    private options: { persistSecrets?: boolean } = {},
+  ) {
     this.value = existsSync(path)
       ? schema.parse(JSON.parse(readFileSync(path, 'utf8')))
       : schema.parse({ profiles: [], defaultProfileId: '' });
@@ -99,10 +103,14 @@ export class Configuration {
   save(input: unknown) {
     const raw = input as any;
     for (const p of raw.profiles || [])
-      if (p.apiKey === undefined)
-        p.apiKey = this.value.profiles.find((x) => x.id === p.id)?.apiKey || '';
+      if (p.apiKey === undefined) {
+        const old = this.value.profiles.find((x) => x.id === p.id);
+        p.apiKey =
+          old && new URL(old.baseUrl).origin === new URL(p.baseUrl).origin ? old.apiKey : '';
+      }
     if (raw.embedding && raw.embedding.apiKey === undefined)
-      raw.embedding.apiKey = this.value.embedding.apiKey;
+      raw.embedding.apiKey =
+        raw.embedding.baseUrl === this.value.embedding.baseUrl ? this.value.embedding.apiKey : '';
     const next = schema.parse(raw);
     assert(
       next.commandBackend !== 'native-windows' ||
@@ -141,7 +149,15 @@ export class Configuration {
       'Select an existing default connection.',
     );
     mkdirSync(dirname(this.path), { recursive: true });
-    writeFileSync(this.path + '.tmp', JSON.stringify(next, null, 2), { mode: 0o600 });
+    const persisted = structuredClone(next);
+    if (
+      this.options.persistSecrets === false ||
+      this.path.replaceAll('\\', '/').split('/').includes('.diagnostics')
+    ) {
+      for (const p of persisted.profiles) p.apiKey = '';
+      persisted.embedding.apiKey = '';
+    }
+    writePrivate(this.path + '.tmp', JSON.stringify(persisted, null, 2));
     renameSync(this.path + '.tmp', this.path);
     this.value = next;
     return this.public();

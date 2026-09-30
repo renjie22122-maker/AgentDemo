@@ -45,7 +45,7 @@ export function rootRun(store: Store, run: Run): string {
   while (run.parentRunId) {
     assert(!seen.has(run.id), 'TEAM_CYCLE', 'Corrupt run ancestry.');
     seen.add(run.id);
-    run = store.get<Run>('run', run.parentRunId);
+    run = store.runHeader(run.parentRunId);
   }
   return run.id;
 }
@@ -193,7 +193,7 @@ export class TaskBoard {
   members(run: Run) {
     const root = rootRun(this.store, run);
     return this.store
-      .runs()
+      .runMetadata()
       .filter((r) => rootRun(this.store, r) === root)
       .map((r) => ({
         runId: r.id,

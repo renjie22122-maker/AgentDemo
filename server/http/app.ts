@@ -109,7 +109,7 @@ export async function createApp(options: { directory: string; dist?: string; run
       })),
     conversations: store.conversations(),
     projects: store.list('project'),
-    runs: store.runs().map(({ checkpoints, ...r }) => r),
+    runs: store.runMetadata().map(({ checkpoints, ...r }) => r),
     skills: store.list<Skill>('skill').map(({ content, source, ...s }) => s),
     memories: store.list('memory'),
     documents: store.list('document'),
@@ -118,40 +118,59 @@ export async function createApp(options: { directory: string; dist?: string; run
   app.get('/api/state', async () => state());
   app.get<{ Params: { id: string } }>('/api/conversations/:id', async (req) => {
     const c = store.get<Conversation>('conversation', req.params.id);
+    const latest = store.runMetadata(c.id).at(-1);
+    const deliveries = new Map(
+      store
+        .list<any>('user-inbox')
+        .filter((m) => m.conversationId === c.id)
+        .map((m) => [Number(m.id), m.state]),
+    );
     return {
       conversation: c,
-      events: store.events(c.id),
+      events: store
+        .events(c.id)
+        .map((e) =>
+          e.type === 'user.message' && deliveries.has(e.id)
+            ? { ...e, data: { ...e.data, delivery: deliveries.get(e.id) } }
+            : e,
+        ),
       inputs: store.list<any>('input').filter((q) => q.conversationId === c.id),
       attachments: store
         .list<Attachment>('attachment')
         .filter((a) => a.conversationId === c.id)
         .map(({ path, text, ...a }) => a),
-      teamAutomation: store.runs(c.id).at(-1)
-        ? store.maybe('team-automation', rootRun(store, store.runs(c.id).at(-1)!))
-        : null,
-      teamRecovery: store.runs(c.id).at(-1)
-        ? (new Teams(store).get(store.runs(c.id).at(-1)!)?.members || []).map((key) =>
-            runtime.teamAutomation.plan(store.get<Run>('run', key)),
+      teamAutomation: latest ? store.maybe('team-automation', rootRun(store, latest!)) : null,
+      teamRecovery: latest
+        ? (new Teams(store).get(latest!)?.members || []).map((key) =>
+            runtime.teamAutomation.plan(store.runHeader(key)),
           )
         : [],
-      teamControlEvents: store.runs(c.id).at(-1)
+      teamControlEvents: latest
         ? store
             .list<any>('team-control-event')
-            .filter((e) => e.root === rootRun(store, store.runs(c.id).at(-1)!))
+            .filter((e) => e.root === rootRun(store, latest!))
             .slice(-20)
         : [],
-      teamSpace: store.runs(c.id).at(-1)
-        ? new Teams(store).project(store.runs(c.id).at(-1)!)
+      teamSpace: latest ? new Teams(store).project(latest!) : null,
+      teamMembers: latest ? new TaskBoard(store).members(latest!) : [],
+      teamScheduling: latest
+        ? {
+            ...(store.maybe<any>('team-scheduling', rootRun(store, latest!)) || {}),
+            blocked:
+              store.maybe<any>('team-scheduler-diagnostics', rootRun(store, latest!))?.blocked ||
+              [],
+            loads: new TaskBoard(store).members(latest!).map((m) => ({
+              runId: m.runId,
+              load: new TaskBoard(store)
+                .get(latest!)
+                .tasks.filter(
+                  (t) => t.owner === m.runId && ['running', 'blocked'].includes(t.status),
+                )
+                .reduce((n, t) => n + (t.weight || 1), 0),
+            })),
+          }
         : null,
-      teamMembers: store.runs(c.id).at(-1)
-        ? new TaskBoard(store).members(store.runs(c.id).at(-1)!)
-        : [],
-      teamScheduling: store.runs(c.id).at(-1)
-        ? store.maybe('team-scheduling', rootRun(store, store.runs(c.id).at(-1)!))
-        : null,
-      taskBoard: store.runs(c.id).at(-1)
-        ? new TaskBoard(store).get(store.runs(c.id).at(-1)!)
-        : null,
+      taskBoard: latest ? new TaskBoard(store).get(latest!) : null,
       unknownEffects: store.unknownEffects(c.id),
       streams: [...runtime.streams.entries()]
         .filter(([, v]) => v.conversationId === c.id)
@@ -610,7 +629,12 @@ export async function createApp(options: { directory: string; dist?: string; run
     const old = config.get().profiles.find((p) => p.id === raw.id);
     const p = profileSchema.parse({
       ...raw,
-      apiKey: raw.apiKey === undefined ? old?.apiKey || '' : raw.apiKey,
+      apiKey:
+        raw.apiKey === undefined
+          ? old && new URL(old.baseUrl).origin === new URL(raw.baseUrl).origin
+            ? old.apiKey
+            : ''
+          : raw.apiKey,
     });
     const u = new URL(p.baseUrl);
     assert(

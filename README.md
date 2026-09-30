@@ -67,10 +67,11 @@ Scanned PDFs need OCR outside this application; image attachments need a vision 
 
 ```sh
 pnpm check
+pnpm test
 pnpm build
 ```
 
-This public repository contains application code and runtime launchers. Private test suites, live API probes, diagnostic artifacts and local verification utilities are deliberately excluded; they remain in the development workspace. Build checks are not an independent security certification.
+This public repository includes sanitized regression tests and Windows/Linux CI. Credentialed live probes and diagnostic artifacts remain private. See [verification](docs/VERIFICATION.md) for coverage and limitations; green checks are not an independent security certification.
 
 See [architecture](docs/ARCHITECTURE.md), [interaction](docs/INTERACTION.md) and [security](docs/SECURITY.md).
 
@@ -102,13 +103,13 @@ The team panel separates individual completion from host-computed team status. D
 
 Limits: model-driven spawning stops after the initial roster is configured. Optional host automation may add bounded read-only workers or replace safely recoverable members. Execution ancestry and depth limits remain for provenance and permissions. Cross-session federation and arbitrary command replay are not supported.
 
-Validation: 81 regression checks passed. After fixing a missing-artifact-verification exit path exposed by a real-model trial, the host scenario completed in 53.3 seconds (creator ends early, two workers finish) and the creative role exchange in 36.1 seconds. These two samples validate exercised paths, not general multi-agent superiority.
+Historical peer-mode validation: 81 regression checks passed. After fixing a missing-artifact-verification exit path exposed by a real-model trial, the host scenario completed in 53.3 seconds (creator ends early, two workers finish) and the creative role exchange in 36.1 seconds. These two samples validate exercised paths, not general multi-agent superiority.
 
 ### Recovery, bounded scaling and coordinator takeover
 
 Open **Team** beside the composer, choose **Runtime management**, then expand **Recovery and automation** to enable its persisted policy. All automation is opt-in. The panel configures active worker capacity, a lifetime new-worker allowance, automatic recovery attempts per member, idle retirement time, and an optional measured-cost threshold. The threshold prevents additional starts/recoveries; it does not cancel in-flight requests or guarantee a final invoice ceiling. Unknown billed usage blocks new starts when a threshold is set. Global model concurrency and child/depth limits still apply.
 
-Recovery checks the operation journal and unfinished tool calls. It starts a fresh model turn referencing durable outcomes instead of resubmitting old tool calls. Identical recorded completed mutations return their previous result without executing again. Unknown commands/writes and incomplete coordination operations block recovery. Exact file-content inspection can reconcile matching writes. A later conversation prevents revival of its obsolete run. Automatic recovery is limited to read-only members and configured attempts; explicit recovery can continue other members only after unresolved outcomes are checked. Manual stops suppress automatic revival.
+Recovery checks the operation journal and unfinished tool calls. It starts a fresh model turn referencing durable outcomes instead of resubmitting old tool calls. Only the same durable operation identity reuses a completed receipt. A new model call with identical arguments is a new operation and retains normal permission checks. Unknown commands/writes and incomplete coordination operations block recovery. Exact file-content inspection can reconcile matching writes. A later conversation prevents revival of its obsolete run. Automatic recovery is limited to read-only members and configured attempts; explicit recovery can continue other members only after unresolved outcomes are checked. Manual stops suppress automatic revival.
 
 Scaling is limited to ready read-only work and existing authority. The host records a ticket before spawning, reconciles that ticket after interruption, and never blindly duplicates the new member. Idle retirement applies only to host-created workers with no unfinished owned tasks, unknown effects, coordinator role or ready demand. Busy or user-created members are not terminated by scaling.
 
@@ -130,4 +131,10 @@ Vision-capable connections can use `read_image` to inspect workspace files (incl
 
 Uploaded files remain drafts until a user message accepts them. Drafts show image thumbnails and a remove control. Sent attachments are durably linked to that message, rendered in chat after reload, and no longer listed as pending or reattached to each follow-up. Image-only messages are supported. Deleting a draft cannot delete already-sent message attachments.
 
-Validation for this revision: 103 regression tests passed, including real subprocess crash windows, image normalization, private-address rejection and single-message attachment binding. Browser checks exercised model discovery and upload/remove/send/reload. Two real DeepSeek Flash trials identified different random raster codes and colors: one via upload and one exclusively through `read_image`. These small positive samples establish the tested pixel paths, not general visual accuracy.
+Historical image-tool validation: 103 regression tests passed, including real subprocess crash windows, image normalization, private-address rejection and single-message attachment binding. Browser checks exercised model discovery and upload/remove/send/reload. Two real DeepSeek Flash trials identified different random raster codes and colors: one via upload and one exclusively through `read_image`. These small positive samples establish the tested pixel paths, not general visual accuracy.
+
+### Runtime reliability audit update
+
+User follow-ups use a durable inbox, with pending/delivered status. Interrupted isolated-copy merges record per-file progress and require a fresh version review before continuing. Merged copies cannot accept further writable work. Recovery rebinds descendant and merge ownership. A per-data-directory process lock rejects a second server. Checkpoints are stored separately from frequently updated run metadata.
+
+Model discovery and settings changes never reuse an old API key for a different origin. Private settings receive restricted filesystem permissions; this is still local secret storage, not a credential vault. Provider retries are limited to rejected 429/selected 5xx responses, never partial streams or ambiguous transport failures. See [verification](docs/VERIFICATION.md).

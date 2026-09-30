@@ -1,3 +1,4 @@
+import { AppError as LimitError } from '../core/errors.js';
 import { withToolImages } from './protocol.js';
 import { assert } from '../core/errors.js';
 import type { ModelProvider, ModelRequest, ModelResult } from './protocol.js';
@@ -108,6 +109,15 @@ export class AnthropicProvider implements ModelProvider {
         }
         if (e.type === 'message_stop') completed = true;
       }
+      if (stop === 'max_tokens')
+        throw Object.assign(
+          new LimitError(
+            'MODEL_INCOMPLETE',
+            'Model output reached its limit; incomplete tool calls were not executed.',
+            502,
+          ),
+          { finishReason: 'length' },
+        );
       assert(
         completed && ['end_turn', 'tool_use', 'stop_sequence'].includes(stop),
         'MODEL_INCOMPLETE',

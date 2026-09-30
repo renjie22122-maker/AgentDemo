@@ -75,6 +75,15 @@ const text = (value: unknown): ToolResult => ({
 });
 const path = z.string().min(1).max(2048);
 export class ToolRegistry {
+  private schemaCache = new WeakMap<object, any>();
+  private jsonSchema(schema: z.ZodType) {
+    let value = this.schemaCache.get(schema);
+    if (!value) {
+      value = z.toJSONSchema(schema);
+      this.schemaCache.set(schema, value);
+    }
+    return value;
+  }
   private definitions = new Map<string, Definition>();
   add(value: Definition) {
     assert(!this.definitions.has(value.name), 'TOOL_DUPLICATE', 'Duplicate tool name');
@@ -113,7 +122,7 @@ export class ToolRegistry {
         name: d.name,
         description: d.description,
         effect: d.effect,
-        parameters: z.toJSONSchema(d.schema) as any,
+        parameters: this.jsonSchema(d.schema),
       }));
   }
   async invoke(name: string, args: Record<string, unknown>, ctx: ToolContext) {
@@ -141,45 +150,12 @@ export class ToolRegistry {
     const validation = def.schema.safeParse(args);
     if (!validation.success) throw new NotStartedError('TOOL_ARGUMENTS', validation.error.message);
     const parsed = validation.data;
-    if (ctx.run.recoveredFrom && ['write', 'execute'].includes(def.effect)) {
-      let prior = ctx.store.get<Run>('run', ctx.run.recoveredFrom);
-      const normalize = (v: any): any =>
-        Array.isArray(v)
-          ? v.map(normalize)
-          : v && typeof v === 'object'
-            ? Object.fromEntries(
-                Object.keys(v)
-                  .sort()
-                  .map((k) => [k, normalize(v[k])]),
-              )
-            : v;
-      const signature = (v: any) => JSON.stringify(normalize(v));
-      for (;;) {
-        const effects = ctx.store.db
-          .prepare('SELECT tool,args,result,state FROM effects WHERE run_id=?')
-          .all(prior.id) as any[];
-        const match = effects.find(
-          (e) =>
-            e.tool === name &&
-            e.state === 'completed' &&
-            signature(
-              (() => {
-                const a = def.schema.safeParse(JSON.parse(e.args));
-                return a.success ? a.data : JSON.parse(e.args);
-              })(),
-            ) === signature(parsed),
-        );
-        if (match)
-          return {
-            content:
-              'Previously completed operation; NOT executed again. Recorded result: ' +
-              match.result,
-          };
-        if (!prior.recoveredFrom) break;
-        prior = ctx.store.get<Run>('run', prior.recoveredFrom);
-      }
-    }
-
+    if (ctx.conversation.isolationId && ['write', 'execute'].includes(def.effect))
+      assert(
+        ctx.store.get<any>('isolation', ctx.conversation.isolationId).state === 'ready',
+        'ISOLATION_CLOSED',
+        'This isolated copy is merged or uncertain. Create a new isolated worker or reconcile the interrupted merge before modifying it.',
+      );
     const observe = ['write', 'execute'].includes(def.effect);
     const before = observe
       ? await snapshot(

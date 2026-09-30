@@ -80,13 +80,19 @@ export class ChatProvider implements ModelProvider {
           input.onThinking?.();
         }
         for (const c of delta.tool_calls || []) {
+          assert(
+            Number.isInteger(c.index),
+            'INVALID_STREAM',
+            'Tool delta is missing a numeric index; no partial calls executed.',
+            502,
+          );
           let row = calls.get(c.index);
           if (!row) {
             row = { id: '', name: '', args: '' };
             calls.set(c.index, row);
           }
           if (c.id) row.id = c.id;
-          if (c.function?.name) row.name += c.function.name;
+          if (c.function?.name && c.function.name !== row.name) row.name += c.function.name;
           if (c.function?.arguments) row.args += c.function.arguments;
         }
         if (choice.finish_reason) finish = choice.finish_reason;

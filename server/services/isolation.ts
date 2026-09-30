@@ -12,6 +12,8 @@ export interface Isolation {
   originals: string[];
   base: Record<string, string>;
   state: 'ready' | 'merging' | 'merged' | 'uncertain';
+  mergePlan?: { path: string; before: string | null; after: string | null }[];
+  applied?: string[];
 }
 const excluded = (name: string) =>
   name.startsWith('.') || ['node_modules', '__pycache__', 'dist', 'build'].includes(name);
@@ -93,7 +95,12 @@ export class Isolations {
       } catch (e: any) {
         if (e.code !== 'ENOENT') throw e;
       }
-      const conflict = (current ? hash(current) : null) !== before;
+      const currentHash = current ? hash(current) : null;
+      const expected = record.mergePlan?.find(
+        (c) => c.path === name && c.before === before && c.after === after,
+      );
+      const alreadyApplied = !!expected && currentHash === after;
+      const conflict = currentHash !== before && !alreadyApplied;
       let binary = !!(bytes?.includes(0) || current?.includes(0));
       try {
         for (const b of [bytes, current])
@@ -106,6 +113,7 @@ export class Isolations {
         before,
         after,
         conflict,
+        alreadyApplied,
         binary,
         diff: binary
           ? 'Binary file'
@@ -120,7 +128,13 @@ export class Isolations {
     const version = hash(
       Buffer.from(
         JSON.stringify(
-          changes.map(({ path, before, after, conflict }) => ({ path, before, after, conflict })),
+          changes.map(({ path, before, after, conflict, alreadyApplied }) => ({
+            path,
+            before,
+            after,
+            conflict,
+            alreadyApplied,
+          })),
         ),
       ),
     );
@@ -137,7 +151,7 @@ export class Isolations {
     try {
       const record = this.get(key);
       assert(
-        record.state === 'ready',
+        record.state !== 'merged',
         'MERGE_STATE',
         'Already merged or interrupted merge. Inspect existing files; never replay automatically.',
       );
@@ -160,6 +174,18 @@ export class Isolations {
       const target = new FileScope(record.originals),
         source = new FileScope(record.roots);
       // Persist uncertainty BEFORE any filesystem mutation. A crash cannot cause automatic replay.
+      if (record.mergePlan)
+        assert(
+          record.mergePlan.every((p) =>
+            review.changes.some(
+              (c) => c.path === p.path && c.before === p.before && c.after === p.after,
+            ),
+          ),
+          'MERGE_CHANGED',
+          'Interrupted merge source changed. Preserve both copies and reconcile manually.',
+        );
+      record.mergePlan = review.changes.map(({ path, before, after }) => ({ path, before, after }));
+      record.applied ||= [];
       record.state = 'merging';
       this.store.put('isolation', record);
       try {
@@ -170,6 +196,14 @@ export class Isolations {
             current = await readFile(path);
           } catch (e: any) {
             if (e.code !== 'ENOENT') throw e;
+          }
+          if (change.alreadyApplied) {
+            assert(
+              (current ? hash(current) : null) === change.after,
+              'MERGE_CONFLICT',
+              'Previously applied file changed during reconciliation. Inspect again.',
+            );
+            continue;
           }
           assert(
             (current ? hash(current) : null) === change.before,
@@ -184,7 +218,10 @@ export class Isolations {
             assert(!change.binary, 'BINARY_MERGE', 'Binary changes require manual integration.');
             await target.write(change.path, bytes.toString('utf8'));
           }
+          record.applied.push(change.path);
+          this.store.put('isolation', record);
         }
+        record.applied = review.changes.map((c) => c.path);
         record.state = 'merged';
         this.store.put('isolation', record);
       } catch (e) {

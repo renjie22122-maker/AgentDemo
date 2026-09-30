@@ -5,7 +5,10 @@ from windows_sandbox import NativeProcess
 from windows_job import WindowsJob
 from windows_command import prepare
 
+command_started = False
+
 def main():
+    global command_started
     request = json.loads(sys.stdin.readline())
     cancelled = threading.Event()
     def watch():
@@ -20,6 +23,7 @@ def main():
         with tempfile.TemporaryFile() as output:
             process = NativeProcess(prepare(request['command']), request['cwd'], request['cwd'],
                                     output, network_policy=request.get('network', 'deny'))
+            command_started = True  # conservative: failure while attaching/resuming may have started work
             job.attach_resume(process)
             start = time.monotonic()
             while process.poll() is None:
@@ -56,5 +60,5 @@ if __name__ == '__main__':
     try:
         result = main()
     except Exception as error:
-        result = dict(error=type(error).__name__ + ': ' + str(error))
+        result = dict(error=type(error).__name__ + ': ' + str(error), commandStarted=command_started)
     print(json.dumps(result), flush=True)

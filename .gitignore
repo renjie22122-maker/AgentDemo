@@ -8,10 +8,8 @@ dist/
 *.log
 
 # Local verification and migration fixtures (retained locally)
-/tests/
 /scripts/*
 !/scripts/supervisor.mjs
-/docs/VERIFICATION.md
 __pycache__/
 *.py[cod]
 *.sqlite
