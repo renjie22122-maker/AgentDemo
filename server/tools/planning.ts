@@ -1,7 +1,74 @@
+import { Verification } from '../services/verification.js';
 import { z } from 'zod';
 import type { ToolRegistry } from './registry.js';
-import { TaskBoard, taskInput } from '../services/task-board.js';
+import { TaskBoard, taskInput, rootRun } from '../services/task-board.js';
 export function installPlanning(registry: ToolRegistry) {
+  registry.add({
+    name: 'inspect_team',
+    effect: 'read',
+    description: 'List related members, lifecycle status, owned tasks and unresolved effects.',
+    schema: z.object({}),
+    run: async (_a, c) => ({
+      content: JSON.stringify({
+        members: new TaskBoard(c.store).members(c.run),
+        handoffs: c.store
+          .list<any>('task-handoff')
+          .filter((h) => h.boardId === rootRun(c.store, c.run)),
+      }),
+    }),
+  });
+  registry.add({
+    name: 'handoff_task',
+    effect: 'coordinate',
+    description:
+      'Lead explicitly reassigns an unfinished task after its previous owner exits. Unknown effects block handoff. No operation is replayed or worker started.',
+    schema: z.object({
+      id: z.string(),
+      revision: z.number().int().min(0),
+      targetRunId: z.string(),
+      reason: z.string().min(1).max(2000),
+    }),
+    run: async (a, c) => {
+      const board = new TaskBoard(c.store).handoff(
+        c.run,
+        a.id,
+        a.revision,
+        a.targetRunId,
+        a.reason,
+      );
+      let notified = true;
+      try {
+        c.team.message(
+          c.run,
+          a.targetRunId,
+          'Task handoff: ' +
+            a.id +
+            '. Inspect the shared plan and existing work before continuing. ' +
+            a.reason,
+        );
+      } catch {
+        notified = false;
+      }
+      return { content: JSON.stringify({ board, notified }) };
+    },
+  });
+  registry.add({
+    name: 'record_verification',
+    effect: 'coordinate',
+    description:
+      'Bind a done task to a successful command/read event and unchanged declared artifacts. This confirms observation and version, not semantic correctness or independent review.',
+    schema: z.object({
+      id: z.string(),
+      revision: z.number().int().min(0),
+      eventId: z.number().int().positive(),
+    }),
+    run: async (a, c) => ({
+      content: JSON.stringify(
+        await new Verification(c.store).record(c.run, c.files, a.id, a.revision, a.eventId),
+      ),
+    }),
+  });
+
   registry.add({
     name: 'inspect_plan',
     effect: 'read',
@@ -10,7 +77,7 @@ export function installPlanning(registry: ToolRegistry) {
     schema: z.object({}),
     run: async (_a, c) => ({
       content: JSON.stringify({
-        board: new TaskBoard(c.store).get(c.run),
+        board: await new Verification(c.store).refresh(c.run, c.files),
         recentEvidence: c.store
           .events(c.run.conversationId)
           .filter((e) => e.runId === c.run.id && e.type === 'tool.completed')

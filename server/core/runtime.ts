@@ -1,8 +1,8 @@
+import { Verification } from '../services/verification.js';
 import { DelegationManager } from './delegation-manager.js';
 import { sampleContext } from './context-budget.js';
 import { ContextManager } from './context-manager.js';
 import { ToolExecutor } from './tool-executor.js';
-import { TaskBoard } from '../services/task-board.js';
 import { ProgressMonitor } from './progress-monitor.js';
 import { MemoryIndex } from '../services/memory-index.js';
 import { Isolations } from '../services/isolation.js';
@@ -530,9 +530,11 @@ export class Runtime implements TeamPort {
             'OUTCOME_UNKNOWN',
             'An operation has an unknown outcome. Inspect it before treating the task as complete.',
           );
-          const plan = new TaskBoard(this.store).get(run);
+          const plan = await new Verification(this.store).refresh(run, ctx.files);
           const unfinished = plan.tasks.filter(
-            (t) => t.status !== 'done' && (run.id === plan.id || t.owner === run.id),
+            (t) =>
+              (t.status !== 'done' || t.verification?.status === 'stale') &&
+              (run.id === plan.id || t.owner === run.id),
           );
           assert(
             !unfinished.length,

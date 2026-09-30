@@ -74,3 +74,11 @@ A proven launch failure (including missing docker executable) is recorded as not
 - These are integration checks, not held-out coding benchmarks or a comparative score. They do not establish a 9.5/10 rating.
 - Still open: broad unseen task evaluation, independent outcome grading, efficient autonomous team scheduling, exact provider-specific token counting, learned reranking/conflict resolution, multi-provider live verification, and additional OS sandbox validation. No new Docker or strict-offline success is claimed.
 - Local test code and diagnostic records remain excluded from the public repository by user preference.
+
+
+## Team and evidence refinement (2026-09-30)
+
+- Regression: 72 tests passed, including artifact-change invalidation, rejection of unrelated read evidence, stale board revisions, foreign/active owner handoff refusal and unknown-effect refusal.
+- Real deepseek-flash integration: version-binding task passed in 35.2 seconds; lead plus read-only worker completed shared-task claim, read, evidence binding and lead finalization in 66.9 seconds. Local report: team-evidence-x2B17b/report.json, 2/2 cases passed. These are mechanism checks, not a broad capability benchmark.
+- Browser integration passed (browser-NrfhF7); build and type checking are part of the release check.
+- Handoff refusal/reassignment was tested deterministically; the live team check used real delegation but did not inject a real process crash or prove automatic scheduling.

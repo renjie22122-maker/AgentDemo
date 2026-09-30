@@ -120,6 +120,9 @@ export async function createApp(options: { directory: string; dist?: string; run
         .list<Attachment>('attachment')
         .filter((a) => a.conversationId === c.id)
         .map(({ path, text, ...a }) => a),
+      teamMembers: store.runs(c.id).at(-1)
+        ? new TaskBoard(store).members(store.runs(c.id).at(-1)!)
+        : [],
       taskBoard: store.runs(c.id).at(-1)
         ? new TaskBoard(store).get(store.runs(c.id).at(-1)!)
         : null,

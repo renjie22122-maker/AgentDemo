@@ -1,12 +1,15 @@
 import { z } from 'zod';
 import type { Run } from '../../shared/types.js';
 import { Store } from '../storage/store.js';
+import { terminal } from '../core/lifecycle.js';
+import type { ArtifactStamp } from './verification.js';
 import { assert } from '../core/errors.js';
 export const taskInput = z.object({
   id: z.string().min(1).max(80),
   title: z.string().min(1).max(300),
   dependsOn: z.array(z.string()).max(50).default([]),
   acceptance: z.string().min(1).max(2000),
+  artifacts: z.array(z.string().min(1).max(2048)).max(30).optional(),
 });
 export interface BoardTask {
   id: string;
@@ -17,6 +20,13 @@ export interface BoardTask {
   owner: string | null;
   evidence: number[];
   note: string;
+  artifacts?: string[];
+  verification?: {
+    status: 'checked' | 'stale';
+    eventId: number;
+    checkedBy: string;
+    stamp: ArtifactStamp;
+  };
 }
 export interface Board {
   id: string;
@@ -98,7 +108,11 @@ export class TaskBoard {
       );
       if (status === 'running' || status === 'done')
         assert(
-          task.dependsOn.every((d) => board.tasks.find((t) => t.id === d)?.status === 'done'),
+          task.dependsOn.every(
+            (d) =>
+              board.tasks.find((t) => t.id === d)?.status === 'done' &&
+              board.tasks.find((t) => t.id === d)?.verification?.status !== 'stale',
+          ),
           'TASK_DEPENDENCY',
           'Complete dependencies first.',
         );
@@ -109,6 +123,12 @@ export class TaskBoard {
           ),
           'TASK_DEPENDENTS',
           'Reopen downstream tasks first.',
+        );
+      if (status === 'done' || status === 'pending')
+        assert(
+          !this.store.unknownEffects(run.conversationId).length,
+          'OUTCOME_UNKNOWN',
+          'Inspect uncertain effects before completion or release.',
         );
       if (status === 'done') {
         assert(
@@ -127,7 +147,14 @@ export class TaskBoard {
           );
           const data = JSON.parse(row.data);
           assert(
-            !['update_task', 'create_plan', 'inspect_plan'].includes(data.name) &&
+            ![
+              'update_task',
+              'create_plan',
+              'inspect_plan',
+              'handoff_task',
+              'inspect_team',
+              'record_verification',
+            ].includes(data.name) &&
               !String(data.output).startsWith('Tool error:') &&
               !String(data.output).startsWith('DENIED'),
             'TASK_EVIDENCE',
@@ -145,8 +172,96 @@ export class TaskBoard {
         owner: status === 'pending' ? null : task.owner || run.id,
         evidence,
         note,
+        verification: undefined,
       });
       return this.save({ ...board, revision: board.revision + 1 });
+    });
+  }
+  members(run: Run) {
+    const root = rootRun(this.store, run);
+    return this.store
+      .runs()
+      .filter((r) => rootRun(this.store, r) === root)
+      .map((r) => ({
+        runId: r.id,
+        status: r.status,
+        depth: r.depth,
+        role: r.id === root ? 'lead' : 'worker',
+        unresolvedEffects: this.store.unknownEffects(r.conversationId).length,
+        tasks: this.get(run)
+          .tasks.filter((t) => t.owner === r.id)
+          .map((t) => t.id),
+      }));
+  }
+  handoff(run: Run, taskId: string, revision: number, targetId: string, reason: string) {
+    return this.store.transaction(() => {
+      const board = this.get(run);
+      assert(run.id === board.id, 'PLAN_OWNER', 'Only the lead can hand off tasks.');
+      assert(board.revision === revision, 'PLAN_CHANGED', 'Read the latest plan revision.');
+      const task = board.tasks.find((t) => t.id === taskId),
+        target = this.store.get<Run>('run', targetId);
+      assert(
+        task && task.status !== 'done',
+        'TASK_HANDOFF',
+        'Only unfinished tasks can be handed off.',
+      );
+      assert(
+        rootRun(this.store, target) === board.id && !terminal(target.status),
+        'TEAM_SCOPE',
+        'Target must be an active member of this team.',
+      );
+      if (task.owner) {
+        const owner = this.store.get<Run>('run', task.owner);
+        assert(
+          terminal(owner.status),
+          'OWNER_ACTIVE',
+          'Stop or wait for the current owner before handoff.',
+        );
+        assert(
+          !this.store.runs().some((r) => {
+            let p: Run | undefined = r;
+            while (p) {
+              if (p.id === owner.id)
+                return (
+                  !terminal(r.status) || this.store.unknownEffects(r.conversationId).length > 0
+                );
+              p = p.parentRunId ? this.store.get<Run>('run', p.parentRunId) : undefined;
+            }
+            return false;
+          }),
+          'OUTCOME_UNKNOWN',
+          'Wait for previous descendants and resolve uncertain effects first; no replay is authorized.',
+        );
+      }
+      assert(
+        task.dependsOn.every((d) =>
+          board.tasks.some(
+            (t) => t.id === d && t.status === 'done' && t.verification?.status !== 'stale',
+          ),
+        ),
+        'TASK_DEPENDENCY',
+        'Dependencies are not ready.',
+      );
+      const previous = task.owner;
+      Object.assign(task, {
+        owner: targetId,
+        status: 'running',
+        evidence: [],
+        verification: undefined,
+        note: reason,
+      });
+      board.revision++;
+      this.save(board);
+      this.store.put('task-handoff', {
+        id: board.id + ':' + board.revision,
+        boardId: board.id,
+        taskId,
+        previous,
+        targetId,
+        reason,
+        at: Date.now(),
+      });
+      return board;
     });
   }
   private save(board: Board) {

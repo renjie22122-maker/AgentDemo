@@ -650,6 +650,36 @@ export function App() {
                           </button>
                         </div>
                       ))}
+                  {!!detail?.teamMembers && detail.teamMembers.length > 1 && (
+                    <details className="notice">
+                      <summary>
+                        {language === 'zh' ? '团队成员' : 'Team members'} ·{' '}
+                        {detail.teamMembers.length}
+                      </summary>
+                      {detail.teamMembers.map((member) => (
+                        <div className="notice" key={member.runId}>
+                          <strong>{member.role}</strong> · {member.status}
+                          <button
+                            onClick={() => {
+                              const target = state.runs.find((r) => r.id === member.runId);
+                              if (target) setSelected(target.conversationId);
+                            }}
+                          >
+                            {state.conversations.find(
+                              (c) =>
+                                c.id ===
+                                state.runs.find((r) => r.id === member.runId)?.conversationId,
+                            )?.title || member.runId}
+                          </button>
+                          <small>
+                            {member.tasks.join(', ') || '—'} ·{' '}
+                            {language === 'zh' ? '待核对操作' : 'Unresolved effects'}:{' '}
+                            {member.unresolvedEffects}
+                          </small>
+                        </div>
+                      ))}
+                    </details>
+                  )}
                   {!!detail?.taskBoard?.tasks?.length && (
                     <details className="notice">
                       <summary>
@@ -663,6 +693,20 @@ export function App() {
                         <div className="notice" key={task.id}>
                           <strong>{task.title}</strong> <span className="pill">{task.status}</span>
                           <p>{task.acceptance}</p>
+                          <small>
+                            {language === 'zh' ? '验证' : 'Verification'}:{' '}
+                            {task.verification?.status === 'checked'
+                              ? language === 'zh'
+                                ? '结果已记录并绑定版本（非独立验收）'
+                                : 'Observed result bound to version (not independent review)'
+                              : task.verification?.status === 'stale'
+                                ? language === 'zh'
+                                  ? '已过期，需要重新检查'
+                                  : 'Stale; recheck required'
+                                : language === 'zh'
+                                  ? '执行者声明，未绑定版本'
+                                  : 'Author-reported; no version binding'}
+                          </small>
                           <small>
                             {task.id} · {task.dependsOn.join(', ')} · {task.owner || '—'}
                           </small>

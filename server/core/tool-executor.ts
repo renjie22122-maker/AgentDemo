@@ -1,3 +1,5 @@
+import { stamp } from '../services/verification.js';
+import { TaskBoard } from '../services/task-board.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Run, ToolCall } from '../../shared/types.js';
@@ -12,10 +14,40 @@ export class ToolExecutor {
     private directory: string,
   ) {}
   async batch(run: Run, calls: ToolCall[], ctx: ToolContext): Promise<string[]> {
+    const observations = new Map<string, unknown>();
     return executeBatch(
       calls,
       (name) => this.registry.parallelSafe(name),
-      (call) => this.invoke(run, call, ctx),
+      async (call) => {
+        const paths = new TaskBoard(this.store).get(run).tasks.flatMap((t) => t.artifacts || []);
+        const observe = paths.length && ['read_file', 'run_command'].includes(call.name);
+        const before = observe ? await stamp(ctx.files, paths) : undefined;
+        const output = await this.invoke(run, call, ctx);
+        const after = observe ? await stamp(ctx.files, paths) : undefined;
+        let passed = call.name === 'read_file' && !output.startsWith('Tool error:');
+        if (call.name === 'run_command')
+          try {
+            const parsed = JSON.parse(output);
+            passed = parsed.code === 0 && !parsed.timedOut && !parsed.aborted;
+          } catch {
+            passed = false;
+          }
+        const checkedPaths: string[] = [];
+        if (observe)
+          for (const path of paths) {
+            if (call.name === 'run_command') checkedPaths.push(path);
+            else
+              try {
+                if (
+                  (await ctx.files.resolve(path)) ===
+                  (await ctx.files.resolve(String(call.arguments.path)))
+                )
+                  checkedPaths.push(path);
+              } catch {}
+          }
+        if (observe) observations.set(call.id, { before, after, passed, checkedPaths });
+        return output;
+      },
       (call, output) => {
         run.status = 'running';
         run.checkpoints.push({ role: 'tool', callId: call.id, content: output });
@@ -24,6 +56,7 @@ export class ToolExecutor {
           callId: call.id,
           name: call.name,
           output,
+          verification: observations.get(call.id),
         });
       },
       ctx.signal,

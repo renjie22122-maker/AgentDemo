@@ -31,6 +31,14 @@ export interface UiState {
   };
 }
 export interface ConversationDetail {
+  teamMembers?: {
+    runId: string;
+    status: string;
+    role: string;
+    depth: number;
+    tasks: string[];
+    unresolvedEffects: number;
+  }[];
   taskBoard?: {
     revision: number;
     tasks: {
@@ -42,6 +50,7 @@ export interface ConversationDetail {
       dependsOn: string[];
       evidence: number[];
       note: string;
+      verification?: { status: string; eventId: number; checkedBy: string };
     }[];
   } | null;
   conversation: Conversation;
