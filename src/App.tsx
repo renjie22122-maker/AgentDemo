@@ -433,6 +433,7 @@ export function App() {
           'model.started',
           'context.compacting',
           'context.compacted',
+          'model.protocol-repair',
           'child.started',
         ].includes(e.type)
       )

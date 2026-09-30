@@ -16,7 +16,7 @@ export const profileSchema = z.object({
   reasoningFormat: z.enum(['none', 'openai', 'deepseek', 'anthropic', 'gemini']).default('none'),
   efforts: z.array(reasoning).default(['auto']),
   contextWindow: z.number().int().min(4096).max(10_000_000).default(65536),
-  maxOutputTokens: z.number().int().min(256).max(128000).default(8192),
+  maxOutputTokens: z.number().int().min(256).max(1_000_000).default(8192),
   timeoutMs: z.number().int().min(1000).max(1800000).default(120000),
   vision: z.boolean().default(false),
   prices: z

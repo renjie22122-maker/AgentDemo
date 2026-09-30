@@ -196,6 +196,11 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
                   value={profile.maxOutputTokens}
                   onChange={(e) => change('maxOutputTokens', Number(e.target.value))}
                 />
+                <small className="muted">
+                  {t(
+                    'Output allowance includes reasoning tokens. High reasoning may need a larger limit; the provider must support the value.',
+                  )}
+                </small>
               </label>
               <label>
                 {t('Request timeout (seconds)')}

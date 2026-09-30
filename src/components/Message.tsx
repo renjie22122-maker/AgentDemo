@@ -87,17 +87,23 @@ export function Message({
 }
 export function Activity({ events, t }: { events: AgentEvent[]; t: (s: string) => string }) {
   const label = (e: AgentEvent) =>
-    e.type === 'model.started'
-      ? 'Thinking · ' + e.data.model
-      : e.type === 'tool.started'
-        ? e.data.name + ' · ' + JSON.stringify(e.data.arguments)
-        : e.type === 'tool.completed'
-          ? e.data.name + ' · ' + String(e.data.output).slice(0, 100)
-          : e.type === 'context.compacted'
-            ? 'Context compacted'
-            : e.type === 'child.started'
-              ? 'Delegated · ' + e.data.task
-              : e.type;
+    e.type === 'model.protocol-repair'
+      ? t(
+          e.data.code === 'OUTPUT_LIMIT'
+            ? 'Output truncated; retrying one smaller step'
+            : 'Correcting model tool arguments',
+        )
+      : e.type === 'model.started'
+        ? 'Thinking · ' + e.data.model
+        : e.type === 'tool.started'
+          ? e.data.name + ' · ' + JSON.stringify(e.data.arguments)
+          : e.type === 'tool.completed'
+            ? e.data.name + ' · ' + String(e.data.output).slice(0, 100)
+            : e.type === 'context.compacted'
+              ? 'Context compacted'
+              : e.type === 'child.started'
+                ? 'Delegated · ' + e.data.task
+                : e.type;
   return (
     <details className="activity">
       <summary>

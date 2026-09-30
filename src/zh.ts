@@ -1,4 +1,11 @@
 export const zh: Record<string, string> = {
+  'Output truncated; retrying one smaller step':
+    '输出达到上限，正在尝试一个更小的步骤（仅重试一次）',
+  'Correcting model tool arguments': '正在修正模型工具参数',
+
+  'Output allowance includes reasoning tokens. High reasoning may need a larger limit; the provider must support the value.':
+    '输出额度也包含推理 tokens。高推理等级可能需要更高额度，数值须在模型支持范围内。',
+
   'Close details': '关闭详情',
   Context: '上下文',
   Files: '文件',

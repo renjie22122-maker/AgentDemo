@@ -1,4 +1,4 @@
-import { assert } from '../core/errors.js';
+import { AppError, assert } from '../core/errors.js';
 import type { ModelProvider, ModelRequest, ModelResult } from './protocol.js';
 import {
   emptyUsage,
@@ -89,14 +89,29 @@ export class ChatProvider implements ModelProvider {
         }
         if (choice.finish_reason) finish = choice.finish_reason;
       }
-      assert(
-        ['stop', 'tool_calls'].includes(finish),
-        'MODEL_INCOMPLETE',
-        'Model output ended without a complete response (' +
-          (finish || 'missing finish') +
-          '). No partial tool calls were executed.',
-        502,
-      );
+      if (!['stop', 'tool_calls'].includes(finish)) {
+        throw Object.assign(
+          new AppError(
+            'MODEL_INCOMPLETE',
+            finish === 'length'
+              ? 'Model output reached its limit (' +
+                  input.profile.maxOutputTokens +
+                  ' tokens; reasoning and answer share this allowance). Increase Maximum output tokens in Settings or use a lower reasoning level. No calls from this response were executed.'
+              : 'Model output ended without a complete response (' +
+                  (finish || 'missing finish') +
+                  '). No partial tool calls were executed.',
+            502,
+          ),
+          {
+            finishReason: finish,
+            outputLimit: input.profile.maxOutputTokens,
+            outputTokens: usage.output,
+            answerCharacters: content.length,
+            reasoningCharacters: reasoning.length,
+            pendingToolCalls: calls.size,
+          },
+        );
+      }
       const parsed = validateCalls(
         [...calls.values()].map((c) => ({
           id: c.id,

@@ -422,6 +422,15 @@ export class Runtime implements TeamPort {
         measured: false,
       };
       this.account(run, usage, input.profile, id());
+      if (error instanceof AppError && error.code === 'MODEL_INCOMPLETE') {
+        const info = error as AppError & {finishReason?: string; answerCharacters?: number; reasoningCharacters?: number; pendingToolCalls?: number};
+        this.store.event(run.conversationId, run.id, 'model.incomplete', {
+          finishReason: info.finishReason, outputLimit: input.profile.maxOutputTokens,
+          reasoning: input.profile.reasoning, outputTokens: usage.output,
+          answerCharacters: info.answerCharacters, reasoningCharacters: info.reasoningCharacters,
+          pendingToolCalls: info.pendingToolCalls, toolsExecuted: false,
+        });
+      }
       throw error;
     }
   }
@@ -481,7 +490,8 @@ export class Runtime implements TeamPort {
         run.checkpoints[0] = { role: 'system', content: system };
       else run.checkpoints.unshift({ role: 'system', content: system });
       let steps = 0,
-        protocolRepairs = 0;
+        protocolRepairs = 0,
+        lengthRepairs = 0;
       const progress = new ProgressMonitor();
       while (!signal.aborted) {
         await this.dispatchTeam(run);
@@ -543,6 +553,37 @@ export class Runtime implements TeamPort {
             }),
           );
         } catch (error) {
+          if (
+            !signal.aborted &&
+            error instanceof AppError &&
+            error.code === 'MODEL_INCOMPLETE' &&
+            (error as AppError & { finishReason?: string }).finishReason === 'length' &&
+            lengthRepairs++ < 1
+          ) {
+            const partial = this.streams.get(key);
+            if (partial?.text)
+              this.store.event(run.conversationId, key, 'assistant.message', {
+                messageId,
+                text: partial.text,
+                final: false,
+                incomplete: true,
+              });
+            this.streams.delete(key);
+            this.store.event(run.conversationId, key, 'model.protocol-repair', {
+              code: 'OUTPUT_LIMIT',
+              attempt: 1,
+              toolsExecuted: false,
+              outputLimit: profile.maxOutputTokens,
+              message:
+                'Output was truncated. Retrying once with a smaller response; completed operations will not be replayed.',
+            });
+            run.checkpoints.push({
+              role: 'user',
+              content:
+                'Runtime feedback: your last response hit the output token limit before completion. None of its tool calls executed. Produce one smaller complete next step or a concise complete answer, with less deliberation. Split large tool arguments across steps. Do not repeat any earlier completed operations. The configured output allowance and reasoning level are unchanged.',
+            });
+            continue;
+          }
           if (
             !signal.aborted &&
             error instanceof AppError &&
