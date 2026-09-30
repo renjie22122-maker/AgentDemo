@@ -1,4 +1,4 @@
-import { TeamAutomationControls } from './components/TeamAutomationControls';
+import { TeamChat } from './components/TeamChat';
 import { ConversationStatus } from './components/ConversationStatus';
 import { DisplaySettings } from './components/DisplaySettings';
 import { connectLive } from './live';
@@ -356,7 +356,17 @@ export function App() {
   }
   const filtered =
     state?.conversations.filter(
-      (c: any) => c.archived === archived && c.title.toLowerCase().includes(query.toLowerCase()),
+      (c: any) =>
+        c.archived === archived &&
+        c.title.toLowerCase().includes(query.toLowerCase()) &&
+        (!!query ||
+          c.id === selected ||
+          !state?.runs.some(
+            (r) =>
+              r.conversationId === c.id &&
+              r.parentRunId &&
+              state.runs.some((p) => p.id === r.parentRunId),
+          )),
     ) || [];
   function timeline() {
     const nodes: any[] = [];
@@ -639,30 +649,18 @@ export function App() {
                         </article>
                       ),
                   )}
-                  {run &&
-                    state.runs
-                      .filter((child) => child.parentRunId === run.id)
-                      .map((child) => (
-                        <div className="notice" key={child.id}>
-                          <button onClick={() => setSelected(child.conversationId)}>
-                            {state.conversations.find((c) => c.id === child.conversationId)
-                              ?.title || 'Subagent'}{' '}
-                            <span className="pill">{child.status.replaceAll('_', ' ')}</span>
-                          </button>
-                        </div>
-                      ))}
-                  {detail?.teamSpace && (
-                    <TeamAutomationControls
-                      id={detail.teamSpace.id}
-                      policy={detail.teamAutomation}
-                      recovery={detail.teamRecovery || []}
-                      events={detail.teamControlEvents || []}
+                  {detail && (
+                    <TeamChat
+                      key={detail.conversation.id}
+                      state={state}
+                      detail={detail}
                       zh={language === 'zh'}
-                      action={action}
+                      t={t}
+                      notify={notify}
                     />
                   )}
                   {detail?.teamSpace && (
-                    <details className="notice">
+                    <details className="team-panel">
                       <summary>
                         {language === 'zh' ? '团队运行状态' : 'Team lifecycle'} ·{' '}
                         {detail.teamSpace.mode} · {detail.teamSpace.status}
@@ -684,8 +682,20 @@ export function App() {
                           : 'An individual final answer does not complete the team.'}
                       </p>
                       {Object.entries(detail.teamSpace.roles).map(([role, member]) => (
-                        <div key={role}>
-                          {role}: {member}
+                        <div className="team-role-row" key={role}>
+                          <span>
+                            {language === 'zh'
+                              ? (
+                                  {
+                                    coordinator: '协调',
+                                    planner: '规划',
+                                    reviewer: '复核',
+                                    summarizer: '汇总',
+                                  } as Record<string, string>
+                                )[role] || role
+                              : role}
+                          </span>
+                          <code title={member}>{member.slice(0, 8)}</code>
                           <select
                             aria-label={'Transfer ' + role}
                             value=""
@@ -728,69 +738,10 @@ export function App() {
                       {detail.teamSpace.blockers.map((b) => (
                         <p key={b}>{b}</p>
                       ))}
-                      {detail.teamSpace.messages.map((m) => (
-                        <details key={m.id}>
-                          <summary>
-                            {m.sender} · {m.text.slice(0, 80)}
-                          </summary>
-                          <p>{m.text}</p>
-                        </details>
-                      ))}
-                    </details>
-                  )}
-                  {!!detail?.teamMembers && detail.teamMembers.length > 1 && (
-                    <details className="notice">
-                      <summary>
-                        {language === 'zh' ? '团队成员' : 'Team members'} ·{' '}
-                        {detail.teamMembers.length}
-                      </summary>
-                      {detail.teamScheduling?.enabled && (
-                        <p>
-                          {language === 'zh'
-                            ? '自动分配已开启 · 每成员加权容量：'
-                            : 'Automatic assignment · weighted capacity per worker: '}
-                          {detail.teamScheduling.maxLoad}
-                        </p>
-                      )}
-                      {detail.teamMembers.map((member) => (
-                        <div className="notice" key={member.runId}>
-                          <strong>{member.role}</strong> · {member.status}
-                          <button
-                            onClick={() => {
-                              const target = state.runs.find((r) => r.id === member.runId);
-                              if (target) setSelected(target.conversationId);
-                            }}
-                          >
-                            {state.conversations.find(
-                              (c) =>
-                                c.id ===
-                                state.runs.find((r) => r.id === member.runId)?.conversationId,
-                            )?.title || member.runId}
-                          </button>
-                          <small>
-                            {detail.teamScheduling?.workers.includes(member.runId) && (
-                              <span>
-                                {language === 'zh' ? '任务负载' : 'Task load'}:{' '}
-                                {detail.taskBoard?.tasks
-                                  .filter(
-                                    (t) =>
-                                      t.owner === member.runId &&
-                                      ['running', 'blocked'].includes(t.status),
-                                  )
-                                  .reduce((n, t) => n + (t.weight || 1), 0) ?? 0}
-                                /{detail.teamScheduling.maxLoad} ·{' '}
-                              </span>
-                            )}
-                            {member.tasks.join(', ') || '—'} ·{' '}
-                            {language === 'zh' ? '待核对操作' : 'Unresolved effects'}:{' '}
-                            {member.unresolvedEffects}
-                          </small>
-                        </div>
-                      ))}
                     </details>
                   )}
                   {!!detail?.taskBoard?.tasks?.length && (
-                    <details className="notice">
+                    <details className="team-panel">
                       <summary>
                         {language === 'zh'
                           ? '任务计划（执行者记录）'

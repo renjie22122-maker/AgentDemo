@@ -1,3 +1,4 @@
+import { useState, type ReactNode } from 'react';
 import { GitFork, UserRound, Network, Check } from 'lucide-react';
 import { ControlPopover } from './ControlPopover';
 export function DelegationControl({
@@ -8,6 +9,9 @@ export function DelegationControl({
   depth,
   total,
   parallel,
+  mode = 'hierarchy',
+  onModeChange,
+  management,
 }: {
   value: string;
   disabled: boolean;
@@ -16,7 +20,11 @@ export function DelegationControl({
   depth: number;
   total: number;
   parallel: number;
+  mode?: string;
+  onModeChange?: (v: string) => void;
+  management?: ReactNode;
 }) {
+  const [tab, setTab] = useState<'strategy' | 'manage'>('strategy');
   const options = [
     {
       id: 'off',
@@ -48,64 +56,112 @@ export function DelegationControl({
     <ControlPopover
       label={(zh ? '协作' : 'Team') + ' · ' + selected.name}
       icon={<GitFork size={16} />}
-      disabled={disabled}
+      disabled={false}
     >
       <header className="control-heading">
-        <strong>{zh ? '子 Agent 协作' : 'Subagent collaboration'}</strong>
+        <strong>{zh ? '协作' : 'Collaboration'}</strong>
       </header>
-      <p className="control-description">
-        {zh
-          ? '主 Agent 可把独立工作交给子 Agent，再汇总结果。'
-          : 'The main agent can delegate independent work and bring the results together.'}
-      </p>
       <div
-        className="delegation-options"
-        role="radiogroup"
-        onKeyDown={(e) => {
-          if (['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft'].includes(e.key)) {
-            e.preventDefault();
-            const current = options.findIndex((o) => o.id === value),
-              step = ['ArrowDown', 'ArrowRight'].includes(e.key) ? 1 : -1;
-            const next = (current + step + options.length) % options.length;
-            onChange(options[next].id);
-            (e.currentTarget.querySelectorAll('button')[next] as HTMLElement)?.focus();
-          }
-        }}
-        aria-label={zh ? '协作策略' : 'Team strategy'}
+        className="collaboration-tabs"
+        role="tablist"
+        aria-label={zh ? '协作设置' : 'Collaboration settings'}
       >
-        {options.map((o) => (
-          <button
-            type="button"
-            role="radio"
-            key={o.id}
-            aria-checked={value === o.id}
-            className={'delegation-option' + (value === o.id ? ' selected' : '')}
-            onClick={() => onChange(o.id)}
-          >
-            <span className="delegation-icon">{o.icon}</span>
-            <span className="delegation-copy">
-              <strong>
-                {o.name}
-                {o.id === 'auto' && <em>{zh ? '推荐' : 'Recommended'}</em>}
-              </strong>
-              <small>{o.description}</small>
-            </span>
-            <span className="delegation-check">{value === o.id && <Check size={16} />}</span>
-          </button>
-        ))}
+        <button role="tab" aria-selected={tab === 'strategy'} onClick={() => setTab('strategy')}>
+          {zh ? '协作方式' : 'Team setup'}
+        </button>
+        <button role="tab" aria-selected={tab === 'manage'} onClick={() => setTab('manage')}>
+          {zh ? '运行管理' : 'Runtime management'}
+        </button>
       </div>
-      <footer className="control-note">
-        <div>
-          {zh
-            ? `最多委派 ${depth} 层 · 子任务累计 ${total} 个 · 模型并发 ${parallel}`
-            : `Depth ${depth} · ${total} children per run tree · ${parallel} model requests at once`}
+      {tab === 'manage' ? (
+        <div className="collaboration-management">
+          {management || (
+            <p className="control-description">
+              {zh
+                ? '团队建立后，可在这里设置自动恢复、扩缩容和主持接管。'
+                : 'Once a team is created, manage recovery, scaling and coordinator takeover here.'}
+            </p>
+          )}
         </div>
-        <div>
-          {zh
-            ? '子 Agent 使用独立上下文，会增加用量；可写副本合并仍需你批准。'
-            : 'Subagents have separate context and add usage. Merging writable copies still needs your approval.'}
-        </div>
-      </footer>
+      ) : (
+        <>
+          <p className="control-description">
+            {disabled
+              ? zh
+                ? '当前任务运行中，协作方式暂时锁定。运行管理仍可使用。'
+                : 'Team setup is locked during a run. Runtime management remains available.'
+              : zh
+                ? '选择何时协作，以及团队如何组织。'
+                : 'Choose when to collaborate and how to organize the team.'}
+          </p>
+          <div
+            className="delegation-options"
+            role="radiogroup"
+            onKeyDown={(e) => {
+              if (
+                !disabled &&
+                ['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft'].includes(e.key)
+              ) {
+                e.preventDefault();
+                const current = options.findIndex((o) => o.id === value),
+                  step = ['ArrowDown', 'ArrowRight'].includes(e.key) ? 1 : -1;
+                const next = (current + step + options.length) % options.length;
+                onChange(options[next].id);
+                (e.currentTarget.querySelectorAll('button')[next] as HTMLElement)?.focus();
+              }
+            }}
+            aria-label={zh ? '协作策略' : 'Team strategy'}
+          >
+            {options.map((o) => (
+              <button
+                type="button"
+                role="radio"
+                disabled={disabled}
+                key={o.id}
+                aria-checked={value === o.id}
+                className={'delegation-option' + (value === o.id ? ' selected' : '')}
+                onClick={() => onChange(o.id)}
+              >
+                <span className="delegation-icon">{o.icon}</span>
+                <span className="delegation-copy">
+                  <strong>
+                    {o.name}
+                    {o.id === 'auto' && <em>{zh ? '推荐' : 'Recommended'}</em>}
+                  </strong>
+                  <small>{o.description}</small>
+                </span>
+                <span className="delegation-check">{value === o.id && <Check size={16} />}</span>
+              </button>
+            ))}
+          </div>
+          <label className="collaboration-mode">
+            {zh ? '团队模式' : 'Team mode'}
+            <select
+              disabled={disabled || value === 'off'}
+              value={mode}
+              onChange={(e) => onModeChange?.(e.target.value)}
+            >
+              <option value="hierarchy">{zh ? '主 Agent + 子 Agent' : 'Lead + workers'}</option>
+              <option value="host">{zh ? '宿主调度 · 平级协作' : 'Host scheduling · peers'}</option>
+              <option value="creative">
+                {zh ? '创意讨论 · 自由协商' : 'Creative discussion · peers'}
+              </option>
+            </select>
+          </label>
+          <footer className="control-note">
+            <div>
+              {zh
+                ? `最多委派 ${depth} 层 · 子任务累计 ${total} 个 · 模型并发 ${parallel}`
+                : `Depth ${depth} · ${total} children per run tree · ${parallel} model requests at once`}
+            </div>
+            <div>
+              {zh
+                ? '子 Agent 使用独立上下文，会增加用量；可写副本合并仍需你批准。'
+                : 'Subagents have separate context and add usage. Merging writable copies still needs your approval.'}
+            </div>
+          </footer>
+        </>
+      )}
     </ControlPopover>
   );
 }

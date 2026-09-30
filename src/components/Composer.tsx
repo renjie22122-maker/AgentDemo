@@ -1,3 +1,4 @@
+import { TeamAutomationControls } from './TeamAutomationControls';
 import { DelegationControl } from './DelegationControl';
 import { ReasoningSlider } from './ReasoningSlider';
 import { ArrowDown, ArrowUp, Paperclip, Plus, Square } from 'lucide-react';
@@ -151,33 +152,21 @@ export function Composer({
                     efforts={profile?.efforts || ['auto']}
                     onChange={(reasoning) => void action(() => update({ reasoning }))}
                   />
-                  <label>
-                    {t('settings') !== 'Settings' ? '团队模式' : 'Team mode'}
-                    <select
-                      disabled={!!running}
-                      value={conversation.teamMode || 'hierarchy'}
-                      onChange={(e) =>
-                        void action(() =>
-                          update({ teamMode: e.target.value as 'hierarchy' | 'host' | 'creative' }),
-                        )
-                      }
-                    >
-                      <option value="hierarchy">
-                        {t('settings') !== 'Settings' ? '主 Agent + 子 Agent' : 'Lead + workers'}
-                      </option>
-                      <option value="host">
-                        {t('settings') !== 'Settings'
-                          ? '宿主调度 · 平级协作'
-                          : 'Host scheduling · peers'}
-                      </option>
-                      <option value="creative">
-                        {t('settings') !== 'Settings'
-                          ? '创意讨论 · 自由协商'
-                          : 'Creative discussion · peers'}
-                      </option>
-                    </select>
-                  </label>
                   <DelegationControl
+                    mode={conversation.teamMode || 'hierarchy'}
+                    onModeChange={(teamMode) => void action(() => update({ teamMode }))}
+                    management={
+                      detail?.teamSpace ? (
+                        <TeamAutomationControls
+                          id={detail.teamSpace.id}
+                          policy={detail.teamAutomation}
+                          recovery={detail.teamRecovery || []}
+                          events={detail.teamControlEvents || []}
+                          zh={t('settings') !== 'Settings'}
+                          action={action}
+                        />
+                      ) : undefined
+                    }
                     value={conversation.teamStrategy || 'auto'}
                     disabled={!!running}
                     zh={t('settings') !== 'Settings'}

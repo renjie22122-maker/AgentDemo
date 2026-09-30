@@ -2433,3 +2433,537 @@ body {
   padding: 8px 14px;
   margin: 12px 0;
 }
+
+/* Team panels share the conversation's quiet, collapsible chrome. */
+.team-panel {
+  margin: 10px 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  overflow: hidden;
+}
+.team-panel > summary {
+  padding: 13px 16px;
+  cursor: pointer;
+  color: var(--muted);
+  min-height: 48px;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.team-panel > summary:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.team-panel[open] {
+  background: var(--surface);
+}
+.team-panel[open] > summary {
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.team-panel:not(.automation-panel)[open] {
+  padding: 0 16px 16px;
+}
+.team-panel:not(.automation-panel)[open] > summary {
+  margin: 0 -16px 14px;
+}
+.automation-panel > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  list-style: none;
+}
+.automation-panel summary::-webkit-details-marker {
+  display: none;
+}
+.team-chevron {
+  margin-left: auto;
+  transition: transform 0.15s;
+}
+.automation-panel[open] > summary .team-chevron {
+  transform: rotate(180deg);
+}
+.team-status,
+.team-count {
+  font-size: 0.72rem;
+  border-radius: 20px;
+  color: var(--muted);
+  background: var(--surface2);
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.team-status.is-on {
+  color: var(--green);
+}
+.automation-body {
+  padding: 4px 18px 16px;
+}
+.automation-master,
+.automation-option {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  align-items: center;
+  cursor: pointer;
+}
+.automation-master {
+  padding: 15px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.automation-master > span,
+.automation-option-copy {
+  flex: 1;
+  min-width: 0;
+}
+.automation-body strong {
+  display: block;
+  font-size: 0.87rem;
+  font-weight: 550;
+}
+.automation-body small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.77rem;
+  margin-top: 3px;
+  font-weight: 400;
+}
+.automation-option {
+  padding: 12px 0;
+}
+.automation-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--surface2);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+input.team-switch {
+  appearance: none;
+  width: 34px;
+  height: 20px;
+  min-width: 34px;
+  margin: 0;
+  padding: 0;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--hover);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+input.team-switch::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  left: 3px;
+  top: 3px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 0.15s;
+}
+input.team-switch:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+input.team-switch:checked::after {
+  transform: translateX(14px);
+  background: var(--bg);
+}
+.team-panel :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.automation-limits {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.automation-limits > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  cursor: pointer;
+}
+.automation-limits > summary small {
+  margin: 0 0 0 auto;
+}
+.automation-limits[open] > summary > svg {
+  transform: rotate(180deg);
+}
+.automation-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 6px 12px 12px;
+}
+.automation-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  min-width: 0;
+}
+.automation-fields input {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.automation-cost {
+  grid-column: 1/-1;
+}
+.automation-footnote {
+  margin: 0;
+  padding: 0 12px 12px;
+  color: var(--muted);
+  font-size: 0.73rem;
+}
+.automation-save {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0 4px;
+}
+.automation-save > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.73rem;
+  color: var(--muted);
+}
+.team-panel button {
+  font-size: 0.8rem;
+}
+.team-panel button.team-primary {
+  background: var(--accentbg);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  padding: 7px 12px;
+}
+.team-panel button.team-primary:hover:not(:disabled) {
+  background: var(--hover);
+}
+.team-panel button.team-secondary {
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.team-recovery-list {
+  border-top: 1px solid var(--border);
+  margin-top: 14px;
+  padding-top: 4px;
+}
+.team-recovery-list h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  font-size: 0.8rem;
+  margin: 12px 0;
+}
+.team-recovery-item {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-top: 8px;
+}
+.team-recovery-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+.team-recovery-heading code {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.team-recovery-item p {
+  font-size: 0.77rem;
+  color: var(--muted);
+  margin: 8px 0 10px;
+  overflow-wrap: anywhere;
+}
+.team-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+.team-history {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.team-history > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.team-history details {
+  margin-top: 8px;
+}
+.team-history pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.72rem;
+  max-height: 200px;
+  overflow: auto;
+}
+.team-role-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 0;
+}
+.team-role-row > span {
+  min-width: 90px;
+  color: var(--muted);
+}
+.team-role-row code {
+  font-size: 0.77rem;
+  color: var(--muted);
+}
+.team-role-row select {
+  margin-left: auto;
+  max-width: 220px;
+  font-size: 0.8rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 8px;
+}
+.team-panel .team-member-row {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+.team-member-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+@media (max-width: 600px) {
+  .automation-body {
+    padding: 2px 12px 12px;
+  }
+  .team-panel > summary {
+    padding: 12px;
+  }
+  .automation-option-copy strong {
+    font-size: 0.82rem;
+  }
+  .automation-option {
+    gap: 9px;
+  }
+  .automation-save {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .team-role-row select {
+    margin-left: 0;
+    max-width: 100%;
+  }
+  .team-panel:not(.automation-panel)[open] {
+    padding: 0 12px 12px;
+  }
+  .team-panel:not(.automation-panel)[open] > summary {
+    margin: 0 -12px 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .team-panel *,
+  input.team-switch::after {
+    transition: none;
+  }
+}
+
+.collaboration-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 10px 0 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.collaboration-tabs button {
+  flex: 1;
+  font-size: 0.8rem;
+  padding: 8px 6px;
+}
+.collaboration-tabs button[aria-selected='true'] {
+  background: var(--surface2);
+  color: var(--text);
+  box-shadow: 0 1px 3px #0001;
+}
+.collaboration-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 14px 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.collaboration-mode select {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.collaboration-management .automation-panel {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.collaboration-management .automation-panel > summary {
+  padding: 6px 0 12px;
+  min-height: 36px;
+}
+.collaboration-management .automation-body {
+  padding: 2px 0;
+}
+.collaboration-management .automation-icon {
+  display: none;
+}
+.collaboration-management .automation-save {
+  flex-wrap: wrap;
+}
+.collaboration-management .team-actions {
+  justify-content: flex-start;
+}
+
+/* Team activity stays in the owning conversation. */
+.team-chat {
+  margin: 24px 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  padding: 16px;
+}
+.team-chat > header,
+.team-chat-message > header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.team-chat > header > span,
+.team-chat-message time,
+.team-chat-message small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin-left: auto;
+}
+.team-chat-members {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 14px 0;
+}
+.team-chat-members button {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 7px 12px;
+  max-width: 220px;
+}
+.team-chat-members button span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.team-chat-members button small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.team-chat-members button[aria-pressed='true'] {
+  background: var(--accentbg);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.team-chat-feed {
+  max-height: 520px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.team-chat-message {
+  padding: 14px 4px;
+  border-top: 1px solid var(--border);
+}
+.team-chat-message > header {
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+}
+.team-chat-message .markdown {
+  font-size: 0.92rem;
+}
+.team-chat-work > details {
+  border-top: 1px solid var(--border);
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.team-chat-work summary {
+  cursor: pointer;
+}
+@media (max-width: 600px) {
+  .team-chat {
+    padding: 12px;
+  }
+  .team-chat-feed {
+    max-height: 420px;
+  }
+}
+
+.team-chat-content > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.88rem;
+}
+.team-chat-content > summary::after {
+  content: '⌄';
+  margin-left: auto;
+  color: var(--muted);
+}
+.team-chat-content[open] > summary::after {
+  transform: rotate(180deg);
+}
+.team-chat-content > summary > span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+.team-chat-content > summary::-webkit-details-marker {
+  display: none;
+}
+.team-chat-attention {
+  margin-top: 12px;
+}
