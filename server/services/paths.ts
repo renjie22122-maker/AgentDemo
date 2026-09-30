@@ -12,6 +12,7 @@ export async function validateRoots(roots: string[], protectedRoot?: string) {
     'FOLDERS_REQUIRED',
     'Choose one to twelve project folders.',
   );
+  const privateRoot = protectedRoot ? await realpath(protectedRoot) : undefined;
   const result: string[] = [];
   for (const raw of roots) {
     assert(path.isAbsolute(raw), 'ABSOLUTE_PATH', 'Project folders must be absolute paths.');
@@ -27,9 +28,9 @@ export async function validateRoots(roots: string[], protectedRoot?: string) {
       'BROAD_FOLDER',
       'A filesystem root cannot be used as a project.',
     );
-    if (protectedRoot)
+    if (privateRoot)
       assert(
-        !inside(root, protectedRoot) && !inside(protectedRoot, root),
+        !inside(root, privateRoot) && !inside(privateRoot, root),
         'PRIVATE_STORAGE',
         'Private application storage cannot be a project.',
       );
@@ -74,6 +75,15 @@ export class FileScope {
       const stat = await lstat(ancestor);
       assert(!stat.isSymbolicLink(), 'LINKED_ROOT', 'Project root changed to a link.', 403);
       if (ancestor === path.dirname(ancestor)) break;
+    }
+    if (this.privateStorage) {
+      const privateReal = await realpath(this.privateStorage);
+      assert(
+        !inside(privateReal, path.resolve(rootReal, ...relative)),
+        'PRIVATE_STORAGE',
+        'Agent private state is not a project file.',
+        403,
+      );
     }
     for (const part of relative.filter(Boolean)) {
       current = path.join(current, part);
