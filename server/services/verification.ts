@@ -1,3 +1,4 @@
+import { Teams } from './team-space.js';
 import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import type { FileScope } from './paths.js';
@@ -42,7 +43,7 @@ export class Verification {
       task = board.tasks.find((t) => t.id === taskId);
     assert(task && board.revision === revision, 'PLAN_CHANGED', 'Read the latest task board.');
     assert(
-      run.id === board.id || task.owner === run.id,
+      new Teams(this.store).authority(run, 'reviewer') || task.owner === run.id,
       'TASK_OWNER',
       'Only owner or lead can record verification.',
     );

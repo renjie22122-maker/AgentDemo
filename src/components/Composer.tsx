@@ -151,6 +151,32 @@ export function Composer({
                     efforts={profile?.efforts || ['auto']}
                     onChange={(reasoning) => void action(() => update({ reasoning }))}
                   />
+                  <label>
+                    {t('settings') !== 'Settings' ? '团队模式' : 'Team mode'}
+                    <select
+                      disabled={!!running}
+                      value={conversation.teamMode || 'hierarchy'}
+                      onChange={(e) =>
+                        void action(() =>
+                          update({ teamMode: e.target.value as 'hierarchy' | 'host' | 'creative' }),
+                        )
+                      }
+                    >
+                      <option value="hierarchy">
+                        {t('settings') !== 'Settings' ? '主 Agent + 子 Agent' : 'Lead + workers'}
+                      </option>
+                      <option value="host">
+                        {t('settings') !== 'Settings'
+                          ? '宿主调度 · 平级协作'
+                          : 'Host scheduling · peers'}
+                      </option>
+                      <option value="creative">
+                        {t('settings') !== 'Settings'
+                          ? '创意讨论 · 自由协商'
+                          : 'Creative discussion · peers'}
+                      </option>
+                    </select>
+                  </label>
                   <DelegationControl
                     value={conversation.teamStrategy || 'auto'}
                     disabled={!!running}
@@ -164,6 +190,16 @@ export function Composer({
               )}
             </div>
             <div className="row">
+              {running &&
+                run &&
+                conversation?.teamMode &&
+                conversation.teamMode !== 'hierarchy' && (
+                  <button
+                    onClick={() => void action(() => api('/runs/' + run.id + '/stop-member', {}))}
+                  >
+                    {t('settings') !== 'Settings' ? '仅停止当前成员' : 'Stop this member only'}
+                  </button>
+                )}
               {running && run && (
                 <button
                   className="stop-button"

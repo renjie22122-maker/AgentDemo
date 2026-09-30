@@ -1,3 +1,4 @@
+import { Teams } from './team-space.js';
 import type { Conversation, Run } from '../../shared/types.js';
 import { Store } from '../storage/store.js';
 import { assert } from '../core/errors.js';
@@ -13,7 +14,11 @@ export class TeamScheduler {
   constructor(private store: Store) {}
   configure(lead: Run, workers: string[], maxLoad: number, enabled: boolean) {
     const root = rootRun(this.store, lead);
-    assert(lead.id === root, 'PLAN_OWNER', 'Only the lead configures automatic assignment.');
+    assert(
+      new Teams(this.store).authority(lead),
+      'PLAN_OWNER',
+      'Only the lead configures automatic assignment.',
+    );
     const conversation = this.store.get<Conversation>('conversation', lead.conversationId);
     assert(
       !enabled || conversation.teamStrategy !== 'off',
@@ -52,7 +57,7 @@ export class TeamScheduler {
       const lead = this.store.get<Run>('run', root);
       if (
         !policy?.enabled ||
-        terminal(lead.status) ||
+        (terminal(lead.status) && new Teams(this.store).get(lead)?.mode !== 'host') ||
         this.store.get<Conversation>('conversation', lead.conversationId).teamStrategy === 'off'
       )
         return [];
@@ -64,6 +69,9 @@ export class TeamScheduler {
           (r) =>
             (['queued', 'running'].includes(r.status) ||
               (r.status === 'waiting_children' && !!this.store.maybe('team-worker-ready', r.id))) &&
+            (!new Teams(this.store).get(lead) ||
+              (new Teams(this.store).get(lead)!.members.includes(r.id) &&
+                !new Teams(this.store).get(lead)!.closed[r.id])) &&
             !r.recoveryOnly &&
             !this.store.unknownEffects(r.conversationId).length,
         );

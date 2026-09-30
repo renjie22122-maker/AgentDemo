@@ -1,3 +1,4 @@
+import { Teams } from './team-space.js';
 import { z } from 'zod';
 import type { Run } from '../../shared/types.js';
 import { Store } from '../storage/store.js';
@@ -56,7 +57,7 @@ export class TaskBoard {
   }
   create(run: Run, input: z.infer<typeof taskInput>[], revision: number) {
     assert(
-      run.id === rootRun(this.store, run),
+      new Teams(this.store).authority(run, 'planner'),
       'PLAN_OWNER',
       'Only the lead creates the shared plan.',
     );
@@ -108,7 +109,7 @@ export class TaskBoard {
       const task = board.tasks.find((t) => t.id === taskId);
       assert(task, 'TASK_MISSING', 'Task not found in this team.');
       assert(
-        !task.owner || task.owner === run.id || run.id === board.id,
+        !task.owner || task.owner === run.id || new Teams(this.store).authority(run),
         'TASK_OWNER',
         'Another worker owns this task.',
       );
@@ -162,6 +163,10 @@ export class TaskBoard {
               'record_verification',
               'configure_team_scheduler',
               'await_team_task',
+              'await_team_message',
+              'configure_team',
+              'handoff_team_role',
+              'end_team_participation',
             ].includes(data.name) &&
               !String(data.output).startsWith('Tool error:') &&
               !String(data.output).startsWith('DENIED'),
@@ -204,7 +209,11 @@ export class TaskBoard {
   handoff(run: Run, taskId: string, revision: number, targetId: string, reason: string) {
     return this.store.transaction(() => {
       const board = this.get(run);
-      assert(run.id === board.id, 'PLAN_OWNER', 'Only the lead can hand off tasks.');
+      assert(
+        new Teams(this.store).authority(run),
+        'PLAN_OWNER',
+        'Only the lead can hand off tasks.',
+      );
       assert(board.revision === revision, 'PLAN_CHANGED', 'Read the latest plan revision.');
       const task = board.tasks.find((t) => t.id === taskId),
         target = this.store.get<Run>('run', targetId);

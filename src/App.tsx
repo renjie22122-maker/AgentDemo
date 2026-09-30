@@ -650,6 +650,83 @@ export function App() {
                           </button>
                         </div>
                       ))}
+                  {detail?.teamSpace && (
+                    <details className="notice">
+                      <summary>
+                        {language === 'zh' ? '团队运行状态' : 'Team lifecycle'} ·{' '}
+                        {detail.teamSpace.mode} · {detail.teamSpace.status}
+                      </summary>
+                      {detail.teamSpace.status === 'active' && (
+                        <button
+                          onClick={() =>
+                            void action(() =>
+                              api('/runs/' + detail.teamSpace!.id + '/stop-team', {}),
+                            )
+                          }
+                        >
+                          {language === 'zh' ? '停止整个团队' : 'Stop entire team'}
+                        </button>
+                      )}
+                      <p>
+                        {language === 'zh'
+                          ? '单个成员结束不代表团队完成。'
+                          : 'An individual final answer does not complete the team.'}
+                      </p>
+                      {Object.entries(detail.teamSpace.roles).map(([role, member]) => (
+                        <div key={role}>
+                          {role}: {member}
+                          <select
+                            aria-label={'Transfer ' + role}
+                            value=""
+                            onChange={(e) => {
+                              if (e.target.value)
+                                void action(() =>
+                                  api('/runs/' + detail.teamSpace!.id + '/team-role', {
+                                    role,
+                                    targetRunId: e.target.value,
+                                    revision: detail.teamSpace!.revision,
+                                  }),
+                                );
+                            }}
+                          >
+                            <option value="">
+                              {language === 'zh' ? '交接角色…' : 'Transfer role…'}
+                            </option>
+                            {detail.teamMembers
+                              ?.filter(
+                                (m) =>
+                                  !['completed', 'failed', 'interrupted'].includes(m.status) &&
+                                  !detail.teamSpace!.closed[m.runId],
+                              )
+                              .map((m) => (
+                                <option key={m.runId} value={m.runId}>
+                                  {m.runId}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                      ))}
+                      {detail.teamSpace.mode === 'creative' && (
+                        <p>
+                          {language === 'zh'
+                            ? '每成员讨论消息上限：'
+                            : 'Discussion message limit per member: '}
+                          {detail.teamSpace.maxMessages}
+                        </p>
+                      )}
+                      {detail.teamSpace.blockers.map((b) => (
+                        <p key={b}>{b}</p>
+                      ))}
+                      {detail.teamSpace.messages.map((m) => (
+                        <details key={m.id}>
+                          <summary>
+                            {m.sender} · {m.text.slice(0, 80)}
+                          </summary>
+                          <p>{m.text}</p>
+                        </details>
+                      ))}
+                    </details>
+                  )}
                   {!!detail?.teamMembers && detail.teamMembers.length > 1 && (
                     <details className="notice">
                       <summary>

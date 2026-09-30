@@ -1,3 +1,4 @@
+import { Teams } from '../services/team-space.js';
 import { rootRun, TaskBoard } from '../services/task-board.js';
 import { TeamScheduler } from '../services/team-scheduler.js';
 import { Verification } from '../services/verification.js';
@@ -34,7 +35,7 @@ import { tools, type TeamPort, type ToolContext } from '../tools/registry.js';
 import { abortError, assert, errorMessage, AppError } from './errors.js';
 import { terminal } from './lifecycle.js';
 import { ModelPool } from './pool.js';
-import { COMPACT, SYSTEM } from './prompts.js';
+import { COMPACT, SYSTEM, TEAM_PROTOCOL } from './prompts.js';
 export class Runtime implements TeamPort {
   readonly mcp = new McpHub();
   readonly bus = new EventEmitter();
@@ -50,6 +51,10 @@ export class Runtime implements TeamPort {
   private tasks = new Map<string, Promise<void>>();
   private steering = new Map<string, string[]>();
   private queue: string[] = [];
+  private scheduling = false;
+  private schedulingTask: Promise<void> = Promise.resolve();
+  private reschedule = false;
+  private shuttingDown = false;
   readonly streams = new Map<string, { conversationId: string; messageId: string; text: string }>();
   constructor(
     readonly store: Store,
@@ -75,7 +80,11 @@ export class Runtime implements TeamPort {
     this.inputs = new Inputs(store);
     this.knowledge = new Knowledge(store, new Embeddings(() => config.get().embedding));
     this.memories = new MemoryIndex(store, new Embeddings(() => config.get().embedding));
-    store.onEvent = (e) => this.bus.emit('event', e);
+    store.onEvent = (e) => {
+      this.bus.emit('event', e);
+      if (['tool.completed', 'team.lifecycle'].includes(e.type)) this.scheduleTeams();
+    };
+    this.bus.on('finished', () => this.scheduleTeams());
     this.bus.setMaxListeners(200);
   }
   active(conversationId: string) {
@@ -151,13 +160,19 @@ export class Runtime implements TeamPort {
     this.steering.set(run.id, [...(this.steering.get(run.id) || []), message]);
     this.store.event(conversationId, run.id, 'user.message', { text: message, steering: true });
   }
-  stop(key: string) {
+  stopTeam(key: string) {
+    const team = new Teams(this.store).get(this.store.get<Run>('run', key));
+    assert(team, 'TEAM_MISSING', 'No peer team.');
+    for (const member of team.members) this.stop(member);
+  }
+  stop(key: string, cascade = true) {
     const run = this.store.get<Run>('run', key);
     if (terminal(run.status)) return;
-    for (const child of this.store
-      .runs()
-      .filter((c) => c.parentRunId === key && !terminal(c.status)))
-      this.stop(child.id);
+    if (cascade)
+      for (const child of this.store
+        .runs()
+        .filter((c) => c.parentRunId === key && !terminal(c.status)))
+        this.stop(child.id);
     const controller = this.controllers.get(key);
     if (controller) controller.abort();
     else {
@@ -268,6 +283,7 @@ export class Runtime implements TeamPort {
     });
     return (
       SYSTEM +
+      TEAM_PROTOCOL +
       '\n\nCurrent runtime configuration (established facts; use only what is relevant to the task): ' +
       JSON.stringify({
         model: profile.model,
@@ -303,6 +319,7 @@ export class Runtime implements TeamPort {
         depth: run.depth,
         maxDepth: this.config.get().maxAgentDepth,
         teamStrategy: ctx.conversation.teamStrategy || 'auto',
+        teamMode: ctx.conversation.teamMode || 'hierarchy',
         isolatedCopy: !!ctx.conversation.isolationId,
         selectedSkills: skills,
         knowledgeScopes: ctx.scopes,
@@ -505,7 +522,10 @@ export class Runtime implements TeamPort {
           // Finish children before reporting the task terminal; never abandon live descendants.
           const children = this.store
             .runs()
-            .filter((r) => r.parentRunId === key && !terminal(r.status));
+            .filter(
+              (r) =>
+                r.parentRunId === key && !terminal(r.status) && !new Teams(this.store).get(run),
+            );
           if (children.length) {
             const reports = await this.wait(
               run,
@@ -537,8 +557,12 @@ export class Runtime implements TeamPort {
           const plan = await new Verification(this.store).refresh(run, ctx.files);
           const unfinished = plan.tasks.filter(
             (t) =>
-              (t.status !== 'done' || t.verification?.status === 'stale') &&
-              (run.id === plan.id || t.owner === run.id),
+              (t.status !== 'done' ||
+                t.verification?.status === 'stale' ||
+                (!!new Teams(this.store).get(run) &&
+                  !!t.artifacts?.length &&
+                  t.verification?.status !== 'checked')) &&
+              ((run.id === plan.id && !new Teams(this.store).get(run)) || t.owner === run.id),
           );
           assert(
             !unfinished.length,
@@ -574,11 +598,37 @@ export class Runtime implements TeamPort {
       const current = this.store.get<Run>('run', key);
       if (!terminal(current.status))
         this.store.transition(key, signal.aborted ? 'interrupted' : 'failed', errorMessage(error));
-      for (const child of this.store
-        .runs()
-        .filter((c) => c.parentRunId === key && !terminal(c.status)))
-        this.stop(child.id);
+      if (!new Teams(this.store).get(current))
+        for (const child of this.store
+          .runs()
+          .filter((c) => c.parentRunId === key && !terminal(c.status)))
+          this.stop(child.id);
     }
+  }
+  private scheduleTeams() {
+    if (this.shuttingDown) return;
+    this.reschedule = true;
+    if (this.scheduling) return;
+    this.scheduling = true;
+    this.schedulingTask = Promise.resolve().then(async () => {
+      try {
+        while (this.reschedule && !this.shuttingDown) {
+          this.reschedule = false;
+          for (const t of this.store.list<any>('team-space').filter((t) => t.mode === 'host')) {
+            const run = this.store.get<Run>('run', t.id);
+            try {
+              await this.dispatchTeam(run);
+            } catch (error) {
+              this.store.event(run.conversationId, run.id, 'team.scheduler-error', {
+                error: errorMessage(error),
+              });
+            }
+          }
+        }
+      } finally {
+        this.scheduling = false;
+      }
+    });
   }
   private async dispatchTeam(run: Run) {
     const root = rootRun(this.store, run);
@@ -605,6 +655,55 @@ export class Runtime implements TeamPort {
           '. Inspect the latest plan, complete only this assigned task, cite actual evidence, and update its status before finishing. Existing permissions are unchanged.',
       );
       this.store.event(run.conversationId, run.id, 'team.assigned', assignment);
+    }
+  }
+  async awaitDiscussion(run: Run, signal: AbortSignal, afterId?: string, seconds = 60) {
+    signal.throwIfAborted();
+    this.store.transition(run.id, 'waiting_children');
+    this.pump();
+    try {
+      return await new Promise((resolve, reject) => {
+        const clean = () => {
+          clearTimeout(timer);
+          this.bus.off('event', check);
+          signal.removeEventListener('abort', abort);
+        };
+        const check = () => {
+          const teams = new Teams(this.store),
+            team = teams.get(run);
+          if (!team || !team.members.includes(run.id)) return;
+          const rows = teams.messages(run);
+          const index = afterId ? rows.findIndex((m) => m.id === afterId) : -1;
+          if (afterId && index < 0) {
+            clean();
+            reject(new Error('Unknown discussion cursor.'));
+            return;
+          }
+          const messages = rows.slice(index + 1).filter((m) => m.sender !== run.id);
+          if (messages.length) {
+            clean();
+            resolve({ status: 'messages', messages });
+          }
+        };
+        const abort = () => {
+          clean();
+          reject(abortError());
+        };
+        const timer = setTimeout(
+          () => {
+            clean();
+            resolve({ status: 'no_messages', messages: [] });
+          },
+          Math.min(60, Math.max(1, seconds)) * 1000,
+        );
+        this.bus.on('event', check);
+        signal.addEventListener('abort', abort, { once: true });
+        if (signal.aborted) abort();
+        else check();
+      });
+    } finally {
+      if (!signal.aborted && this.store.get<Run>('run', run.id).status === 'waiting_children')
+        this.store.transition(run.id, 'running');
     }
   }
   async awaitAssignment(run: Run, signal: AbortSignal) {
@@ -665,8 +764,10 @@ export class Runtime implements TeamPort {
   wait: TeamPort['wait'] = (...args) => this.delegation.wait(...args);
   message: TeamPort['message'] = (...args) => this.delegation.message(...args);
   async shutdown() {
+    this.shuttingDown = true;
     for (const key of this.controllers.keys()) this.stop(key);
     await Promise.allSettled([...this.tasks.values()]);
+    await this.schedulingTask;
     this.knowledge.close();
     await this.mcp.close();
   }

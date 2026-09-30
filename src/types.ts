@@ -31,6 +31,17 @@ export interface UiState {
   };
 }
 export interface ConversationDetail {
+  teamSpace?: {
+    id: string;
+    mode: 'host' | 'creative';
+    status: string;
+    revision: number;
+    maxMessages: number;
+    roles: Record<string, string>;
+    blockers: string[];
+    closed: Record<string, string>;
+    messages: { id: string; sender: string; text: string }[];
+  } | null;
   teamScheduling?: { enabled: boolean; workers: string[]; maxLoad: number } | null;
   teamMembers?: {
     runId: string;

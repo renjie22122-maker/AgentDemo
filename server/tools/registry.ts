@@ -1,3 +1,4 @@
+import { Teams } from '../services/team-space.js';
 import { installPlanning } from './planning.js';
 import { inspectEffects } from '../services/recovery.js';
 import { snapshot, changes } from '../services/changes.js';
@@ -16,6 +17,12 @@ import { execute } from '../services/process.js';
 import { Configuration } from '../services/settings.js';
 import { Store, id } from '../storage/store.js';
 export interface TeamPort {
+  awaitDiscussion?(
+    run: Run,
+    signal: AbortSignal,
+    afterId?: string,
+    seconds?: number,
+  ): Promise<unknown>;
   awaitAssignment?(run: Run, signal: AbortSignal): Promise<unknown>;
   spawn(
     parent: Run,
@@ -114,6 +121,17 @@ export class ToolRegistry {
 
     if (!def || !this.specs(ctx).some((d) => d.name === name))
       throw new NotStartedError('TOOL_DENIED', 'Tool unavailable in the current task permissions.');
+    const team = new Teams(ctx.store).get(ctx.run);
+    if (team && name === 'spawn_agent')
+      throw new NotStartedError(
+        'TEAM_ROSTER_FIXED',
+        'Create all peer members before configuring the fixed roster.',
+      );
+    if (team?.closed[ctx.run.id] && def.effect !== 'read')
+      throw new NotStartedError(
+        'PARTICIPATION_ENDED',
+        'Participation ended; only inspection and a final answer remain.',
+      );
     const validation = def.schema.safeParse(args);
     if (!validation.success) throw new NotStartedError('TOOL_ARGUMENTS', validation.error.message);
     const parsed = validation.data;

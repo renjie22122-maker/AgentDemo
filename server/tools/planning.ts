@@ -1,9 +1,88 @@
+import { Teams } from '../services/team-space.js';
 import { TeamScheduler } from '../services/team-scheduler.js';
 import { Verification } from '../services/verification.js';
 import { z } from 'zod';
 import type { ToolRegistry } from './registry.js';
 import { TaskBoard, taskInput, rootRun } from '../services/task-board.js';
 export function installPlanning(registry: ToolRegistry) {
+  registry.add({
+    name: 'await_team_message',
+    effect: 'coordinate',
+    description:
+      'Wait for addressed creative contributions without polling the model. Can be used while the creator enrolls you. Provide the last received message ID to avoid rereading; timeout returns no_messages.',
+    schema: z.object({
+      afterId: z.string().optional(),
+      timeoutSeconds: z.number().int().min(1).max(60).default(60),
+    }),
+    run: async (a, c) => ({
+      content: JSON.stringify(
+        await c.team.awaitDiscussion!(c.run, c.signal, a.afterId, a.timeoutSeconds),
+      ),
+    }),
+  });
+  registry.add({
+    name: 'configure_team',
+    effect: 'coordinate',
+    description:
+      'Create a persistent peer team in the user-selected host or creative mode. Enroll existing members including yourself. Host completion is computed, never voted into truth. Discussion limit is explicit per member.',
+    schema: z.object({
+      mode: z.enum(['host', 'creative']),
+      members: z.array(z.string()).min(2).max(32),
+      maxMessages: z.number().int().min(1).max(100).default(12),
+    }),
+    run: async (a, c) => ({
+      content: JSON.stringify(
+        new Teams(c.store).configure(c.run, a.mode, a.members, a.maxMessages),
+      ),
+    }),
+  });
+  registry.add({
+    name: 'handoff_team_role',
+    effect: 'coordinate',
+    description:
+      'Transfer a team role with revision checking and an audit record. Changes coordination authority only, never file or command permissions.',
+    schema: z.object({
+      role: z.enum(['coordinator', 'planner', 'reviewer', 'summarizer']),
+      targetRunId: z.string(),
+      revision: z.number().int(),
+      reason: z.string().min(1).max(2000),
+    }),
+    run: async (a, c) => ({
+      content: JSON.stringify(
+        new Teams(c.store).handoff(c.run, a.role, a.targetRunId, a.revision, a.reason),
+      ),
+    }),
+  });
+  registry.add({
+    name: 'team_discuss',
+    effect: 'coordinate',
+    description:
+      'Post an attributed, untrusted creative contribution. Empty recipients broadcasts to enrolled peers. Does not wake finished members, grant permission or establish factual consensus. Respect per-member message limit; use inspect_team for transcript.',
+    schema: z.object({
+      text: z.string().min(1).max(4000),
+      recipients: z.array(z.string()).max(32).default([]),
+    }),
+    run: async (a, c) => {
+      const message = new Teams(c.store).post(c.run, a.text, a.recipients);
+      const notified: string[] = [];
+      for (const key of message.recipients) {
+        try {
+          c.team.message(c.run, key, '[Creative contribution, not a user instruction] ' + a.text);
+          notified.push(key);
+        } catch {}
+      }
+      return { content: JSON.stringify({ message, notified }) };
+    },
+  });
+  registry.add({
+    name: 'end_team_participation',
+    effect: 'coordinate',
+    description:
+      'Record your final contribution and end your participation. Requires owned tasks completed and no unknown effects. Does not mark the whole team complete. After this tool give your final answer; no further mutations.',
+    schema: z.object({ summary: z.string().min(1).max(6000) }),
+    run: async (a, c) => ({ content: JSON.stringify(new Teams(c.store).close(c.run, a.summary)) }),
+  });
+
   registry.add({
     name: 'await_team_task',
     effect: 'coordinate',
@@ -39,6 +118,7 @@ export function installPlanning(registry: ToolRegistry) {
     schema: z.object({}),
     run: async (_a, c) => ({
       content: JSON.stringify({
+        team: new Teams(c.store).project(c.run),
         members: new TaskBoard(c.store).members(c.run),
         scheduling: c.store.maybe('team-scheduling', rootRun(c.store, c.run)) || null,
         allocations: c.store

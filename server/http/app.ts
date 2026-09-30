@@ -1,3 +1,5 @@
+import type { Run } from '../../shared/types.js';
+import { Teams } from '../services/team-space.js';
 import { rootRun, TaskBoard } from '../services/task-board.js';
 import { inspectEffects } from '../services/recovery.js';
 import { execute as executeCommand } from '../services/process.js';
@@ -120,6 +122,9 @@ export async function createApp(options: { directory: string; dist?: string; run
         .list<Attachment>('attachment')
         .filter((a) => a.conversationId === c.id)
         .map(({ path, text, ...a }) => a),
+      teamSpace: store.runs(c.id).at(-1)
+        ? new Teams(store).project(store.runs(c.id).at(-1)!)
+        : null,
       teamMembers: store.runs(c.id).at(-1)
         ? new TaskBoard(store).members(store.runs(c.id).at(-1)!)
         : [],
@@ -180,6 +185,7 @@ export async function createApp(options: { directory: string; dist?: string; run
         profileId: z.string().optional(),
         reasoning: z.enum(['auto', 'none', 'low', 'medium', 'high', 'max']).optional(),
         permission: z.enum(['read-only', 'ask', 'trusted']).optional(),
+        teamMode: z.enum(['hierarchy', 'host', 'creative']).optional(),
         teamStrategy: z.enum(['off', 'auto', 'prefer']).optional(),
         skillIds: z.array(z.string()).max(30).optional(),
         knowledge: z.boolean().optional(),
@@ -265,6 +271,33 @@ export async function createApp(options: { directory: string; dist?: string; run
   });
   app.post<{ Params: { id: string } }>('/api/runs/:id/stop', async (req) => {
     runtime.stop(req.params.id);
+    return { ok: true };
+  });
+  app.post<{ Params: { id: string } }>('/api/runs/:id/stop-team', async (req) => {
+    runtime.stopTeam(req.params.id);
+    return { ok: true };
+  });
+  app.post<{ Params: { id: string } }>('/api/runs/:id/team-role', async (req) => {
+    const a = z
+      .object({
+        role: z.enum(['coordinator', 'planner', 'reviewer', 'summarizer']),
+        targetRunId: z.string(),
+        revision: z.number().int(),
+      })
+      .parse(req.body);
+    const service = new Teams(store),
+      team = service.get(store.get<Run>('run', req.params.id));
+    assert(team, 'TEAM_MISSING', 'No team.');
+    return service.handoff(
+      store.get<Run>('run', team.roles[a.role]),
+      a.role,
+      a.targetRunId,
+      a.revision,
+      'Explicit user transfer from team panel.',
+    );
+  });
+  app.post<{ Params: { id: string } }>('/api/runs/:id/stop-member', async (req) => {
+    runtime.stop(req.params.id, false);
     return { ok: true };
   });
   app.post<{ Params: { id: string } }>('/api/inputs/:id', async (req) => {

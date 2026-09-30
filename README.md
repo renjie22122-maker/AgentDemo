@@ -89,3 +89,17 @@ Workers can call `await_team_task` to wait for up to 60 seconds without repeated
 Permissions remain unchanged. Waiting-for-approval/user, recovery-only and uncertain-effect workers are excluded. Failed or blocked tasks are not automatically replayed. The scheduler does not spawn, resurrect or resize workers. Independent writable tasks require writable isolated copies; dependent writable work remains lead-managed because an existing copy may be stale.
 
 Validation: one real-model run distributed two independent reads across two workers and completed in 61 seconds. This establishes the exercised path, not a statistical performance claim.
+
+### Peer team modes (opt-in)
+
+Conversation controls offer **Lead + workers** (default), **Host scheduling / peers**, and **Creative discussion / peers**. Delegation Off takes precedence.
+
+Host mode stores the team independently of the coordinator lifecycle. Create all workers before `configure_team`, then enable `configure_team_scheduler`. Tool and lifecycle events trigger host assignment without another coordinator model request. A member failure no longer automatically cancels the team; the UI distinguishes stopping one member from stopping the whole team. Interrupted tasks retain ownership: uncertain operations are never reassigned or replayed. Transfer coordinator, planner, reviewer and summarizer roles through the team panel or `handoff_team_role`. Roles grant coordination authority, never file or command permissions.
+
+Creative mode supports attributed broadcasts and directed contributions (`team_discuss`), recipient-scoped transcripts and `await_team_message` (up to 60 seconds without model polling). Configure an explicit per-member message limit (default 12, range 1-100). Members exchange clues or opinions, then `end_team_participation`. Agreement, votes and fiction are not verified facts. This is a hosted discussion experiment, not cryptographic consensus or a distributed zero-trust protocol. The host user can inspect records; recipient filtering is not encryption.
+
+The team panel separates individual completion from host-computed team status. Declared artifacts require version-bound evidence; isolated copies need integration; unresolved effects and failed members block completion. Existing version/conflict checks and merge approvals remain enforced. A read-only coordinator cannot gain merge permission through a role transfer.
+
+Limits: the roster is fixed after configuration. Execution ancestry and depth limits remain for provenance and permissions. There is no automatic election, resurrection, dynamic scaling or cross-session federation. Server restart preserves team records but does not silently resume commands or model requests.
+
+Validation: 81 regression checks passed. After fixing a missing-artifact-verification exit path exposed by a real-model trial, the host scenario completed in 53.3 seconds (creator ends early, two workers finish) and the creative role exchange in 36.1 seconds. These two samples validate exercised paths, not general multi-agent superiority.

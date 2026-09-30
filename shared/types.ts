@@ -77,6 +77,7 @@ export interface Project {
 }
 export interface Conversation {
   isolationId?: string;
+  teamMode?: 'hierarchy' | 'host' | 'creative';
   teamStrategy?: 'off' | 'auto' | 'prefer';
   id: string;
   title: string;
