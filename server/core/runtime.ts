@@ -1,3 +1,5 @@
+import { rootRun, TaskBoard } from '../services/task-board.js';
+import { TeamScheduler } from '../services/team-scheduler.js';
 import { Verification } from '../services/verification.js';
 import { DelegationManager } from './delegation-manager.js';
 import { sampleContext } from './context-budget.js';
@@ -394,6 +396,7 @@ export class Runtime implements TeamPort {
         protocolRepairs = 0;
       const progress = new ProgressMonitor();
       while (!signal.aborted) {
+        await this.dispatchTeam(run);
         const messages = this.steering.get(key) || [];
         this.steering.set(key, []);
         for (const content of messages) run.checkpoints.push({ role: 'user', content });
@@ -492,6 +495,7 @@ export class Runtime implements TeamPort {
             final: !result.message.calls?.length,
           });
         if (!result.message.calls?.length) {
+          await this.dispatchTeam(run);
           assert(
             result.message.content.trim(),
             'EMPTY_ANSWER',
@@ -574,6 +578,85 @@ export class Runtime implements TeamPort {
         .runs()
         .filter((c) => c.parentRunId === key && !terminal(c.status)))
         this.stop(child.id);
+    }
+  }
+  private async dispatchTeam(run: Run) {
+    const root = rootRun(this.store, run);
+    const policy = this.store.maybe<{ enabled: boolean }>('team-scheduling', root);
+    if (!policy?.enabled) return;
+    const lead = this.store.get<Run>('run', root);
+    await new Verification(this.store).refresh(
+      lead,
+      await this.filesForConversation(
+        this.store.get<Conversation>('conversation', lead.conversationId),
+      ),
+    );
+
+    for (const assignment of new TeamScheduler(this.store).dispatch(run)) {
+      const target = this.store.get<Run>('run', assignment.runId);
+      this.steer(
+        target.conversationId,
+        '[Automatic team assignment] Task ' +
+          assignment.taskId +
+          ': ' +
+          assignment.title +
+          '. Acceptance: ' +
+          assignment.acceptance +
+          '. Inspect the latest plan, complete only this assigned task, cite actual evidence, and update its status before finishing. Existing permissions are unchanged.',
+      );
+      this.store.event(run.conversationId, run.id, 'team.assigned', assignment);
+    }
+  }
+  async awaitAssignment(run: Run, signal: AbortSignal) {
+    assert(run.parentRunId, 'TEAM_WORKER', 'Only a worker waits for team assignments.');
+    signal.throwIfAborted();
+    this.store.put('team-worker-ready', { id: run.id });
+    this.store.transition(run.id, 'waiting_children');
+    this.pump();
+    try {
+      return await new Promise((resolve, reject) => {
+        const cleanup = () => {
+          clearTimeout(timer);
+          this.bus.off('event', check);
+          signal.removeEventListener('abort', abort);
+        };
+        const check = () => {
+          const board = new TaskBoard(this.store).get(run);
+          const assigned = board.tasks.filter((t) => t.owner === run.id && t.status === 'running');
+          if (
+            assigned.length ||
+            (board.tasks.length > 0 && board.tasks.every((t) => t.status === 'done'))
+          ) {
+            cleanup();
+            resolve({
+              status: assigned.length ? 'assigned' : 'no_remaining_tasks',
+              tasks: assigned,
+            });
+          }
+        };
+        const abort = () => {
+          cleanup();
+          reject(abortError());
+        };
+        const timer = setTimeout(() => {
+          cleanup();
+          resolve({ status: 'no_assignment', tasks: [] });
+        }, 60000);
+        this.bus.on('event', check);
+        signal.addEventListener('abort', abort, { once: true });
+        if (signal.aborted) abort();
+        else {
+          check();
+          void this.dispatchTeam(run).catch((error) => {
+            cleanup();
+            reject(error);
+          });
+        }
+      });
+    } finally {
+      this.store.remove('team-worker-ready', run.id);
+      if (!signal.aborted && this.store.get<Run>('run', run.id).status === 'waiting_children')
+        this.store.transition(run.id, 'running');
     }
   }
   spawn: TeamPort['spawn'] = (...args) => this.delegation.spawn(...args);

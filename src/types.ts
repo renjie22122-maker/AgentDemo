@@ -31,6 +31,7 @@ export interface UiState {
   };
 }
 export interface ConversationDetail {
+  teamScheduling?: { enabled: boolean; workers: string[]; maxLoad: number } | null;
   teamMembers?: {
     runId: string;
     status: string;
@@ -45,6 +46,7 @@ export interface ConversationDetail {
       id: string;
       title: string;
       acceptance: string;
+      weight?: number;
       status: string;
       owner: string | null;
       dependsOn: string[];

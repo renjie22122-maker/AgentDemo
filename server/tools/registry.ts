@@ -16,6 +16,7 @@ import { execute } from '../services/process.js';
 import { Configuration } from '../services/settings.js';
 import { Store, id } from '../storage/store.js';
 export interface TeamPort {
+  awaitAssignment?(run: Run, signal: AbortSignal): Promise<unknown>;
   spawn(
     parent: Run,
     task: string,

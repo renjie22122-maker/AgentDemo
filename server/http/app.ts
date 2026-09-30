@@ -1,4 +1,4 @@
-import { TaskBoard } from '../services/task-board.js';
+import { rootRun, TaskBoard } from '../services/task-board.js';
 import { inspectEffects } from '../services/recovery.js';
 import { execute as executeCommand } from '../services/process.js';
 import { inspectionRoutes } from './inspection.js';
@@ -123,6 +123,9 @@ export async function createApp(options: { directory: string; dist?: string; run
       teamMembers: store.runs(c.id).at(-1)
         ? new TaskBoard(store).members(store.runs(c.id).at(-1)!)
         : [],
+      teamScheduling: store.runs(c.id).at(-1)
+        ? store.maybe('team-scheduling', rootRun(store, store.runs(c.id).at(-1)!))
+        : null,
       taskBoard: store.runs(c.id).at(-1)
         ? new TaskBoard(store).get(store.runs(c.id).at(-1)!)
         : null,

@@ -656,6 +656,14 @@ export function App() {
                         {language === 'zh' ? '团队成员' : 'Team members'} ·{' '}
                         {detail.teamMembers.length}
                       </summary>
+                      {detail.teamScheduling?.enabled && (
+                        <p>
+                          {language === 'zh'
+                            ? '自动分配已开启 · 每成员加权容量：'
+                            : 'Automatic assignment · weighted capacity per worker: '}
+                          {detail.teamScheduling.maxLoad}
+                        </p>
+                      )}
                       {detail.teamMembers.map((member) => (
                         <div className="notice" key={member.runId}>
                           <strong>{member.role}</strong> · {member.status}
@@ -672,6 +680,19 @@ export function App() {
                             )?.title || member.runId}
                           </button>
                           <small>
+                            {detail.teamScheduling?.workers.includes(member.runId) && (
+                              <span>
+                                {language === 'zh' ? '任务负载' : 'Task load'}:{' '}
+                                {detail.taskBoard?.tasks
+                                  .filter(
+                                    (t) =>
+                                      t.owner === member.runId &&
+                                      ['running', 'blocked'].includes(t.status),
+                                  )
+                                  .reduce((n, t) => n + (t.weight || 1), 0) ?? 0}
+                                /{detail.teamScheduling.maxLoad} ·{' '}
+                              </span>
+                            )}
                             {member.tasks.join(', ') || '—'} ·{' '}
                             {language === 'zh' ? '待核对操作' : 'Unresolved effects'}:{' '}
                             {member.unresolvedEffects}

@@ -1,8 +1,37 @@
+import { TeamScheduler } from '../services/team-scheduler.js';
 import { Verification } from '../services/verification.js';
 import { z } from 'zod';
 import type { ToolRegistry } from './registry.js';
 import { TaskBoard, taskInput, rootRun } from '../services/task-board.js';
 export function installPlanning(registry: ToolRegistry) {
+  registry.add({
+    name: 'await_team_task',
+    effect: 'coordinate',
+    description:
+      'Worker waits for automatic task assignment without repeated model polling, for up to 60 seconds. Returns assigned tasks or a no-assignment status. Does not claim or spawn work.',
+    schema: z.object({}),
+    run: async (_a, c) => ({
+      content: JSON.stringify(await c.team.awaitAssignment!(c.run, c.signal)),
+    }),
+  });
+
+  registry.add({
+    name: 'configure_team_scheduler',
+    effect: 'coordinate',
+    description:
+      'Lead enables automatic assignment to explicitly enrolled existing workers. Ready unowned tasks are priority ordered and balanced by weighted active load. No spawning or replay. Mark write tasks execution=isolated; writable tasks with dependencies stay lead-managed. Default maxLoad=1. Disable with enabled=false.',
+    schema: z.object({
+      workerRunIds: z.array(z.string()).max(32),
+      maxLoad: z.number().int().min(1).max(8).default(1),
+      enabled: z.boolean().default(true),
+    }),
+    run: async (a, c) => ({
+      content: JSON.stringify(
+        new TeamScheduler(c.store).configure(c.run, a.workerRunIds, a.maxLoad, a.enabled),
+      ),
+    }),
+  });
+
   registry.add({
     name: 'inspect_team',
     effect: 'read',
@@ -11,6 +40,11 @@ export function installPlanning(registry: ToolRegistry) {
     run: async (_a, c) => ({
       content: JSON.stringify({
         members: new TaskBoard(c.store).members(c.run),
+        scheduling: c.store.maybe('team-scheduling', rootRun(c.store, c.run)) || null,
+        allocations: c.store
+          .list<any>('team-allocation')
+          .filter((a) => a.root === rootRun(c.store, c.run))
+          .slice(-20),
         handoffs: c.store
           .list<any>('task-handoff')
           .filter((h) => h.boardId === rootRun(c.store, c.run)),

@@ -79,3 +79,13 @@ See [architecture](docs/ARCHITECTURE.md), [interaction](docs/INTERACTION.md) and
 Private state: `.data/`. Test artifacts: `.diagnostics/`. Both are excluded from Git. API keys are currently stored in a local settings file, not an OS credential vault. Protect the machine account and this directory. Exporting a repository must not include these directories.
 
 Skills are referenced from the imported directory; keep that directory available. The application does not install missing packages or external tools without a command request and user authorization.
+
+### Automatic team workload assignment
+
+The lead can enroll existing workers with `configure_team_scheduler`. Ready tasks are selected by priority and assigned to eligible workers with the lowest weighted task load. Task weights and each worker's configured capacity are explicit; this is task scheduling, not CPU telemetry or a claim of optimal delegation.
+
+Workers can call `await_team_task` to wait for up to 60 seconds without repeated model requests. The team panel displays scheduling status and each enrolled member's weighted load. Assignments are persisted in an audit record.
+
+Permissions remain unchanged. Waiting-for-approval/user, recovery-only and uncertain-effect workers are excluded. Failed or blocked tasks are not automatically replayed. The scheduler does not spawn, resurrect or resize workers. Independent writable tasks require writable isolated copies; dependent writable work remains lead-managed because an existing copy may be stale.
+
+Validation: one real-model run distributed two independent reads across two workers and completed in 61 seconds. This establishes the exercised path, not a statistical performance claim.
