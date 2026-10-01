@@ -988,3 +988,57 @@ test('steering arriving during failed model call is durably delivered on continu
     f.store.close();
   }
 });
+
+test('a saturated conversation tree cannot block another conversation or leak its input', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const seen: string[] = [];
+  const f = await setup({
+    complete: async (request) => {
+      const text = request.messages
+        .filter((m) => m.role === 'user')
+        .map((m) => m.content)
+        .join(' ');
+      seen.push(text);
+      if (text.includes('hold-root')) await gate;
+      return result('done');
+    },
+  });
+  f.config.save({ ...f.config.get(), maxParallelRuns: 1 });
+  for (const id of ['child', 'grandchild', 'other'])
+    f.store.put('conversation', { ...f.store.get<any>('conversation', 'chat'), id });
+  try {
+    const root = f.runtime.start('chat', 'hold-root');
+    await until(() => seen.length === 1);
+    const child = f.runtime.start('child', 'child-only', 0, {
+      parentRunId: root.id,
+      depth: 1,
+      fresh: true,
+    });
+    const grandchild = f.runtime.start('grandchild', 'grandchild-only', 0, {
+      parentRunId: child.id,
+      depth: 2,
+      fresh: true,
+    });
+    const other = f.runtime.start('other', 'independent-only');
+    await until(() => f.store.get<any>('run', other.id).status === 'completed');
+    assert.equal(f.store.get<any>('run', child.id).status, 'queued');
+    assert.equal(f.store.get<any>('run', grandchild.id).status, 'queued');
+    assert.equal(seen.length, 2);
+    assert(seen[1].includes('independent-only'));
+    assert(!seen[1].includes('hold-root'));
+    release();
+    await until(() => f.store.get<any>('run', grandchild.id).status === 'completed');
+    // Child completion can legitimately wake the parent for a final summary.
+    const childIndex = seen.findIndex((text) => text.includes('child-only'));
+    const grandchildIndex = seen.findIndex((text) => text.includes('grandchild-only'));
+    assert(childIndex >= 2);
+    assert(grandchildIndex > childIndex);
+  } finally {
+    release();
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});

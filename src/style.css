@@ -3091,3 +3091,114 @@ input.team-switch:checked::after {
 .media-gallery-summary strong {
   font-weight: 500;
 }
+
+.task-progress {
+  position: relative;
+  margin: 0 0 8px;
+  font-size: 0.88rem;
+}
+.task-progress-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--border, #3a3749);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+.task-progress-current {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.task-progress-toggle small {
+  white-space: nowrap;
+  color: var(--muted);
+}
+.task-progress-panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: min(48vh, 380px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+  border: 1px solid var(--border, #3a3749);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 12px 36px #0004;
+}
+.task-progress-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.task-progress-panel p {
+  font-size: 0.8rem;
+  margin: 8px 0;
+}
+.task-progress-panel ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.task-progress-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  border-radius: 9px;
+  padding: 10px 6px;
+}
+.task-progress-item:hover {
+  background: var(--bg);
+}
+.task-progress-copy {
+  flex: 1;
+  min-width: 0;
+}
+.task-progress-copy strong,
+.task-progress-copy small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.task-progress-copy small {
+  color: var(--muted);
+  margin-top: 3px;
+  font-size: 0.78rem;
+}
+.task-progress-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #999;
+  margin-top: 6px;
+}
+.task-progress-dot.running {
+  background: #9b83ed;
+  box-shadow: 0 0 0 3px #9b83ed22;
+}
+.task-progress-dot.done {
+  background: #60b896;
+}
+.task-progress-dot.blocked {
+  background: #db9e55;
+}
+.task-progress-toggle:focus-visible,
+.task-progress-item:focus-visible {
+  outline: 2px solid #9b83ed;
+  outline-offset: 2px;
+}

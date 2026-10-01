@@ -1,3 +1,4 @@
+import { TaskProgress } from './TaskProgress';
 import { SecurityControl } from './SecurityControl';
 import { VoiceInput } from './VoiceInput';
 import { TeamAutomationControls } from './TeamAutomationControls';
@@ -62,6 +63,24 @@ export function Composer({
   return (
     <div className="composer-area">
       <div className="composer-width">
+        {detail && detail.conversation.id === conversation?.id && (
+          <TaskProgress
+            key={conversation.id + ':' + run?.id}
+            detail={detail}
+            run={run}
+            zh={t('settings') !== 'Settings'}
+            onInspect={(id) => {
+              const target = document.getElementById('plan-task-' + id);
+              if (target) {
+                stick.current = false;
+                const panel = target.closest('details');
+                if (panel) panel.open = true;
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                target.focus({ preventScroll: true });
+              }
+            }}
+          />
+        )}
         {run && ['interrupted', 'failed'].includes(run.status) && (
           <button
             className="resume-button"

@@ -83,6 +83,7 @@ export class Runtime implements TeamPort {
       () => config.get().compactionRatio,
       this.modelPool,
       (run, req) => this.complete(run, req),
+      (run) => this.executionScope(run),
     );
     this.toolExecutor = new ToolExecutor(store, this.registry, directory);
     this.delegation = new DelegationManager(store, config, directory, this.bus, {
@@ -292,16 +293,33 @@ export class Runtime implements TeamPort {
       this.bus.emit('finished', key);
     }
   }
+  private executionScope(run: Run): string {
+    const seen = new Set<string>();
+    while (run.parentRunId) {
+      assert(!seen.has(run.id), 'RUN_ANCESTRY', 'Cyclic run ancestry.');
+      seen.add(run.id);
+      run = this.store.get<Run>('run', run.parentRunId);
+    }
+    return run.conversationId;
+  }
   private pump() {
-    const count = () =>
-      [...this.controllers.keys()].filter(
-        (k) =>
-          !['waiting_children', 'waiting_approval', 'waiting_user'].includes(
-            this.store.get<Run>('run', k).status,
-          ),
-      ).length;
-    while (this.queue.length && count() < this.config.get().maxParallelRuns) {
-      const key = this.queue.shift()!;
+    const counts = new Map<string, number>();
+    for (const key of this.controllers.keys()) {
+      const run = this.store.get<Run>('run', key);
+      if (['waiting_children', 'waiting_approval', 'waiting_user'].includes(run.status)) continue;
+      const scope = this.executionScope(run);
+      counts.set(scope, (counts.get(scope) || 0) + 1);
+    }
+    // A saturated team must not block an unrelated conversation behind it.
+    for (let i = 0; i < this.queue.length;) {
+      const key = this.queue[i];
+      const scope = this.executionScope(this.store.get<Run>('run', key));
+      if ((counts.get(scope) || 0) >= this.config.get().maxParallelRuns) {
+        i++;
+        continue;
+      }
+      this.queue.splice(i, 1);
+      counts.set(scope, (counts.get(scope) || 0) + 1);
       const controller = new AbortController();
       this.controllers.set(key, controller);
       const task = this.execute(key, controller.signal).finally(() => {
@@ -367,6 +385,7 @@ export class Runtime implements TeamPort {
         this.modelPool.run(
           this.controllers.get(run.id)?.signal || new AbortController().signal,
           fn,
+          this.executionScope(run),
         ),
       accountWeb: (usage, profile) => this.account(run, usage, profile, id()),
     };
@@ -596,23 +615,26 @@ export class Runtime implements TeamPort {
         });
         let result: ModelResult;
         try {
-          result = await this.modelPool.run(signal, () =>
-            this.complete(run, {
-              profile,
-              messages: run.checkpoints,
-              tools: this.registry.specs(ctx),
-              signal,
-              onText: (text) => {
-                const stream = this.streams.get(key);
-                if (stream) stream.text += text;
-                this.bus.emit('delta', {
-                  conversationId: run.conversationId,
-                  runId: key,
-                  messageId,
-                  text,
-                });
-              },
-            }),
+          result = await this.modelPool.run(
+            signal,
+            () =>
+              this.complete(run, {
+                profile,
+                messages: run.checkpoints,
+                tools: this.registry.specs(ctx),
+                signal,
+                onText: (text) => {
+                  const stream = this.streams.get(key);
+                  if (stream) stream.text += text;
+                  this.bus.emit('delta', {
+                    conversationId: run.conversationId,
+                    runId: key,
+                    messageId,
+                    text,
+                  });
+                },
+              }),
+            this.executionScope(run),
           );
         } catch (error) {
           if (

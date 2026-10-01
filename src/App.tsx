@@ -1,3 +1,4 @@
+import { conversationMarkdown } from './conversation-copy';
 import { mediaTimeline } from './media-timeline';
 import { MediaGallery } from './components/MediaGallery';
 import { TeamChat } from './components/TeamChat';
@@ -42,6 +43,8 @@ export function App() {
       () => (localStorage.getItem('agentdemo.language') as Language) || 'en',
     ),
     [theme, setTheme] = useState(() => localStorage.getItem('agentdemo.theme') || 'dark');
+  const [copying, setCopying] = useState<string | null>(null);
+  const [copyFallback, setCopyFallback] = useState<string | null>(null);
   const [sidebar, setSidebar] = useState(() => window.innerWidth > 760),
     [inspector, setInspector] = useState(false),
     [inspectorTab, setInspectorTab] = useState<'settings' | 'context' | 'files'>('settings'),
@@ -221,6 +224,22 @@ export function App() {
               void load(e.conversationId).catch(() => {});
           }
           if (
+            e.type === 'team.assigned' ||
+            e.type === 'team.lifecycle' ||
+            (e.type === 'tool.completed' &&
+              ['create_plan', 'update_task', 'record_verification', 'handoff_task'].includes(
+                e.data.name,
+              ))
+          ) {
+            const current = selectedRef.current;
+            if (
+              current &&
+              (e.conversationId === current ||
+                detailCache.current.get(current)?.teamMembers?.some((m) => m.runId === e.runId))
+            )
+              void load(current).catch(() => {});
+          }
+          if (
             [
               'input.requested',
               'input.answered',
@@ -350,6 +369,29 @@ export function App() {
     await load(key);
     notify(t('attachments') + ' ✓');
   }
+  async function copyConversation(id: string) {
+    if (copying) return;
+    setCopying(id);
+    try {
+      const value = (await api('/conversations/' + id)) as ConversationDetail;
+      const text = conversationMarkdown(
+        value,
+        state?.settings.agentName || 'AgentDemo',
+        language === 'zh',
+      );
+      try {
+        await navigator.clipboard.writeText(text);
+        notify(language === 'zh' ? '已复制整个对话' : 'Entire conversation copied');
+      } catch {
+        setCopyFallback(text);
+      }
+      setMenu(null);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCopying(null);
+    }
+  }
   function chatLink(c: any) {
     const active = state!.runs.some((r: any) => r.conversationId === c.id && !ended(r.status));
     return (
@@ -385,6 +427,15 @@ export function App() {
         </button>
         {menu === c.id && (
           <div className="context-menu">
+            <button disabled={copying !== null} onClick={() => void copyConversation(c.id)}>
+              {copying === c.id
+                ? language === 'zh'
+                  ? '正在复制…'
+                  : 'Copying…'
+                : language === 'zh'
+                  ? '复制整个对话'
+                  : 'Copy entire conversation'}
+            </button>
             {[
               [
                 t('rename'),
@@ -867,7 +918,12 @@ export function App() {
                         {detail.taskBoard.tasks.length}
                       </summary>
                       {detail.taskBoard.tasks.map((task: any) => (
-                        <div className="notice" key={task.id}>
+                        <div
+                          className="notice"
+                          key={task.id}
+                          id={'plan-task-' + task.id}
+                          tabIndex={-1}
+                        >
                           <strong>{task.title}</strong> <span className="pill">{task.status}</span>
                           <p>{task.acceptance}</p>
                           <small>
@@ -1046,6 +1102,38 @@ export function App() {
             newChat,
           }}
         />
+      )}
+      {copyFallback !== null && (
+        <div className="modal-backdrop">
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={language === 'zh' ? '手动复制对话' : 'Copy conversation manually'}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setCopyFallback(null);
+            }}
+          >
+            <h2>{language === 'zh' ? '浏览器未允许写入剪贴板' : 'Clipboard access unavailable'}</h2>
+            <p>
+              {language === 'zh'
+                ? '内容已选中，按 Ctrl+C 复制完整对话。'
+                : 'Text selected. Press Ctrl+C to copy the entire conversation.'}
+            </p>
+            <textarea
+              aria-label={language === 'zh' ? '完整对话' : 'Entire conversation'}
+              readOnly
+              value={copyFallback}
+              rows={12}
+              autoFocus
+              onFocus={(e) => e.currentTarget.select()}
+              style={{ width: '100%' }}
+            />
+            <button onClick={() => setCopyFallback(null)}>
+              {language === 'zh' ? '关闭' : 'Close'}
+            </button>
+          </div>
+        </div>
       )}
       {toast && (
         <div className="toast" role="status">

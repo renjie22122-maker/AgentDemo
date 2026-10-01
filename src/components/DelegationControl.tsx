@@ -151,8 +151,8 @@ export function DelegationControl({
           <footer className="control-note">
             <div>
               {zh
-                ? `最多委派 ${depth} 层 · 子任务累计 ${total} 个 · 模型并发 ${parallel}`
-                : `Depth ${depth} · ${total} children per run tree · ${parallel} model requests at once`}
+                ? `最多委派 ${depth} 层 · 子任务累计 ${total} 个 · 本对话模型并发 ${parallel}`
+                : `Depth ${depth} · ${total} children per run tree · ${parallel} model requests per conversation`}
             </div>
             <div>
               {zh

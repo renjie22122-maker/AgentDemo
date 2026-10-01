@@ -1,23 +1,29 @@
 import { abortError } from './errors.js';
 export class ModelPool {
-  private active = 0;
-  private queue: Array<() => void> = [];
+  private groups = new Map<string, { active: number; queue: Array<() => void> }>();
   constructor(private capacity: () => number) {}
-  async run<T>(signal: AbortSignal, fn: () => Promise<T>): Promise<T> {
+  async run<T>(signal: AbortSignal, fn: () => Promise<T>, scope = 'default'): Promise<T> {
     if (signal.aborted) throw abortError();
+    let group = this.groups.get(scope);
+    if (!group) this.groups.set(scope, (group = { active: 0, queue: [] }));
+    const state = group;
+    const clean = () => {
+      if (!state.active && !state.queue.length) this.groups.delete(scope);
+    };
     await new Promise<void>((resolve, reject) => {
       const enter = () => {
         signal.removeEventListener('abort', abort);
-        this.active++;
+        state.active++;
         resolve();
       };
       const abort = () => {
-        this.queue = this.queue.filter((q) => q !== enter);
+        state.queue = state.queue.filter((q) => q !== enter);
+        clean();
         reject(abortError());
       };
-      if (this.active < this.capacity()) enter();
+      if (state.active < this.capacity()) enter();
       else {
-        this.queue.push(enter);
+        state.queue.push(enter);
         signal.addEventListener('abort', abort, { once: true });
       }
     });
@@ -25,8 +31,9 @@ export class ModelPool {
       if (signal.aborted) throw abortError();
       return await fn();
     } finally {
-      this.active--;
-      while (this.queue.length && this.active < this.capacity()) this.queue.shift()!();
+      state.active--;
+      while (state.queue.length && state.active < this.capacity()) state.queue.shift()!();
+      clean();
     }
   }
 }

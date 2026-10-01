@@ -154,3 +154,7 @@ The composer Access control combines independent approval and execution-isolatio
 Task contracts distinguish existing sourced inputs from outputs that another task must produce. Read-only conversations cannot create runnable write plans. Scheduler history is team-local, evidence-filtered and heuristic; it does not train a model. See [the live planning comparison and its limits](docs/PLANNING-EVALUATION-20261001.md).
 
 Context details cache snapshots by run revision and coalesce pagination requests. Display settings offer automatic scaling or 25–150%; Settings also allows changing the assistant display name.
+
+### Conversation concurrency
+
+The parallel model setting applies independently to each root conversation, including its recursive sub-agents. Task admission, model requests, context summaries and auxiliary model calls share that conversation's capacity. A busy team does not consume another conversation's slots. Total process concurrency can therefore grow with the number of active conversations; provider account rate limits still apply.

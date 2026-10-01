@@ -44,7 +44,13 @@ export function Message({
         {event.data.steering && <span className="pill">↳</span>}
         {user && event.data.delivery === 'pending' && (
           <span className="pill">
-            {t('settings') === 'Settings' ? 'Waiting for model delivery' : '等待送入模型上下文'}
+            {event.data.steering
+              ? t('settings') === 'Settings'
+                ? 'Queued for the next step in this conversation'
+                : '等待本对话下一步骤接收'
+              : t('settings') === 'Settings'
+                ? 'Starting this conversation'
+                : '正在启动本对话'}
           </span>
         )}
       </div>

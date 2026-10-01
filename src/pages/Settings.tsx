@@ -526,7 +526,9 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
             />
           </label>
           <label>
-            {t('Parallel model runs')}
+            {t('settings') === 'Settings'
+              ? 'Parallel model requests per conversation (including children)'
+              : '每个对话的模型并发（含子 Agent）'}
             <input
               type="number"
               min="1"

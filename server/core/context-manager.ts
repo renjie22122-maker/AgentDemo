@@ -11,6 +11,7 @@ export class ContextManager {
     private ratio: () => number,
     private modelPool: ModelPool,
     private complete: (run: Run, request: ModelRequest) => Promise<ModelResult>,
+    private scope: (run: Run) => string = (run) => run.conversationId,
   ) {}
   async compact(
     run: Run,
@@ -84,23 +85,26 @@ export class ContextManager {
     );
     let handoff = '';
     for (const chunk of chunks) {
-      const result = await this.modelPool.run(signal, () =>
-        this.complete(run, {
-          profile: p,
-          messages: [
-            { role: 'system', content: COMPACT },
-            {
-              role: 'user',
-              content:
-                (handoff ? 'Prior handoff to consolidate:\n' + handoff + '\n' : '') +
-                'Historical context segment:\n' +
-                chunk,
-            },
-          ],
-          tools: [],
-          signal,
-          onText: () => {},
-        }),
+      const result = await this.modelPool.run(
+        signal,
+        () =>
+          this.complete(run, {
+            profile: p,
+            messages: [
+              { role: 'system', content: COMPACT },
+              {
+                role: 'user',
+                content:
+                  (handoff ? 'Prior handoff to consolidate:\n' + handoff + '\n' : '') +
+                  'Historical context segment:\n' +
+                  chunk,
+              },
+            ],
+            tools: [],
+            signal,
+            onText: () => {},
+          }),
+        this.scope(run),
       );
       assert(
         !result.message.calls?.length && result.message.content.trim(),
