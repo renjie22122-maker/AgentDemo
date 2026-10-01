@@ -15,10 +15,11 @@ export class Inputs {
     kind: PendingInput['kind'],
     payload: Record<string, any>,
     signal: AbortSignal,
+    options: { id?: string; background?: boolean } = {},
   ): Promise<string> {
     if (signal.aborted) throw abortError();
     const item: PendingInput = {
-      id: id(),
+      id: options.id || id(),
       runId: run.id,
       conversationId: run.conversationId,
       kind,
@@ -31,6 +32,7 @@ export class Inputs {
       const review = await this.review(run, payload, signal);
       if (review) {
         item.payload = { ...payload, autoReview: review };
+        signal.throwIfAborted();
         if (review.decision === 'allow') {
           item.status = 'answered';
           item.answer = 'Approved by automatic reviewer: ' + review.reason;
@@ -48,7 +50,8 @@ export class Inputs {
     }
     signal.throwIfAborted();
     this.store.put('input', item);
-    this.store.transition(run.id, kind === 'approval' ? 'waiting_approval' : 'waiting_user');
+    if (!options.background)
+      this.store.transition(run.id, kind === 'approval' ? 'waiting_approval' : 'waiting_user');
     return new Promise((resolve, reject) => {
       const abort = () => {
         this.waiting.delete(item.id);
@@ -59,7 +62,7 @@ export class Inputs {
         resolve: (value) => {
           signal.removeEventListener('abort', abort);
           this.waiting.delete(item.id);
-          if (!signal.aborted) this.store.transition(run.id, 'running');
+          if (!signal.aborted && !options.background) this.store.transition(run.id, 'running');
           resolve(value);
         },
         reject: (e) => {
@@ -70,6 +73,7 @@ export class Inputs {
       });
       signal.addEventListener('abort', abort, { once: true });
       this.store.event(run.conversationId, run.id, 'input.requested', { ...item });
+      if (signal.aborted) abort();
     });
   }
   answer(key: string, answer: string, allow: boolean) {

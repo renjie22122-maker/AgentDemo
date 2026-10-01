@@ -4,7 +4,7 @@ import { VoiceInput } from './VoiceInput';
 import { TeamAutomationControls } from './TeamAutomationControls';
 import { DelegationControl } from './DelegationControl';
 import { ReasoningSlider } from './ReasoningSlider';
-import { ArrowDown, ArrowUp, Paperclip, Plus, Square, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, LoaderCircle, Paperclip, Plus, Square, X } from 'lucide-react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import type { Conversation, Project, PublicProfile } from '../../shared/types';
 import { api } from '../api';
@@ -259,7 +259,13 @@ export function Composer({
               )}
               <button
                 className="send-button"
-                aria-label={t('send')}
+                aria-label={
+                  sending ? (t('settings') === 'Settings' ? 'Sending' : '正在发送') : t('send')
+                }
+                aria-busy={sending}
+                title={
+                  sending ? (t('settings') === 'Settings' ? 'Sending' : '正在发送') : t('send')
+                }
                 disabled={
                   sending ||
                   (!draft.trim() && !detail?.attachments.some((a) => !a.messageEventId)) ||
@@ -267,7 +273,11 @@ export function Composer({
                 }
                 onClick={() => void send()}
               >
-                <ArrowUp size={19} />
+                {sending ? (
+                  <LoaderCircle size={19} className="send-progress-icon" />
+                ) : (
+                  <ArrowUp size={19} />
+                )}
               </button>
             </div>
           </div>

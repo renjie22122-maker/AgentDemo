@@ -1,3 +1,7 @@
+import childProcess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
@@ -174,3 +178,114 @@ test('credential reuse is origin-bound and diagnostic configuration omits persis
   });
   assert.equal(config.get().profiles[0].apiKey, '');
 });
+
+test(
+  'an exited launcher with inherited output handles cannot hold a command forever',
+  { timeout: 15000 },
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'agentdemo-inherited-pipe-'));
+    const config = new Configuration(join(dir, 'settings.json'));
+    await writeFile(
+      join(dir, 'launcher.cjs'),
+      `
+    const {spawn} = require('node:child_process');
+    const fs = require('node:fs');
+    const child = spawn(process.execPath, ['-e', 'setTimeout(()=>{},10000)'],
+      {stdio:['ignore', process.stdout, process.stderr], windowsHide:true});
+    fs.writeFileSync('child.pid', String(child.pid));
+    child.unref();
+    console.log('SERVER_READY_FIXTURE');
+    process.exit(0);
+  `,
+    );
+    let observed = '';
+    const started = Date.now();
+    try {
+      try {
+        const result = await execute(
+          '"' + process.execPath + '" launcher.cjs',
+          dir,
+          new AbortController().signal,
+          700,
+          config.get(),
+          (_stream, chunk) => {
+            observed += chunk;
+          },
+        );
+        assert(result.timedOut || result.code === 0, JSON.stringify(result));
+      } catch (error: any) {
+        if (error.code === 'ERR_ASSERTION') throw error;
+        assert.equal(error.code, 'EXECUTION_OUTCOME_UNKNOWN');
+        assert.match(error.message, /SERVER_READY_FIXTURE/);
+      }
+      assert.match(observed, /SERVER_READY_FIXTURE/);
+      assert(Date.now() - started < 5000, 'deadline must not depend on close');
+    } finally {
+      try {
+        process.kill(Number(await readFile(join(dir, 'child.pid'), 'utf8')));
+      } catch {}
+    }
+  },
+);
+
+test(
+  'abort returns promptly and streamed output arrives before completion',
+  { timeout: 10000 },
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'agentdemo-cancel-output-'));
+    const config = new Configuration(join(dir, 'settings.json'));
+    const controller = new AbortController();
+    let received = false;
+    const started = Date.now();
+    const result = await execute(
+      '"' + process.execPath + '" -e "console.log(123);setInterval(()=>{},1000)"',
+      dir,
+      controller.signal,
+      30000,
+      config.get(),
+      () => {
+        received = true;
+        controller.abort();
+      },
+    );
+    assert(received);
+    assert(Date.now() - started < 5000);
+    assert(result.code !== 0);
+  },
+);
+
+test(
+  'missing close after termination returns an unknown outcome within the grace period',
+  { timeout: 8000 },
+  async (t) => {
+    const dir = await mkdtemp(join(tmpdir(), 'agentdemo-no-close-'));
+    const config = new Configuration(join(dir, 'settings.json'));
+    const fake = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      pid: undefined,
+      unref() {},
+      kill() {
+        return false;
+      },
+    });
+    const mocked = t.mock.method(childProcess, 'spawn', () => fake as any);
+    syncBuiltinESMExports();
+    const started = Date.now();
+    try {
+      const pending = execute('fixture', dir, new AbortController().signal, 20, config.get());
+      fake.stdout.write('already changed external state');
+      await assert.rejects(
+        pending,
+        (error: any) =>
+          error.code === 'EXECUTION_OUTCOME_UNKNOWN' &&
+          /already changed external state/.test(error.message),
+      );
+      assert(Date.now() - started < 4000);
+      assert(fake.stdout.destroyed && fake.stderr.destroyed);
+    } finally {
+      mocked.mock.restore();
+      syncBuiltinESMExports();
+    }
+  },
+);

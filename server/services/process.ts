@@ -8,6 +8,7 @@ export interface CommandResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+  aborted?: boolean;
   truncated: boolean;
   execution?: { backend: string; shell: string; cwd: string };
 }
@@ -17,6 +18,7 @@ export function execute(
   signal: AbortSignal,
   timeoutMs: number,
   settings: Settings,
+  onOutput?: (stream: string, text: string) => void,
 ): Promise<CommandResult> {
   if (signal.aborted) return Promise.reject(new AppError('CANCELLED', 'Cancelled'));
   if (settings.commandBackend === 'native-windows')
@@ -94,9 +96,37 @@ export function execute(
       if (s.length + v.length > 1000000) truncated = true;
       return (s + v).slice(0, 1000000);
     };
-    child.stdout.on('data', (v) => (stdout = take(stdout, v)));
-    child.stderr.on('data', (v) => (stderr = take(stderr, v)));
+    child.stdout.on('data', (v) => {
+      stdout = take(stdout, v);
+      onOutput?.('stdout', v);
+    });
+    child.stderr.on('data', (v) => {
+      stderr = take(stderr, v);
+      onOutput?.('stderr', v);
+    });
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const forceReturn = () => {
+      if (deadline || settled) return;
+      deadline = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        child.stdout.destroy();
+        child.stderr.destroy();
+        child.unref();
+        reject(
+          new AppError(
+            'EXECUTION_OUTCOME_UNKNOWN',
+            'Command did not close after termination was requested. Execution outcome and descendant cleanup are unknown; inspect before retrying. Partial stdout: ' +
+              stdout.slice(-8000) +
+              '\nPartial stderr: ' +
+              stderr.slice(-4000),
+          ),
+        );
+      }, 2000);
+    };
     const kill = () => {
+      forceReturn();
       if (docker)
         spawn('docker', ['rm', '-f', container], { windowsHide: true, stdio: 'ignore' }).on(
           'error',
@@ -121,8 +151,10 @@ export function execute(
       kill();
     }, timeoutMs);
     signal.addEventListener('abort', kill, { once: true });
+    if (signal.aborted) kill();
     const cleanup = () => {
       clearTimeout(timer);
+      clearTimeout(deadline);
       signal.removeEventListener('abort', kill);
     };
     child.on('error', (e) => {
@@ -140,6 +172,7 @@ export function execute(
         stdout,
         stderr,
         timedOut,
+        aborted: signal.aborted,
         truncated,
         execution: {
           backend: settings.commandBackend,

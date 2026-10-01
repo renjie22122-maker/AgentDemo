@@ -1,3 +1,5 @@
+import type { BackgroundCommands } from '../services/background-commands.js';
+import { installSkills } from './skill-tools.js';
 import { executionSettings } from '../../shared/execution.js';
 import { installMedia } from './media.js';
 import type { MediaService } from '../services/media.js';
@@ -7,9 +9,8 @@ import { Teams } from '../services/team-space.js';
 import { installPlanning } from './planning.js';
 import { inspectEffects } from '../services/recovery.js';
 import { snapshot, changes } from '../services/changes.js';
-import { dirname } from 'node:path';
 import { z } from 'zod';
-import type { Conversation, Memory, Run, Skill, ToolResult, ToolSpec } from '../../shared/types.js';
+import type { Conversation, Memory, Run, ToolResult, ToolSpec } from '../../shared/types.js';
 import { assert, NotStartedError, errorMessage } from '../core/errors.js';
 import { Inputs } from '../services/approvals.js';
 import { Knowledge } from '../services/knowledge.js';
@@ -42,6 +43,7 @@ export interface TeamPort {
 }
 export interface ToolContext {
   media: MediaService;
+  background: BackgroundCommands;
   callId?: string;
   commitCoordination?: (result: ToolResult) => void;
   beforeExecution?: () => void;
@@ -334,6 +336,8 @@ export function tools() {
       command: z.string().min(1).max(20000),
       folder: z.number().int().min(0).default(0),
       timeoutSeconds: z.number().int().min(1).max(1800).default(120),
+      background: z.boolean().default(false),
+      readyText: z.string().min(1).max(200).optional(),
       reason: z.string().min(1),
     }),
     run: async (a, c) => {
@@ -341,10 +345,54 @@ export function tools() {
       await c.files.resolve('@' + a.folder + '/.');
       const backend = effectiveSettings(c).commandBackend;
       const approvedEnvironment = executionSignature(c);
-      if (
-        c.conversation.permission !== 'trusted' ||
-        (backend === 'approval-host' && c.run.depth > 0)
-      ) {
+      const requiresApproval =
+        c.conversation.permission !== 'trusted' || (backend === 'approval-host' && c.run.depth > 0);
+      if (a.background && requiresApproval) {
+        const approvalId = id();
+        return text(
+          c.background.start(
+            c.run,
+            a.command,
+            c.files.roots[a.folder],
+            a.timeoutSeconds,
+            effectiveSettings(c),
+            c.signal,
+            a.readyText,
+            {
+              id: approvalId,
+              authorize: async (signal) => {
+                const answer = await c.inputs.request(
+                  c.run,
+                  'approval',
+                  {
+                    command: a.command,
+                    cwd: c.files.roots[a.folder],
+                    reason: a.reason,
+                    backend,
+                    timeoutSeconds: a.timeoutSeconds,
+                    background: true,
+                  },
+                  signal,
+                  { id: approvalId, background: true },
+                );
+                if (answer.startsWith('DENIED'))
+                  throw new NotStartedError(
+                    'APPROVAL_DENIED',
+                    'Command was denied; nothing was executed.',
+                  );
+                signal.throwIfAborted();
+                if (executionSignature(c) !== approvedEnvironment)
+                  throw new NotStartedError(
+                    'EXECUTION_CHANGED',
+                    'Execution configuration changed; request fresh approval.',
+                  );
+                await c.files.resolve('@' + a.folder + '/.');
+              },
+            },
+          ),
+        );
+      }
+      if (requiresApproval) {
         const answer = await c.inputs.request(
           c.run,
           'approval',
@@ -354,6 +402,7 @@ export function tools() {
             reason: a.reason,
             backend,
             timeoutSeconds: a.timeoutSeconds,
+            background: a.background,
           },
           c.signal,
         );
@@ -365,7 +414,35 @@ export function tools() {
           'EXECUTION_CHANGED',
           'Execution environment changed during approval. Request approval again.',
         );
+      if (a.background)
+        return text(
+          c.background.start(
+            c.run,
+            a.command,
+            c.files.roots[a.folder],
+            a.timeoutSeconds,
+            effectiveSettings(c),
+            c.signal,
+            a.readyText,
+          ),
+        );
       c.beforeExecution?.();
+      const startedAt = Date.now();
+      let pendingOutput = '';
+      let lastOutputAt: number | null = null;
+      const progress = () => {
+        c.store.event(c.run.conversationId, c.run.id, 'command.progress', {
+          callId: c.callId,
+          elapsedSeconds: Math.floor((Date.now() - startedAt) / 1000),
+          timeoutSeconds: a.timeoutSeconds,
+          outputTail: pendingOutput,
+          lastOutputAt,
+          note: 'Still awaiting command completion; elapsed time is not proof of progress.',
+        });
+        pendingOutput = '';
+      };
+      progress();
+      const heartbeat = setInterval(progress, 5000);
       try {
         return text(
           await execute(
@@ -374,6 +451,10 @@ export function tools() {
             c.signal,
             a.timeoutSeconds * 1000,
             effectiveSettings(c),
+            (_stream, chunk) => {
+              pendingOutput = (pendingOutput + chunk).slice(-2000);
+              lastOutputAt = Date.now();
+            },
           ),
         );
       } catch (error) {
@@ -387,8 +468,45 @@ export function tools() {
           });
         }
         throw error;
+      } finally {
+        clearInterval(heartbeat);
+        if (pendingOutput) progress();
       }
     },
+  });
+  registry.add({
+    name: 'background_commands',
+    effect: 'read',
+    description:
+      'Inspect durable background command status and bounded recent logs in this conversation; no model polling required.',
+    schema: z.object({ id: z.string().optional() }),
+    run: (a, c) =>
+      text(
+        a.id
+          ? c.background.view(c.background.get(c.conversation.id, a.id))
+          : c.background.list(c.conversation.id),
+      ),
+  });
+  registry.add({
+    name: 'wait_background_command',
+    effect: 'read',
+    description:
+      'Event-driven wait for completion or an optional stdout readiness marker, without model polling (seconds=0 waits until completion or a new user message; optional bounded wait up to 60 seconds). A marker is not a health check. Timeout here does not cancel execution.',
+    schema: z.object({
+      id: z.string(),
+      seconds: z.number().int().min(0).max(60).default(0),
+      untilReady: z.boolean().default(false),
+    }),
+    run: async (a, c) =>
+      text(await c.background.wait(c.conversation.id, a.id, c.signal, a.seconds, a.untilReady)),
+  });
+  registry.add({
+    name: 'cancel_background_command',
+    effect: 'coordinate',
+    description:
+      'Cancel an owned background command and inspect actual termination outcome. Unknown outcomes remain unresolved, never automatically restarted.',
+    schema: z.object({ id: z.string() }),
+    run: async (a, c) => text(await c.background.cancel(c.conversation.id, a.id)),
   });
   registry.add({
     name: 'ask_user',
@@ -445,32 +563,7 @@ export function tools() {
     }),
     run: async (a, c) => text(await c.knowledge.hybrid(c.scopes, a.query, a.limit, c.signal)),
   });
-  registry.add({
-    name: 'read_skill',
-    description: 'Load a selected skill. Skill instructions do not grant additional permissions.',
-    effect: 'read',
-    schema: z.object({ id: z.string() }),
-    run: async (a, c) => {
-      assert(
-        c.conversation.skillIds.includes(a.id),
-        'SKILL_SCOPE',
-        'Skill is not selected for this conversation',
-      );
-      return text(c.store.get<Skill>('skill', a.id).content);
-    },
-  });
-  registry.add({
-    name: 'read_skill_file',
-    description:
-      'Read a supporting UTF-8 skill file; executable scripts still require command approval.',
-    effect: 'read',
-    schema: z.object({ id: z.string(), path }),
-    run: async (a, c) => {
-      assert(c.conversation.skillIds.includes(a.id), 'SKILL_SCOPE', 'Skill is not selected');
-      const skill = c.store.get<Skill>('skill', a.id);
-      return text(await new FileScope([dirname(skill.source)]).read(a.path));
-    },
-  });
+  installSkills(registry);
   registry.add({
     name: 'suggest_memory',
     description:

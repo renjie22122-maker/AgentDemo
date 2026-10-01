@@ -30,14 +30,30 @@ export function executeNative(
     let out = '',
       err = '',
       ended = false;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
     const cancel = () => {
+      if (ended || deadline) return;
+      deadline = setTimeout(() => {
+        child.kill();
+        child.stdin.destroy();
+        child.stdout.destroy();
+        child.stderr.destroy();
+        child.unref();
+        finish(
+          new AppError(
+            'NATIVE_OUTCOME_UNKNOWN',
+            'Native adapter did not return after cancellation. Execution and cleanup are unconfirmed; inspect before retrying. ' +
+              err,
+          ),
+        );
+      }, 2000);
       if (!child.stdin.destroyed) child.stdin.end('\n');
     };
     const guard = setTimeout(cancel, timeoutMs + 120000);
     signal.addEventListener('abort', cancel, { once: true });
     child.stdout.on('data', (v) => {
-      out += v.toString();
-      if (out.length > 7000000) cancel();
+      if (out.length + v.length > 7000000) cancel();
+      out = (out + v.toString()).slice(0, 7000000);
     });
     child.stderr.on('data', (v) => (err = (err + v.toString()).slice(-4000)));
     child.stdin.on('error', () => {});
@@ -46,6 +62,7 @@ export function executeNative(
       if (ended) return;
       ended = true;
       clearTimeout(guard);
+      clearTimeout(deadline);
       signal.removeEventListener('abort', cancel);
       if (error) reject(error);
       else resolve(result!);

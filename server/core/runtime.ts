@@ -1,3 +1,4 @@
+import { BackgroundCommands } from '../services/background-commands.js';
 import { finalizeRun } from './finalization.js';
 import { TeamCoordinator } from './team-coordinator.js';
 import { executionSettings } from '../../shared/execution.js';
@@ -39,7 +40,7 @@ import { tools, type TeamPort, type ToolContext } from '../tools/registry.js';
 import { abortError, assert, errorMessage, AppError } from './errors.js';
 import { terminal } from './lifecycle.js';
 import { ModelPool } from './pool.js';
-import { COMPACT, SYSTEM, TEAM_PROTOCOL } from './prompts.js';
+import { COMPACT, SYSTEM, TEAM_PROTOCOL, BACKGROUND_GUIDANCE } from './prompts.js';
 export class Runtime implements TeamPort {
   readonly teamAutomation: TeamAutomation;
   private maintenanceTimer?: ReturnType<typeof setInterval>;
@@ -47,6 +48,7 @@ export class Runtime implements TeamPort {
   readonly mcp = new McpHub();
   readonly bus = new EventEmitter();
   readonly media: MediaService;
+  readonly background: BackgroundCommands;
   readonly inputs: Inputs;
   readonly knowledge: Knowledge;
   readonly memories: MemoryIndex;
@@ -115,6 +117,22 @@ export class Runtime implements TeamPort {
         if (!terminal(r.status)) this.steer(r.conversationId, text);
       },
       stop: (key) => this.stop(key, false),
+    });
+    this.background = new BackgroundCommands(store, (job) => {
+      store.put('runtime-inbox', {
+        id: job.id,
+        runId: job.runId,
+        state: 'pending',
+        content:
+          'Host background command notification: ' +
+          JSON.stringify({
+            id: job.id,
+            status: job.status,
+            code: job.result?.code,
+            error: job.error,
+          }) +
+          '. Inspect the result before dependent work. This is host status, not a new user instruction.',
+      });
     });
     this.media = new MediaService(store, config, directory);
     const reviewer = new AutoReview(store, config, this.resolveProvider);
@@ -208,6 +226,7 @@ export class Runtime implements TeamPort {
     const run = this.active(conversationId);
     assert(run, 'NO_ACTIVE_RUN', 'No running task.', 409);
     const queued = this.recordUserMessage(conversationId, run.id, message, true);
+    this.background.wake(conversationId);
     this.steering.set(run.id, [...(this.steering.get(run.id) || []), queued]);
   }
   private recordUserMessage(
@@ -375,6 +394,7 @@ export class Runtime implements TeamPort {
       store: this.store,
       inputs: this.inputs,
       media: this.media,
+      background: this.background,
       config: this.config,
       knowledge: this.knowledge,
       team: this,
@@ -414,6 +434,7 @@ export class Runtime implements TeamPort {
     });
     return (
       SYSTEM +
+      BACKGROUND_GUIDANCE +
       TEAM_PROTOCOL +
       '\n\nCurrent runtime configuration (established facts; use only what is relevant to the task): ' +
       JSON.stringify({
@@ -565,6 +586,17 @@ export class Runtime implements TeamPort {
       const progress = new ProgressMonitor();
       while (!signal.aborted) {
         await this.dispatchTeam(run);
+        const feedback = this.store
+          .list<any>('runtime-inbox')
+          .filter((m) => m.runId === run.id && m.state === 'pending');
+        if (feedback.length)
+          this.store.transaction(() => {
+            for (const item of feedback) {
+              run.checkpoints.push({ role: 'user', content: item.content });
+              this.store.put('runtime-inbox', { ...item, state: 'delivered' });
+            }
+            this.store.put('run', run);
+          });
         const pending = this.store
           .list<any>('user-inbox')
           .filter((m) => m.conversationId === run.conversationId && m.state === 'pending')
@@ -714,7 +746,13 @@ export class Runtime implements TeamPort {
             'EMPTY_ANSWER',
             'Model returned neither an answer nor tool calls.',
           );
-          if ((this.steering.get(key) || []).length) continue;
+          if (
+            (this.steering.get(key) || []).length ||
+            this.store
+              .list<any>('runtime-inbox')
+              .some((m) => m.runId === key && m.state === 'pending')
+          )
+            continue;
           // Finish children before reporting the task terminal; never abandon live descendants.
           const children = this.store
             .runs()
@@ -735,6 +773,21 @@ export class Runtime implements TeamPort {
                 'Delegated work has finished. Incorporate relevant results before your final answer:\n' +
                 JSON.stringify(reports),
             });
+            continue;
+          }
+          const jobs = this.background.running(run.id);
+          if (jobs.length) {
+            while (
+              this.background.running(run.id).length &&
+              !(this.steering.get(key) || []).length
+            ) {
+              await Promise.all(
+                this.background
+                  .running(run.id)
+                  .map((job) => this.background.wait(run.conversationId, job.id, signal, 60)),
+              );
+              signal.throwIfAborted();
+            }
             continue;
           }
           await finalizeRun(this.store, run, ctx.files);
@@ -761,6 +814,7 @@ export class Runtime implements TeamPort {
           final: false,
           incomplete: true,
         });
+      await this.background.stopRun(key);
       const current = this.store.get<Run>('run', key);
       if (!terminal(current.status))
         this.store.transition(key, signal.aborted ? 'interrupted' : 'failed', errorMessage(error));
@@ -817,6 +871,7 @@ export class Runtime implements TeamPort {
     for (const key of this.controllers.keys()) this.stop(key, true, false);
     await Promise.allSettled([...this.tasks.values()]);
     await this.schedulingTask;
+    await this.background.shutdown();
     this.knowledge.close();
     await this.mcp.close();
   }

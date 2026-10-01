@@ -90,6 +90,11 @@ export function Inspector({
                 : t('noProject')}
             </p>
             <h4>{t('selectedSkills')}</h4>
+            <p className="muted">
+              {t('settings') === 'Settings'
+                ? 'Checked skills are preferred. The agent may discover other enabled library skills when relevant; disable a skill in the library to exclude it.'
+                : '勾选的技能优先使用；Agent 也可按需发现技能库中其他已启用技能。如需排除，请在技能库禁用。'}
+            </p>
             <div className="skill-options">
               {state.skills.map((s: any) => (
                 <label className="checkbox" key={s.id}>

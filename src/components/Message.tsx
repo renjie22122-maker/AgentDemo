@@ -47,7 +47,7 @@ export function Message({
             {event.data.steering
               ? t('settings') === 'Settings'
                 ? 'Queued for the next step in this conversation'
-                : '等待本对话下一步骤接收'
+                : '已收到；当前步骤结束后交给模型，可停止当前任务'
               : t('settings') === 'Settings'
                 ? 'Starting this conversation'
                 : '正在启动本对话'}
@@ -128,23 +128,39 @@ export function Message({
 export function Activity({ events, t }: { events: AgentEvent[]; t: (s: string) => string }) {
   const [expanded, setExpanded] = useState(false);
   const label = (e: AgentEvent) =>
-    e.type === 'model.protocol-repair'
-      ? t(
-          e.data.code === 'OUTPUT_LIMIT'
-            ? 'Output truncated; retrying one smaller step'
-            : 'Correcting model tool arguments',
-        )
-      : e.type === 'model.started'
-        ? 'Thinking · ' + e.data.model
-        : e.type === 'tool.started'
-          ? e.data.name + ' · ' + JSON.stringify(e.data.arguments)
-          : e.type === 'tool.completed'
-            ? e.data.name + ' · ' + String(e.data.output).slice(0, 100)
-            : e.type === 'context.compacted'
-              ? 'Context compacted'
-              : e.type === 'child.started'
-                ? 'Delegated · ' + e.data.task
-                : e.type;
+    e.type === 'command.background'
+      ? (t('settings') === 'Settings' ? 'Background command' : '后台命令') +
+        ' · ' +
+        e.data.status +
+        ' · ' +
+        e.data.id +
+        ' · ' +
+        (e.data.stdout || e.data.error || '').slice(-160)
+      : e.type === 'command.progress'
+        ? (t('settings') === 'Settings' ? 'Command running' : '命令执行中') +
+          ' · ' +
+          e.data.elapsedSeconds +
+          's / ' +
+          e.data.timeoutSeconds +
+          's · ' +
+          (e.data.outputTail || (t('settings') === 'Settings' ? 'Waiting for output' : '等待输出'))
+        : e.type === 'model.protocol-repair'
+          ? t(
+              e.data.code === 'OUTPUT_LIMIT'
+                ? 'Output truncated; retrying one smaller step'
+                : 'Correcting model tool arguments',
+            )
+          : e.type === 'model.started'
+            ? 'Thinking · ' + e.data.model
+            : e.type === 'tool.started'
+              ? e.data.name + ' · ' + JSON.stringify(e.data.arguments)
+              : e.type === 'tool.completed'
+                ? e.data.name + ' · ' + String(e.data.output).slice(0, 100)
+                : e.type === 'context.compacted'
+                  ? 'Context compacted'
+                  : e.type === 'child.started'
+                    ? 'Delegated · ' + e.data.task
+                    : e.type;
   return (
     <details
       className="activity"
@@ -205,6 +221,13 @@ export function InputCard({ input, t, refresh, notify }: any) {
         {input.kind === 'approval' ? (
           <>
             <p>{input.payload.reason}</p>
+            {input.payload.background && (
+              <p className="muted">
+                {t('settings') === 'Settings'
+                  ? 'Deferred command: independent work may continue. This command starts only after approval; its execution timeout does not include approval waiting.'
+                  : '后台审批：可先做独立工作；此命令获批后才执行，等待审批不计入命令执行时限。'}
+              </p>
+            )}
             {input.payload.autoReview && (
               <p className="review-rationale">
                 {input.payload.autoReview.reason} ·{' '}

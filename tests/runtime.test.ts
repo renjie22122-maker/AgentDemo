@@ -1042,3 +1042,246 @@ test('a saturated conversation tree cannot block another conversation or leak it
     f.store.close();
   }
 });
+
+test(
+  'background command permits independent tools, wakes on steering, and finishes without polling',
+  { timeout: 15000 },
+  async () => {
+    let calls = 0,
+      jobId = '',
+      workedWhileRunning = false;
+    const f = await setup({
+      complete: async (req) => {
+        calls++;
+        if (calls === 1)
+          return result('', [
+            {
+              id: 'start-bg',
+              name: 'run_command',
+              arguments: {
+                command:
+                  '"' +
+                  process.execPath +
+                  '" -e "console.log(123);setTimeout(()=>console.log(456),2500)"',
+                folder: 0,
+                background: true,
+                timeoutSeconds: 10,
+                reason: 'bounded background test',
+              },
+            },
+          ]);
+        if (calls === 2) {
+          jobId = JSON.parse(
+            req.messages.find((m) => m.role === 'tool' && m.callId === 'start-bg')!.content,
+          ).id;
+          workedWhileRunning = f.runtime.background.get('chat', jobId).status === 'running';
+          return result('', [
+            {
+              id: 'independent',
+              name: 'write_file',
+              arguments: { path: 'independent.txt', content: 'done while command waits' },
+            },
+          ]);
+        }
+        if (calls === 3)
+          return result('', [
+            { id: 'wait-bg', name: 'wait_background_command', arguments: { id: jobId } },
+          ]);
+        if (calls === 4) {
+          assert(req.messages.some((m) => m.role === 'user' && m.content === 'status please'));
+          assert.equal(f.runtime.background.get('chat', jobId).status, 'running');
+          return result('', [
+            { id: 'wait-again', name: 'wait_background_command', arguments: { id: jobId } },
+          ]);
+        }
+        return result('Background and independent work finished.');
+      },
+    });
+    f.store.put('project', {
+      id: 'p',
+      name: 'Fixture',
+      folders: [await mkdtemp(join(tmpdir(), 'background-work-'))],
+      createdAt: 1,
+    });
+    f.store.put('conversation', {
+      ...f.store.get<any>('conversation', 'chat'),
+      projectId: 'p',
+      permission: 'trusted',
+    });
+    try {
+      const run = f.runtime.start('chat', 'Prepare two independent outputs');
+      await until(() =>
+        f.store
+          .events('chat')
+          .some((e) => e.type === 'tool.started' && e.data.callId === 'wait-bg'),
+      );
+      await new Promise((r) => setTimeout(r, 100));
+      const before = calls;
+      await new Promise((r) => setTimeout(r, 150));
+      assert.equal(calls, before);
+      f.runtime.steer('chat', 'status please');
+      await until(() => calls >= 4);
+      await until(() => f.store.get<any>('run', run.id).status === 'completed', 7000);
+      assert(workedWhileRunning);
+      assert.equal(f.runtime.background.get('chat', jobId).status, 'completed');
+      assert.equal(f.store.unknownEffects('chat').length, 0);
+      assert(calls <= 6, 'waiting must not poll the model');
+      assert.equal(
+        f.store.events('chat').filter((e) => e.type === 'user.message').length,
+        2,
+        'host completion must not impersonate user input',
+      );
+    } finally {
+      await f.runtime.shutdown();
+      f.store.close();
+    }
+  },
+);
+
+test('background jobs are scoped, cancelled and recovered as unknown without replay', async () => {
+  const f = await setup({ complete: async () => result('done') });
+  try {
+    const run = f.runtime.start('chat', 'fixture');
+    await until(() => f.store.get<any>('run', run.id).status === 'completed');
+    const job = f.runtime.background.start(
+      run,
+      '"' + process.execPath + '" -e "console.log(123);setInterval(()=>{},1000)"',
+      f.dir,
+      10,
+      f.config.get(),
+      new AbortController().signal,
+      '123',
+    );
+    const ready = await f.runtime.background.wait(
+      'chat',
+      job.id,
+      new AbortController().signal,
+      3,
+      true,
+    );
+    assert(ready.readyObserved);
+    assert.equal(ready.status, 'running');
+    assert.throws(() => f.runtime.background.get('foreign', job.id), /another conversation/);
+    const cancelled = await f.runtime.background.cancel('chat', job.id);
+    assert.equal(cancelled.status, 'cancelled');
+    const effectId = f.store.beginEffect(run.id, 'background_command', {
+      command: 'do not replay',
+    });
+    f.store.put('command-job', { ...job, id: 'interrupted-job', status: 'running', effectId });
+    const { BackgroundCommands } = await import('../server/services/background-commands.js');
+    const recovered = new BackgroundCommands(f.store);
+    assert.equal(recovered.get('chat', 'interrupted-job').status, 'unknown');
+    assert(f.store.unknownEffects('chat').some((e) => e.id === effectId));
+    assert.equal((await recovered.cancel('chat', 'interrupted-job')).status, 'unknown');
+    await recovered.shutdown();
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});
+
+for (const decision of ['approve', 'deny', 'cancel', 'changed'] as const)
+  test(
+    'deferred approval permits independent work and respects ' + decision,
+    { timeout: 15000 },
+    async () => {
+      let calls = 0,
+        jobId = '';
+      const f = await setup({
+        complete: async (req) => {
+          if (++calls === 1)
+            return result('', [
+              {
+                id: 'defer',
+                name: 'run_command',
+                arguments: {
+                  command: 'echo approved > command-marker.txt',
+                  background: true,
+                  timeoutSeconds: 5,
+                  reason: 'test approval boundary',
+                },
+              },
+            ]);
+          if (calls === 2) {
+            jobId = JSON.parse(
+              req.messages.find((m) => m.role === 'tool' && m.callId === 'defer')!.content,
+            ).id;
+            return result('', [
+              {
+                id: 'other',
+                name: 'write_file',
+                arguments: { path: 'independent.txt', content: 'unrelated work' },
+              },
+            ]);
+          }
+          return result('Independent work ready; report remaining approval status.');
+        },
+      });
+      const work = await mkdtemp(join(tmpdir(), 'deferred-approval-'));
+      f.store.put('project', { id: 'p', name: 'Fixture', folders: [work], createdAt: 1 });
+      f.store.put('conversation', {
+        ...f.store.get<any>('conversation', 'chat'),
+        projectId: 'p',
+        permission: 'ask',
+      });
+      const { access, readFile } = await import('node:fs/promises');
+      try {
+        const run = f.runtime.start('chat', 'Do independent work during command approval');
+        await until(() =>
+          f.store
+            .events('chat')
+            .some((e) => e.type === 'tool.completed' && e.data.callId === 'other'),
+        );
+        const input = f.store.list<any>('input').find((i) => i.status === 'pending');
+        assert(input);
+        assert(jobId);
+        assert.equal(f.runtime.background.get('chat', jobId).approvalId, input.id);
+        assert.equal(f.runtime.background.get('chat', jobId).status, 'waiting_approval');
+        assert.equal(
+          f.store.unknownEffects('chat').length,
+          0,
+          'approval is not an executed effect',
+        );
+        assert.equal(await readFile(join(work, 'independent.txt'), 'utf8'), 'unrelated work');
+        await assert.rejects(access(join(work, 'command-marker.txt')));
+        assert.notEqual(f.store.get<any>('run', run.id).status, 'completed');
+        const n = calls;
+        await new Promise((r) => setTimeout(r, 150));
+        assert.equal(calls, n, 'no model polling while awaiting decision');
+        if (decision === 'cancel') {
+          await f.runtime.background.cancel('chat', jobId);
+          assert.equal(f.store.get<any>('input', input.id).status, 'cancelled');
+          assert.throws(
+            () => f.runtime.inputs.answer(input.id, 'late approval', true),
+            /no longer waiting/,
+          );
+        } else {
+          if (decision === 'changed')
+            f.config.save({ ...f.config.get(), commandBackend: 'docker' });
+          f.runtime.inputs.answer(
+            input.id,
+            decision,
+            decision === 'approve' || decision === 'changed',
+          );
+        }
+        await until(() => f.store.get<any>('run', run.id).status === 'completed');
+        const job = f.runtime.background.get('chat', jobId);
+        assert.equal(
+          job.status,
+          decision === 'approve'
+            ? 'completed'
+            : decision === 'deny'
+              ? 'denied'
+              : decision === 'changed'
+                ? 'failed'
+                : 'cancelled',
+        );
+        if (decision === 'approve')
+          assert.match(await readFile(join(work, 'command-marker.txt'), 'utf8'), /approved/);
+        else await assert.rejects(access(join(work, 'command-marker.txt')));
+      } finally {
+        await f.runtime.shutdown();
+        f.store.close();
+      }
+    },
+  );

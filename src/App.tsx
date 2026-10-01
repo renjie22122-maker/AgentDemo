@@ -102,19 +102,27 @@ export function App() {
     return value;
   }, []);
   const detailCache = useRef(new Map<string, ConversationDetail>());
+  const patches = useRef(new Map<string, Record<string, unknown>>());
+  const updateQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const sendingRef = useRef(false);
+  const loadVersions = useRef(new Map<string, number>());
   const loading = useRef(new Map<string, Promise<any>>());
   const load = useCallback(async (id: string) => {
     let request = loading.current.get(id);
     if (!request) {
+      loadVersions.current.set(id, (loadVersions.current.get(id) || 0) + 1);
       request = api('/conversations/' + id);
       loading.current.set(id, request);
     }
+    const version = loadVersions.current.get(id);
     let value: any;
     try {
       value = await request;
+      value = { ...value, conversation: { ...value.conversation, ...patches.current.get(id) } };
     } finally {
       if (loading.current.get(id) === request) loading.current.delete(id);
     }
+    if (loadVersions.current.get(id) !== version) return;
     detailCache.current.delete(id);
     detailCache.current.set(id, value);
     if (detailCache.current.size > 5)
@@ -329,27 +337,72 @@ export function App() {
   const project = state?.projects.find((p: any) => p.id === conversation?.projectId),
     profile = state?.settings.profiles.find((p: any) => p.id === conversation?.profileId);
   const update = async (data: any) => {
-    if (!selected) return;
-    await api('/conversations/' + selected, data, 'PATCH');
-    await load(selected);
-    await refresh();
+    const key = selected;
+    if (!key) return;
+    const pending = { ...patches.current.get(key), ...data };
+    patches.current.set(key, pending);
+    setDetail((old) =>
+      old?.conversation.id === key
+        ? { ...old, conversation: { ...old.conversation, ...pending } }
+        : old,
+    );
+    const operation = updateQueue.current
+      .catch(() => {})
+      .then(() => api('/conversations/' + key, data, 'PATCH'));
+    updateQueue.current = operation;
+    try {
+      const saved = await operation;
+      // Invalidate snapshots requested before this write, so they cannot undo the UI.
+      loadVersions.current.set(key, (loadVersions.current.get(key) || 0) + 1);
+      loading.current.delete(key);
+      if (patches.current.get(key) === pending) patches.current.delete(key);
+      const current = { ...saved, ...patches.current.get(key) };
+      setDetail((old) => (old?.conversation.id === key ? { ...old, conversation: current } : old));
+      const cached = detailCache.current.get(key);
+      if (cached) detailCache.current.set(key, { ...cached, conversation: current });
+      setState((old) =>
+        old
+          ? { ...old, conversations: old.conversations.map((c) => (c.id === key ? current : c)) }
+          : old,
+      );
+    } catch (error) {
+      if (patches.current.get(key) === pending) {
+        patches.current.delete(key);
+        loading.current.delete(key);
+        await load(key);
+      }
+      throw error;
+    } finally {
+      if (updateQueue.current === operation) updateQueue.current = Promise.resolve();
+    }
   };
   async function send(text = draft) {
+    if (sendingRef.current) return;
     if (!text.trim() && !detail?.attachments.some((a) => !a.messageEventId)) return;
     if (!text.trim())
       text = t('settings') === 'Settings' ? 'Please examine the attached files.' : '请查看附件。';
+    sendingRef.current = true;
     setSending(true);
+    const originalDraft = draft;
+    let key = selected;
+    setDraft('');
+    localStorage.removeItem('agentdemo.draft.' + key);
+    stick.current = true;
+    let accepted = false;
     try {
-      const key = selected || (await newChat());
+      key = key || String(await newChat());
+      await updateQueue.current;
       await api('/conversations/' + key + '/message', { text });
-      setDraft('');
-      localStorage.removeItem('agentdemo.draft.' + key);
-      stick.current = true;
-      await refresh();
-      await load(key);
+      accepted = true;
+      await Promise.all([refresh(), load(key)]);
     } catch (e: any) {
+      if (!accepted) {
+        if (selectedRef.current === key) setDraft((current) => current || originalDraft);
+        else localStorage.setItem('agentdemo.draft.' + key, originalDraft);
+      }
       notify(e.message);
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   }
@@ -580,6 +633,8 @@ export function App() {
         );
       } else if (
         [
+          'command.background',
+          'command.progress',
           'tool.started',
           'tool.completed',
           'model.started',
@@ -1040,33 +1095,35 @@ export function App() {
                   <div ref={bottom} />
                 </div>
               </div>
-              <Composer
-                ensureConversation={async () => selected || (await newChat())}
-                {...{
-                  run,
-                  running,
-                  detail,
-                  send,
-                  draft,
-                  setDraft,
-                  drag,
-                  setDrag,
-                  action,
-                  addFiles,
-                  removeAttachment,
-                  draftRef,
-                  upload,
-                  profile,
-                  state,
-                  conversation,
-                  update,
-                  project,
-                  t,
-                  stick,
-                  bottom,
-                  sending,
-                }}
-              />
+              <>
+                <Composer
+                  ensureConversation={async () => selected || (await newChat())}
+                  {...{
+                    run,
+                    running,
+                    detail,
+                    send,
+                    draft,
+                    setDraft,
+                    drag,
+                    setDrag,
+                    action,
+                    addFiles,
+                    removeAttachment,
+                    draftRef,
+                    upload,
+                    profile,
+                    state,
+                    conversation,
+                    update,
+                    project,
+                    t,
+                    stick,
+                    bottom,
+                    sending,
+                  }}
+                />
+              </>
             </div>
             {inspector && (
               <Inspector

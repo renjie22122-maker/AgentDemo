@@ -3202,3 +3202,17 @@ input.team-switch:checked::after {
   outline: 2px solid #9b83ed;
   outline-offset: 2px;
 }
+
+.send-progress-icon {
+  animation: send-progress-rotate 1s linear infinite;
+}
+@keyframes send-progress-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .send-progress-icon {
+    animation: none;
+  }
+}

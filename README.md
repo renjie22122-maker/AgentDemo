@@ -158,3 +158,17 @@ Context details cache snapshots by run revision and coalesce pagination requests
 ### Conversation concurrency
 
 The parallel model setting applies independently to each root conversation, including its recursive sub-agents. Task admission, model requests, context summaries and auxiliary model calls share that conversation's capacity. A busy team does not consume another conversation's slots. Total process concurrency can therefore grow with the number of active conversations; provider account rate limits still apply.
+
+### Skill discovery and resources
+
+Conversation selections prioritize skills; the agent can search other enabled library skills with `find_skills`. Disable a library skill to exclude it. Skills remain untrusted reference material and cannot grant execution, upload or billing permissions. Supporting files can be listed, read or copied exactly (including binary assets) into the task filesystem using `materialize_skill_file`; differing destination files are never overwritten. Copies do not install dependencies or prove end-to-end capability. Existing configured media/web services may supply compatible operations without exposing host credentials to commands.
+
+Commands report a running heartbeat and recent host/Docker output while awaiting completion. Timeout or cancellation requests termination; if output handles never close, the executor returns an unknown outcome after a two-second cleanup grace period. This prevents an endless wait but does not prove descendant cleanup or undo side effects. Inspect unknown operations before retrying. The native adapter has its own startup/preflight allowance and a bounded cancellation fallback.
+
+### Processing while waiting
+
+Use `run_command` with `background: true` for an independent long-running operation. It retains the same approval, sandbox and execution timeout, returns a durable job ID and lets the agent work on unrelated steps. `background_commands` inspects status/logs; `wait_background_command` waits on events without model polling and wakes for a new message in the same conversation; `cancel_background_command` stops owned work. Completion is injected as host feedback, not as a fabricated user message. A final answer cannot complete the run while its background jobs are still running.
+
+An optional `readyText` marks an observed stdout phrase, not service health; follow it with a targeted approved health check. Stop task-owned servers after use. Command completion, timeout, cancellation and unknown outcomes are recorded separately. After a service crash, formerly running jobs become unknown and are never automatically replayed or killed by a stale PID. Conflicting work in the same environment must be serialized by the agent; automatic filesystem conflict prediction is not provided.
+
+Background commands also support deferred approval. Their job and approval IDs are returned while the decision is pending, permitting unrelated authorized work. The exact captured command starts only after approval and execution-configuration revalidation; rejection/cancellation starts nothing. Command timeouts start after approval. Pending approvals are included in the run's completion barrier, and service recovery cancels pre-execution jobs rather than treating them as executed. Ordinary foreground commands, questions and non-command approvals retain their synchronous workflow.
