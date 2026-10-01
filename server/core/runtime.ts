@@ -1,3 +1,6 @@
+import { executionSettings } from '../../shared/execution.js';
+import { MediaService } from '../services/media.js';
+import { AutoReview } from '../services/auto-review.js';
 import { normalizeImage } from '../services/images.js';
 import { TeamAutomation } from '../services/team-automation.js';
 import { Teams } from '../services/team-space.js';
@@ -44,6 +47,7 @@ export class Runtime implements TeamPort {
   private maintenanceTask: Promise<void> | null = null;
   readonly mcp = new McpHub();
   readonly bus = new EventEmitter();
+  readonly media: MediaService;
   readonly inputs: Inputs;
   readonly knowledge: Knowledge;
   readonly memories: MemoryIndex;
@@ -105,7 +109,9 @@ export class Runtime implements TeamPort {
       },
       stop: (key) => this.stop(key, false),
     });
-    this.inputs = new Inputs(store);
+    this.media = new MediaService(store, config, directory);
+    const reviewer = new AutoReview(store, config, this.resolveProvider);
+    this.inputs = new Inputs(store, (r, p, s) => reviewer.review(r, p, s));
     this.knowledge = new Knowledge(store, new Embeddings(() => config.get().embedding));
     this.memories = new MemoryIndex(store, new Embeddings(() => config.get().embedding));
     store.onEvent = (e) => {
@@ -344,6 +350,7 @@ export class Runtime implements TeamPort {
       files,
       store: this.store,
       inputs: this.inputs,
+      media: this.media,
       config: this.config,
       knowledge: this.knowledge,
       team: this,
@@ -406,14 +413,14 @@ export class Runtime implements TeamPort {
         uncertainOperations: run.recoveryOnly
           ? this.store.unknownEffects(run.conversationId).map((e) => ({ id: e.id, tool: e.tool }))
           : [],
-        commandBackend: this.config.get().commandBackend,
+        commandBackend: executionSettings(this.config.get(), ctx.conversation).commandBackend,
         commandShell:
-          this.config.get().commandBackend === 'docker'
+          executionSettings(this.config.get(), ctx.conversation).commandBackend === 'docker'
             ? 'Linux sh inside container; cwd=/workspace; Windows paths and cmd.exe are unavailable'
             : process.platform === 'win32'
               ? 'Windows cmd.exe'
               : 'POSIX sh',
-        commandNetwork: this.config.get().nativeNetwork,
+        commandNetwork: executionSettings(this.config.get(), ctx.conversation).nativeNetwork,
         publicWebToolsEnabled: this.config.get().web?.enabled !== false,
         depth: run.depth,
         maxDepth: this.config.get().maxAgentDepth,

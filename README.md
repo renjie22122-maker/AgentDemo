@@ -24,7 +24,7 @@ For development, run `pnpm dev` and `pnpm web` in two terminals. Vite serves por
 
 1. Add a model connection in **Settings**. Configure the protocol and endpoint explicitly; test it before use. Existing keys are never returned to the browser.
 2. Start a personal chat, or add a **Project** with one or more absolute folder paths. Personal chats have private artifact storage and cannot execute project commands.
-3. Choose a model, reasoning level, permissions and optional skills in the chat inspector.
+3. Choose reasoning, collaboration and access/security below the composer; choose model connections and optional skills in the inspector.
 4. Drop a document or image into the composer. Use **Knowledge** to index documents under a specific project or conversation.
 5. Send follow-ups while a task runs. Questions and approvals appear where they occurred. Denial returns a result to the agent; approval continues the same task.
 6. After an interruption, continue chatting in read-only inspection mode. Use automatic outcome checks or explicitly allow another attempt; unknown operations are never silently replayed.
@@ -138,3 +138,13 @@ Historical image-tool validation: 103 regression tests passed, including real su
 User follow-ups use a durable inbox, with pending/delivered status. Interrupted isolated-copy merges record per-file progress and require a fresh version review before continuing. Merged copies cannot accept further writable work. Recovery rebinds descendant and merge ownership. A per-data-directory process lock rejects a second server. Checkpoints are stored separately from frequently updated run metadata.
 
 Model discovery and settings changes never reuse an old API key for a different origin. Private settings receive restricted filesystem permissions; this is still local secret storage, not a credential vault. Provider retries are limited to rejected 429/selected 5xx responses, never partial streams or ambiguous transport failures. See [verification](docs/VERIFICATION.md).
+
+## Media and automatic approval
+
+Configure independent media connections in Settings. The main conversational model can call `media_services`, `generate_media`, `media_status`, and `cancel_media`. Adapters cover OpenAI-compatible media, fal, Replicate, Gemini, ElevenLabs, Deepgram, AssemblyAI, Meshy, Tripo and MiniMax official endpoints. Provider support is protocol-level: available models, reference inputs, cancellation and account entitlements vary. Do not treat this list as a claim that every model has been tested live.
+
+MiniMax direct connections use `https://api.minimax.io` and a pay-as-you-go API key. Video supports H3 and legacy Hailuo task receipts; speech synthesis requires `voice_setting.voice_id`. Music access depends on the account. Dictation uploads a completed recording and inserts editable text into the draft; it is not a realtime voice conversation. Media cards stay at their first event in the conversation, update in place, and can be collapsed.
+
+Media prices are manually configured estimates, not provider invoices or hard budgets. Submission results that are unknown are not automatically resubmitted. Cancellation is provider-dependent. Real paid-generation integration testing remains outstanding; automated tests use protocol fixtures.
+
+The composer Access control combines independent approval and execution-isolation choices. Read-only prevents file writes and command execution. Conversation overrides do not change global defaults; child conversations inherit them. Automatic approval uses a separate tool-free model request and asks the user on uncertainty or review failure. It does not remove sandbox restrictions, is not a guarantee of risk detection, and incurs separate model usage. Configure its reviewer under execution/security settings, not media settings.

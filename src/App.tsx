@@ -1,3 +1,5 @@
+import { mediaTimeline } from './media-timeline';
+import { MediaGallery } from './components/MediaGallery';
 import { TeamChat } from './components/TeamChat';
 import { ConversationStatus } from './components/ConversationStatus';
 import { DisplaySettings } from './components/DisplaySettings';
@@ -435,6 +437,7 @@ export function App() {
       }
     };
     const all = detail?.events || [];
+    const mediaAt = mediaTimeline(all);
     const starts = all.map((e, i) => (e.type === 'user.message' ? i : -1)).filter((i) => i >= 0);
     const offset = starts.length > visibleTurns ? starts[starts.length - visibleTurns] : 0;
     if (offset > 0)
@@ -480,6 +483,20 @@ export function App() {
           const timing = currentRuns.find((r) => r.id === e.runId);
           if (timing)
             nodes.push(<Elapsed key={'elapsed-' + e.id} run={timing} zh={language === 'zh'} />);
+        }
+      } else if (e.type === 'media.updated') {
+        const job = mediaAt.get(e.id);
+        if (job) {
+          flush();
+          nodes.push(
+            <MediaGallery
+              key={'media-' + job.id}
+              conversationId={selected}
+              jobs={[job]}
+              zh={language === 'zh'}
+              onText={(text: string) => setDraft((d) => d + (d ? '\n' : '') + text)}
+            />,
+          );
         }
       } else if (e.type === 'file.changes-limited' || e.type === 'file.changed') {
         const key = e.runId || 'legacy';
@@ -963,6 +980,7 @@ export function App() {
                 </div>
               </div>
               <Composer
+                ensureConversation={async () => selected || (await newChat())}
                 {...{
                   run,
                   running,

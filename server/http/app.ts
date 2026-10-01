@@ -1,3 +1,4 @@
+import { mediaRoutes } from './media.js';
 import { normalizeImage } from '../services/images.js';
 import { matchModel } from '../../shared/model-metadata.js';
 import { automationInput } from '../services/team-automation.js';
@@ -87,6 +88,8 @@ export async function createApp(options: { directory: string; dist?: string; run
       );
   });
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024, files: 1 } });
+  mediaRoutes(app, runtime);
+  runtime.media.start();
   app.get('/api/health', async () => ({ application: 'AgentDemo', version: '0.1.0', ready: true }));
   app.get('/api/bootstrap', async (req, reply) => {
     const origin = req.headers.origin;
@@ -221,7 +224,14 @@ export async function createApp(options: { directory: string; dist?: string; run
         archived: z.boolean().optional(),
         profileId: z.string().optional(),
         reasoning: z.enum(['auto', 'none', 'low', 'medium', 'high', 'max']).optional(),
-        permission: z.enum(['read-only', 'ask', 'trusted']).optional(),
+        permission: z.enum(['read-only', 'ask', 'auto', 'trusted']).optional(),
+        execution: z
+          .object({
+            backend: z.enum(['approval-host', 'native-windows', 'docker']),
+            network: z.enum(['host', 'deny']),
+          })
+          .nullable()
+          .optional(),
         teamMode: z.enum(['hierarchy', 'host', 'creative']).optional(),
         teamStrategy: z.enum(['off', 'auto', 'prefer']).optional(),
         skillIds: z.array(z.string()).max(30).optional(),
@@ -740,6 +750,7 @@ export async function createApp(options: { directory: string; dist?: string; run
   }
   app.addHook('onClose', async () => {
     await runtime.shutdown();
+    await runtime.media.close();
     store.close();
   });
   return { app, runtime, store, config };

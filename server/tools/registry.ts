@@ -1,3 +1,6 @@
+import { executionSettings } from '../../shared/execution.js';
+import { installMedia } from './media.js';
+import type { MediaService } from '../services/media.js';
 import { readScopedImage, normalizeImage } from '../services/images.js';
 import { prepareCoordination, commitCoordination } from '../services/coordination-journal.js';
 import { Teams } from '../services/team-space.js';
@@ -38,6 +41,7 @@ export interface TeamPort {
   message(parent: Run, key: string, message: string): void;
 }
 export interface ToolContext {
+  media: MediaService;
   callId?: string;
   commitCoordination?: (result: ToolResult) => void;
   beforeExecution?: () => void;
@@ -63,12 +67,14 @@ interface Definition {
   schema: z.ZodObject<any>;
   run: (args: any, ctx: ToolContext) => Promise<ToolResult> | ToolResult;
 }
+const effectiveSettings = (c: ToolContext) =>
+  executionSettings(c.config.get(), c.store.get<Conversation>('conversation', c.conversation.id));
 const executionSignature = (c: ToolContext) =>
   JSON.stringify([
-    c.config.get().commandBackend,
-    c.config.get().nativePython,
-    c.config.get().nativeNetwork,
-    c.config.get().dockerImage,
+    effectiveSettings(c).commandBackend,
+    effectiveSettings(c).nativePython,
+    effectiveSettings(c).nativeNetwork,
+    effectiveSettings(c).dockerImage,
   ]);
 const text = (value: unknown): ToolResult => ({
   content: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
@@ -111,7 +117,7 @@ export class ToolRegistry {
           !(
             ctx.run.depth > 0 &&
             d.effect === 'execute' &&
-            ctx.config.get().commandBackend === 'approval-host'
+            effectiveSettings(ctx).commandBackend === 'approval-host'
           ) &&
           !(
             ctx.conversation.permission === 'read-only' && ['write', 'execute'].includes(d.effect)
@@ -333,7 +339,8 @@ export function tools() {
     run: async (a, c) => {
       assert(c.files.roots[a.folder], 'FOLDER_UNKNOWN', 'Unknown project folder');
       await c.files.resolve('@' + a.folder + '/.');
-      const backend = c.config.get().commandBackend;
+      const backend = effectiveSettings(c).commandBackend;
+      const approvedEnvironment = executionSignature(c);
       if (
         c.conversation.permission !== 'trusted' ||
         (backend === 'approval-host' && c.run.depth > 0)
@@ -353,6 +360,11 @@ export function tools() {
         if (answer.startsWith('DENIED')) return text(answer);
       }
       c.signal.throwIfAborted();
+      if (executionSignature(c) !== approvedEnvironment)
+        throw new NotStartedError(
+          'EXECUTION_CHANGED',
+          'Execution environment changed during approval. Request approval again.',
+        );
       c.beforeExecution?.();
       try {
         return text(
@@ -361,7 +373,7 @@ export function tools() {
             c.files.roots[a.folder],
             c.signal,
             a.timeoutSeconds * 1000,
-            c.config.get(),
+            effectiveSettings(c),
           ),
         );
       } catch (error) {
@@ -628,6 +640,7 @@ export function tools() {
       return text(output);
     },
   });
+  installMedia(registry);
   installPlanning(registry);
   return registry;
 }

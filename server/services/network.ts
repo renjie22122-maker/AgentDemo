@@ -28,7 +28,7 @@ export async function fetchPublic(
   signal: AbortSignal,
   redirects = 0,
   deadline = AbortSignal.any([signal, AbortSignal.timeout(30000)]),
-  binaryImage = false,
+  binaryImage: boolean | 'media' = false,
 ): Promise<{
   url: string;
   text: string;
@@ -105,7 +105,11 @@ export async function fetchPublic(
         const contentType = String(response.headers['content-type'] || 'text/plain');
         if (
           !(binaryImage
-            ? /^image\/(png|jpeg|webp|gif)(;|$)/i.test(contentType)
+            ? binaryImage === 'media'
+              ? /^(image\/(png|jpeg|webp|gif)|audio\/|video\/|model\/|application\/(octet-stream|zip)|text\/plain)/i.test(
+                  contentType,
+                )
+              : /^image\/(png|jpeg|webp|gif)(;|$)/i.test(contentType)
             : /text\/|json|xml|javascript/i.test(contentType))
         ) {
           response.destroy();
@@ -141,7 +145,8 @@ export async function fetchPublic(
         const chunks: Buffer[] = [];
         response.on('data', (chunk) => {
           size += chunk.length;
-          const maxBytes = binaryImage ? 25 * 1024 * 1024 : 2000000;
+          const maxBytes =
+            binaryImage === 'media' ? 150 * 1024 * 1024 : binaryImage ? 25 * 1024 * 1024 : 2000000;
           if (size > maxBytes) {
             chunks.push(chunk.subarray(0, Math.max(0, maxBytes - (size - chunk.length))));
             finish(true);

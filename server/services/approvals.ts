@@ -6,7 +6,10 @@ export class Inputs {
     string,
     { resolve: (value: string) => void; reject: (e: Error) => void }
   >();
-  constructor(private store: Store) {}
+  constructor(
+    private store: Store,
+    private review?: (run: Run, payload: Record<string, any>, signal: AbortSignal) => Promise<any>,
+  ) {}
   async request(
     run: Run,
     kind: PendingInput['kind'],
@@ -24,6 +27,26 @@ export class Inputs {
       answer: null,
       createdAt: Date.now(),
     };
+    if (kind === 'approval' && this.review) {
+      const review = await this.review(run, payload, signal);
+      if (review) {
+        item.payload = { ...payload, autoReview: review };
+        if (review.decision === 'allow') {
+          item.status = 'answered';
+          item.answer = 'Approved by automatic reviewer: ' + review.reason;
+          this.store.put('input', item);
+          this.store.event(run.conversationId, run.id, 'input.requested', { ...item });
+          this.store.event(run.conversationId, run.id, 'input.answered', {
+            id: item.id,
+            answer: item.answer,
+            allow: true,
+            automatic: true,
+          });
+          return item.answer;
+        }
+      }
+    }
+    signal.throwIfAborted();
     this.store.put('input', item);
     this.store.transition(run.id, kind === 'approval' ? 'waiting_approval' : 'waiting_user');
     return new Promise((resolve, reject) => {

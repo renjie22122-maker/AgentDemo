@@ -1,3 +1,5 @@
+import { SecurityControl } from './SecurityControl';
+import { VoiceInput } from './VoiceInput';
 import { TeamAutomationControls } from './TeamAutomationControls';
 import { DelegationControl } from './DelegationControl';
 import { ReasoningSlider } from './ReasoningSlider';
@@ -8,6 +10,7 @@ import { api } from '../api';
 import type { Action, ConversationDetail, RunView, UiState } from '../types';
 
 interface ComposerProps {
+  ensureConversation: () => Promise<string>;
   run: RunView | undefined;
   running: boolean | undefined;
   detail: ConversationDetail | null;
@@ -32,6 +35,7 @@ interface ComposerProps {
   sending: boolean;
 }
 export function Composer({
+  ensureConversation,
   run,
   running,
   detail,
@@ -157,6 +161,14 @@ export function Composer({
                   e.target.value = '';
                 }}
               />
+              <VoiceInput
+                key={conversation?.id || 'new'}
+                conversationId={conversation?.id}
+                ensureConversation={ensureConversation}
+                enabled={!!state.settings.media?.transcriptionId}
+                zh={t('settings') !== 'Settings'}
+                onText={(text: string) => setDraft((d) => d + (d ? '\n' : '') + text)}
+              />
               <span className="composer-model">
                 {profile?.model ||
                   state.settings.profiles.find((p: any) => p.id === state.settings.defaultProfileId)
@@ -195,6 +207,13 @@ export function Composer({
                     depth={state.settings.maxAgentDepth}
                     total={state.settings.maxChildren}
                     parallel={state.settings.maxParallelRuns}
+                  />
+                  <SecurityControl
+                    conversation={conversation}
+                    settings={state.settings as any}
+                    disabled={!!running}
+                    zh={t('settings') !== 'Settings'}
+                    onChange={(patch) => void action(() => update(patch))}
                   />
                 </>
               )}
@@ -242,11 +261,15 @@ export function Composer({
                 ? project.folders.length +
                   ' folder(s) · ' +
                   t(
-                    conversation?.permission === 'trusted'
-                      ? 'trusted'
-                      : conversation?.permission === 'read-only'
-                        ? 'readOnly'
-                        : 'askMode',
+                    conversation?.permission === 'auto'
+                      ? t('settings') !== 'Settings'
+                        ? '帮我审批'
+                        : 'Approve for me'
+                      : conversation?.permission === 'trusted'
+                        ? 'trusted'
+                        : conversation?.permission === 'read-only'
+                          ? 'readOnly'
+                          : 'askMode',
                   )
                 : t('artifacts')}
           </span>

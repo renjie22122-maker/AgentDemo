@@ -80,22 +80,6 @@ export function Inspector({
                 ))}
               </select>
             </label>
-            <label>
-              {t('access')}
-              <select
-                disabled={running}
-                value={conversation.permission}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (value === 'trusted' && !confirm(t('trustedWarning'))) return;
-                  void action(() => update({ permission: value }));
-                }}
-              >
-                <option value="read-only">{t('readOnly')}</option>
-                <option value="ask">{t('askMode')}</option>
-                <option value="trusted">{t('trusted')}</option>
-              </select>
-            </label>
             <p className="muted">
               {project
                 ? project.folders.map((f: string, i: number) => (

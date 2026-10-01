@@ -1,12 +1,17 @@
 let csrf = '';
-export async function api<T = any>(path: string, body?: unknown, method?: string): Promise<T> {
+export async function api<T = any>(
+  path: string,
+  body?: unknown,
+  method?: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<T> {
   const response = await fetch('/api' + path, {
     signal: AbortSignal.timeout(body === undefined ? 20000 : 120000),
     method: method || (body === undefined ? 'GET' : 'POST'),
     headers:
       body === undefined || body instanceof FormData
-        ? { 'X-CSRF-Token': csrf }
-        : { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+        ? { 'X-CSRF-Token': csrf, ...extraHeaders }
+        : { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, ...extraHeaders },
     body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
   });
   const value = await response.json();

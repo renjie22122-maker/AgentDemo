@@ -1,3 +1,5 @@
+import { ApprovalSettings } from '../components/ApprovalSettings';
+import { MediaSettings } from '../components/MediaSettings';
 import { matchModel } from '../../shared/model-metadata';
 import { PlugZap, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -402,7 +404,9 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
         </div>
         <fieldset className="execution-modes">
           <legend>
-            {t('settings') !== 'Settings' ? '执行安全模式' : 'Execution security mode'}
+            {t('settings') !== 'Settings'
+              ? '默认执行环境（对话中可覆盖）'
+              : 'Default execution environment (overridable per chat)'}
           </legend>
           {[
             {
@@ -471,6 +475,7 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
               : 'Applies to subsequent commands after saving; does not terminate existing processes or change conversation approval permissions.'}
           </small>
         </fieldset>
+        <ApprovalSettings value={value} setValue={setValue} zh={t('settings') !== 'Settings'} />
         <p className="execution-boundary" role="note">
           {value.commandBackend === 'approval-host'
             ? t('settings') !== 'Settings'
@@ -485,17 +490,6 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
                 : 'Docker: mounts the execution folder with networking disabled; no host fallback.'}
         </p>
         <div className="form-grid">
-          <label>
-            {t('Command backend')}
-            <select
-              value={value.commandBackend}
-              onChange={(e) => setValue({ ...value, commandBackend: e.target.value })}
-            >
-              <option value="approval-host">{t('Host process · explicit approval')}</option>
-              <option value="native-windows">{t('Windows AppContainer')}</option>
-              <option value="docker">{t('Docker · no network')}</option>
-            </select>
-          </label>
           <label>
             {t('Native Python interpreter')}
             <input
@@ -767,6 +761,7 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
             : 'Reuses the selected connection credential only on the same origin. Search is an additional billed model request; missing search evidence is an error. Fetch allows public HTTP(S) only and revalidates redirects.'}
         </p>
       </section>
+      <MediaSettings value={value} setValue={setValue} zh={t('settings') !== 'Settings'} />
       <div className="sticky-actions">
         <button
           className="primary"

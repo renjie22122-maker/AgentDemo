@@ -199,6 +199,28 @@ export function InputCard({ input, t, refresh, notify }: any) {
         {input.kind === 'approval' ? (
           <>
             <p>{input.payload.reason}</p>
+            {input.payload.autoReview && (
+              <p className="review-rationale">
+                {input.payload.autoReview.reason} ·{' '}
+                {input.payload.autoReview.usage
+                  ? (
+                      (input.payload.autoReview.usage.input || 0) +
+                      (input.payload.autoReview.usage.output || 0)
+                    ).toLocaleString() + ' tokens'
+                  : ''}
+              </p>
+            )}
+            {input.payload.request && (
+              <details>
+                <summary>
+                  {t('settings') !== 'Settings'
+                    ? '具体请求与上传内容'
+                    : 'Exact request and uploads'}
+                </summary>
+                <pre>{JSON.stringify(input.payload.request, null, 2)}</pre>
+              </details>
+            )}
+
             <pre>{input.payload.command}</pre>
             {input.payload.review?.changes?.map((change: any) => (
               <details className="file-diff" key={change.path}>
@@ -215,15 +237,19 @@ export function InputCard({ input, t, refresh, notify }: any) {
               </small>
             )}
             <p className="muted">
-              {input.payload.backend === 'approval-host'
+              {input.payload.backend === 'media-service'
                 ? t('settings') !== 'Settings'
-                  ? '宿主执行：批准后可访问当前账号的文件和网络。工作目录不是隔离边界。'
-                  : 'Host execution: approval permits access to your account’s files and network. The working directory is not an isolation boundary.'
-                : input.payload.backend
+                  ? '请求内容将发送给所选媒体服务，可能产生费用。'
+                  : 'Request content is sent to the selected media provider and may incur charges.'
+                : input.payload.backend === 'approval-host'
                   ? t('settings') !== 'Settings'
-                    ? '使用所示隔离后端；预检失败不会退回宿主。网络策略由设置决定。'
-                    : 'Uses the indicated isolation backend; no host fallback on preflight failure. Network policy is configured separately.'
-                  : t('trustedWarning')}
+                    ? '宿主执行：批准后可访问当前账号的文件和网络。工作目录不是隔离边界。'
+                    : 'Host execution: approval permits access to your account’s files and network. The working directory is not an isolation boundary.'
+                  : input.payload.backend
+                    ? t('settings') !== 'Settings'
+                      ? '使用所示隔离后端；预检失败不会退回宿主。网络策略由设置决定。'
+                      : 'Uses the indicated isolation backend; no host fallback on preflight failure. Network policy is configured separately.'
+                    : t('trustedWarning')}
             </p>
           </>
         ) : null}

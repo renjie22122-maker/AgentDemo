@@ -1,3 +1,4 @@
+import { mediaProtocols } from '../../shared/media.js';
 import { writePrivate } from './private-file.js';
 import { existsSync, mkdirSync, readFileSync, renameSync } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
@@ -25,6 +26,35 @@ export const profileSchema = z.object({
     .default({ input: null, output: null, cached: null }),
 });
 const schema = z.object({
+  autoReview: z
+    .object({
+      profileId: z.string().default(''),
+      timeoutMs: z.number().int().min(5000).max(120000).default(30000),
+    })
+    .default({ profileId: '', timeoutMs: 30000 }),
+  media: z
+    .object({
+      connections: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            name: z.string().min(1).max(100),
+            protocol: z.enum(mediaProtocols.map((p) => p.id) as [any, ...any[]]),
+            kind: z.enum(['image', 'video', 'music', 'speech', 'transcription', 'model3d']),
+            baseUrl: z.url(),
+            apiKey: z.string().default(''),
+            model: z.string().min(1),
+            enabled: z.boolean().default(false),
+            defaults: z.record(z.string(), z.unknown()).default({}),
+            estimatedUsd: z.number().nonnegative().nullable().default(null),
+          }),
+        )
+        .default([]),
+      transcriptionId: z.string().default(''),
+      autoApproveMaxUsd: z.number().nonnegative().nullable().default(null),
+    })
+    .default({ connections: [], transcriptionId: '', autoApproveMaxUsd: null }),
+
   web: z
     .object({
       enabled: z.boolean().default(true),
@@ -92,6 +122,13 @@ export class Configuration {
   public() {
     return {
       ...this.get(),
+      media: {
+        ...this.value.media,
+        connections: (this.value.media?.connections || []).map(({ apiKey, ...p }) => ({
+          ...p,
+          hasKey: !!apiKey,
+        })),
+      },
       profiles: this.value.profiles.map(({ apiKey, ...rest }) => ({ ...rest, hasKey: !!apiKey })),
       embedding: {
         ...this.value.embedding,
@@ -111,7 +148,36 @@ export class Configuration {
     if (raw.embedding && raw.embedding.apiKey === undefined)
       raw.embedding.apiKey =
         raw.embedding.baseUrl === this.value.embedding.baseUrl ? this.value.embedding.apiKey : '';
+    for (const p of raw.media?.connections || [])
+      if (p.apiKey === undefined) {
+        const old = this.value.media?.connections.find((x) => x.id === p.id);
+        p.apiKey =
+          old &&
+          old.protocol === p.protocol &&
+          new URL(old.baseUrl).origin === new URL(p.baseUrl).origin
+            ? old.apiKey
+            : '';
+      }
     const next = schema.parse(raw);
+    assert(
+      new Set(next.media.connections.map((p) => p.id)).size === next.media.connections.length,
+      'DUPLICATE_MEDIA',
+      'Media connection IDs must be unique.',
+    );
+    for (const p of next.media.connections) {
+      const u = new URL(p.baseUrl);
+      assert(
+        u.protocol === 'https:' && !u.username && !u.password && !u.search && !u.hash,
+        'MEDIA_ENDPOINT',
+        'Media services require HTTPS without credentials, query or fragment.',
+      );
+      const preset = mediaProtocols.find((x) => x.id === p.protocol)!;
+      assert(
+        ['fal', 'replicate'].includes(p.protocol) || preset.kind === p.kind,
+        'MEDIA_KIND',
+        'Protocol does not support this media type.',
+      );
+    }
     assert(
       next.commandBackend !== 'native-windows' ||
         (isAbsolute(next.nativePython || '') && existsSync(next.nativePython!)),
@@ -156,6 +222,7 @@ export class Configuration {
     ) {
       for (const p of persisted.profiles) p.apiKey = '';
       persisted.embedding.apiKey = '';
+      for (const p of persisted.media?.connections || []) p.apiKey = '';
     }
     writePrivate(this.path + '.tmp', JSON.stringify(persisted, null, 2));
     renameSync(this.path + '.tmp', this.path);

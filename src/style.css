@@ -3006,3 +3006,88 @@ input.team-switch:checked::after {
   padding: 6px;
   cursor: pointer;
 }
+
+.media-config,
+.media-job {
+  border: 1px solid var(--border, #ddd);
+  border-radius: 12px;
+  padding: 14px;
+  margin: 12px 0;
+}
+.media-job summary {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  cursor: pointer;
+}
+.media-output img,
+.media-output video {
+  max-width: 100%;
+  max-height: 480px;
+  border-radius: 10px;
+}
+.media-output audio {
+  width: min(100%, 480px);
+}
+.media-output {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+.media-gallery {
+  margin: 20px 0;
+}
+.media-job pre {
+  white-space: pre-wrap;
+}
+.voice-control {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.voice-control .error {
+  font-size: 12px;
+  max-width: 240px;
+}
+.media-settings textarea {
+  min-height: 80px;
+  width: 100%;
+}
+.review-rationale {
+  border-left: 3px solid var(--accent, #568bdf);
+  padding-left: 12px;
+}
+
+.security-control {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+.security-control label {
+  display: grid;
+  gap: 6px;
+}
+.security-control select {
+  width: 100%;
+}
+.security-control p {
+  margin: 0;
+  line-height: 1.55;
+}
+.security-control small {
+  opacity: 0.7;
+}
+
+.media-gallery-summary {
+  cursor: pointer;
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+.media-gallery-summary > * {
+  margin-right: 12px;
+}
+.media-gallery-summary strong {
+  font-weight: 500;
+}

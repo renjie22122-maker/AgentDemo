@@ -1,5 +1,6 @@
+import type { MediaConnection } from './media.js';
 export type Reasoning = 'auto' | 'none' | 'low' | 'medium' | 'high' | 'max';
-export type PermissionMode = 'read-only' | 'ask' | 'trusted';
+export type PermissionMode = 'read-only' | 'ask' | 'auto' | 'trusted';
 export type RunStatus =
   | 'queued'
   | 'running'
@@ -49,6 +50,12 @@ export interface Profile {
 }
 export type PublicProfile = Omit<Profile, 'apiKey'> & { hasKey: boolean };
 export interface Settings {
+  autoReview?: { profileId: string; timeoutMs: number };
+  media?: {
+    connections: MediaConnection[];
+    transcriptionId: string;
+    autoApproveMaxUsd: number | null;
+  };
   web?: {
     enabled: boolean;
     searchProfileId: string;
@@ -76,6 +83,7 @@ export interface Project {
   createdAt: number;
 }
 export interface Conversation {
+  execution?: { backend: Settings['commandBackend']; network: 'host' | 'deny' } | null;
   isolationId?: string;
   teamMode?: 'hierarchy' | 'host' | 'creative';
   teamStrategy?: 'off' | 'auto' | 'prefer';
