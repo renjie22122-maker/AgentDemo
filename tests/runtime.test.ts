@@ -390,6 +390,16 @@ test('inspection shows request usage separately from totals and enforces file/ru
       host: '127.0.0.1:8810',
       cookie: String(boot.headers['set-cookie']).split(';')[0],
     };
+    let contextBuilds = 0;
+    const originalContext = f.runtime.context.bind(f.runtime);
+    f.runtime.context = async (...args: Parameters<typeof originalContext>) => {
+      contextBuilds++;
+      return originalContext(...args);
+    };
+    const originalRuns = f.store.runs.bind(f.store);
+    f.store.runs = () => {
+      throw Error('Context inspection must not scan all full runs');
+    };
     const response = await app.inject({ url: '/api/conversations/chat/context', headers });
     assert.equal(response.statusCode, 200);
     const view = response.json();
@@ -400,6 +410,17 @@ test('inspection shows request usage separately from totals and enforces file/ru
     const summary = await app.inject({ url: '/api/conversations/chat/context?summary=1', headers });
     assert.equal(summary.json().messages.length, 0);
     assert.equal(summary.json().total, view.total);
+    const page = await app.inject({ url: '/api/conversations/chat/context?offset=10', headers });
+    assert.equal(page.statusCode, 200);
+    assert.equal(contextBuilds, 1);
+    const changed = f.store.get<any>('run', second.id);
+    changed.checkpoints.push({ role: 'user', content: 'new checkpoint marker' });
+    f.store.put('run', changed);
+    const fresh = await app.inject({ url: '/api/conversations/chat/context?summary=1', headers });
+    assert.equal(fresh.json().total, view.total + 1);
+    assert.equal(contextBuilds, 2);
+    f.store.runs = originalRuns;
+
     f.store.put('run', {
       ...f.store.get<any>('run', first.id),
       id: 'foreign',

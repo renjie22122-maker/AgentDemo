@@ -50,6 +50,7 @@ export interface Profile {
 }
 export type PublicProfile = Omit<Profile, 'apiKey'> & { hasKey: boolean };
 export interface Settings {
+  agentName?: string;
   autoReview?: { profileId: string; timeoutMs: number };
   media?: {
     connections: MediaConnection[];

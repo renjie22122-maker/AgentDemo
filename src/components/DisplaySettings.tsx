@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 export function DisplaySettings({ zh = false }: { zh?: boolean }) {
   const [size, setSize] = useState(() => {
     const saved = localStorage.getItem('agentdemo.displaySize');
-    return ['auto', '100', '115', '125', '150'].includes(saved || '') ? saved! : 'auto';
+    return ['auto', '25', '50', '75', '100', '115', '125', '150'].includes(saved || '')
+      ? saved!
+      : 'auto';
   });
   useEffect(() => {
     localStorage.setItem('agentdemo.displaySize', size);
@@ -22,6 +24,9 @@ export function DisplaySettings({ zh = false }: { zh?: boolean }) {
         onChange={(e) => setSize(e.target.value)}
       >
         <option value="auto">{zh ? '自动字号' : 'Auto size'}</option>
+        <option value="25">25% · 4px</option>
+        <option value="50">50% · 8px</option>
+        <option value="75">75% · 12px</option>
         <option value="100">100% · 16px</option>
         <option value="115">115% · 18px</option>
         <option value="125">125% · 20px</option>

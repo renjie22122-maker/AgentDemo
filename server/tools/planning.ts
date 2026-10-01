@@ -1,3 +1,4 @@
+import { workerExpertise } from '../services/task-routing.js';
 import { Teams } from '../services/team-space.js';
 import { TeamScheduler } from '../services/team-scheduler.js';
 import { Verification } from '../services/verification.js';
@@ -103,15 +104,22 @@ export function installPlanning(registry: ToolRegistry) {
     effect: 'coordinate',
     atomic: true,
     description:
-      'Lead enables automatic assignment to explicitly enrolled existing workers. Ready unowned tasks are priority ordered and balanced by weighted active load. No spawning or replay. Mark write tasks execution=isolated; writable tasks with dependencies stay lead-managed. Default maxLoad=1. Disable with enabled=false.',
+      'Lead enables automatic assignment to explicitly enrolled existing workers. Ready tasks use declared skills, file ownership hints, verified team history and weighted load. Overlapping read/write tasks wait. Expertise never grants permissions. No spawning or replay. Mark write tasks execution=isolated; writable tasks with dependencies stay lead-managed. Default maxLoad=1. Disable with enabled=false.',
     schema: z.object({
       workerRunIds: z.array(z.string()).max(32),
+      expertise: z.array(workerExpertise).max(32).default([]),
       maxLoad: z.number().int().min(1).max(8).default(1),
       enabled: z.boolean().default(true),
     }),
     run: (a, c) => ({
       content: JSON.stringify(
-        new TeamScheduler(c.store).configure(c.run, a.workerRunIds, a.maxLoad, a.enabled),
+        new TeamScheduler(c.store).configure(
+          c.run,
+          a.workerRunIds,
+          a.maxLoad,
+          a.enabled,
+          a.expertise,
+        ),
       ),
     }),
   });
@@ -218,7 +226,7 @@ export function installPlanning(registry: ToolRegistry) {
     effect: 'coordinate',
     atomic: true,
     description:
-      'Lead creates a shared DAG for a genuinely multi-step task, with explicit acceptance criteria. No automatic spawning or approvals. Plain questions need no plan.',
+      'Lead creates a shared DAG for a genuinely multi-step task, with explicit acceptance criteria. Declare skills, readPaths/writePaths, and provides/requires interface contracts; declare already available externalInputs with source references; the host resolves contracts to dependency edges and rejects cycles or ambiguous producers. Estimate weight as concurrent capacity consumption. No automatic spawning or approvals. Plain questions need no plan.',
     schema: z.object({
       revision: z.number().int().min(0),
       tasks: z.array(taskInput).min(1).max(50),

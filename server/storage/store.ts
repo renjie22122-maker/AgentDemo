@@ -8,6 +8,10 @@ import { checkTransition, terminal } from '../core/lifecycle.js';
 export const id = () => randomUUID();
 export class Store {
   readonly db: DatabaseSync;
+  private runRevisions = new Map<string, number>();
+  runRevision(id: string) {
+    return this.runRevisions.get(id) || 0;
+  }
   private transactionDepth = 0;
   private pendingEvents: AgentEvent[] = [];
   onEvent: (event: AgentEvent) => void = () => {};
@@ -61,6 +65,7 @@ export class Store {
   put<T extends { id: string }>(kind: string, value: T): T {
     if (kind === 'run')
       return this.transaction(() => {
+        this.runRevisions.set(value.id, this.runRevision(value.id) + 1);
         const { checkpoints, ...metadata } = value as unknown as Run;
         this.db
           .prepare(
@@ -171,11 +176,13 @@ export class Store {
     else this.onEvent(event);
     return event;
   }
-  events(conversationId: string, after = 0): AgentEvent[] {
+  events(conversationId: string, after = 0, type?: string): AgentEvent[] {
     return (
       this.db
-        .prepare('SELECT * FROM events WHERE conversation_id=? AND id>? ORDER BY id')
-        .all(conversationId, after) as any[]
+        .prepare(
+          'SELECT * FROM events WHERE conversation_id=? AND id>? AND (? IS NULL OR type=?) ORDER BY id',
+        )
+        .all(conversationId, after, type ?? null, type ?? null) as any[]
     ).map((r) => ({
       id: r.id,
       conversationId: r.conversation_id,

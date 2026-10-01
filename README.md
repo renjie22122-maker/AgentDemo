@@ -77,13 +77,13 @@ See [architecture](docs/ARCHITECTURE.md), [interaction](docs/INTERACTION.md) and
 
 ## Data
 
-Private state: `.data/`. Test artifacts: `.diagnostics/`. Both are excluded from Git. API keys are currently stored in a local settings file, not an OS credential vault. Protect the machine account and this directory. Exporting a repository must not include these directories.
+Private state: `.data/`. Test artifacts: `.diagnostics/`. Both are excluded from Git. On Windows, saving Settings protects API keys with current-user DPAPI; existing plaintext settings migrate on their next save. Other platforms currently use restricted local files, not an OS vault. Protect the machine account and this directory. Exporting a repository must not include these directories.
 
 Skills are referenced from the imported directory; keep that directory available. The application does not install missing packages or external tools without a command request and user authorization.
 
 ### Automatic team workload assignment
 
-The lead can enroll existing workers with `configure_team_scheduler`. Ready tasks are selected by priority and assigned to eligible workers with the lowest weighted task load. Task weights and each worker's configured capacity are explicit; this is task scheduling, not CPU telemetry or a claim of optimal delegation.
+The lead can enroll existing workers with `configure_team_scheduler`. Ready tasks are selected by priority, with declared contract dependencies and overlapping file access checked before assignment. Eligible workers are ranked using declared skills, path ownership, lexical relevance, checked task history and current weighted load. Allocation records explain the score. Task weights and each worker's configured capacity are explicit; this is task scheduling, not CPU telemetry or a claim of optimal delegation.
 
 Workers can call `await_team_task` to wait for up to 60 seconds without repeated model requests. The team panel displays scheduling status and each enrolled member's weighted load. Assignments are persisted in an audit record.
 
@@ -137,7 +137,7 @@ Historical image-tool validation: 103 regression tests passed, including real su
 
 User follow-ups use a durable inbox, with pending/delivered status. Interrupted isolated-copy merges record per-file progress and require a fresh version review before continuing. Merged copies cannot accept further writable work. Recovery rebinds descendant and merge ownership. A per-data-directory process lock rejects a second server. Checkpoints are stored separately from frequently updated run metadata.
 
-Model discovery and settings changes never reuse an old API key for a different origin. Private settings receive restricted filesystem permissions; this is still local secret storage, not a credential vault. Provider retries are limited to rejected 429/selected 5xx responses, never partial streams or ambiguous transport failures. See [verification](docs/VERIFICATION.md).
+Model discovery and settings changes never reuse an old API key for a different origin. Private settings receive restricted filesystem permissions; Windows saves encrypt keys using DPAPI (same-user processes can still decrypt); non-Windows storage remains permission-protected local files. Provider retries are limited to rejected 429/selected 5xx responses, never partial streams or ambiguous transport failures. See [verification](docs/VERIFICATION.md).
 
 ## Media and automatic approval
 
@@ -148,3 +148,9 @@ MiniMax direct connections use `https://api.minimax.io` and a pay-as-you-go API 
 Media prices are manually configured estimates, not provider invoices or hard budgets. Submission results that are unknown are not automatically resubmitted. Cancellation is provider-dependent. Real paid-generation integration testing remains outstanding; automated tests use protocol fixtures.
 
 The composer Access control combines independent approval and execution-isolation choices. Read-only prevents file writes and command execution. Conversation overrides do not change global defaults; child conversations inherit them. Automatic approval uses a separate tool-free model request and asks the user on uncertainty or review failure. It does not remove sandbox restrictions, is not a guarantee of risk detection, and incurs separate model usage. Configure its reviewer under execution/security settings, not media settings.
+
+### Routing evaluation and inspection
+
+Task contracts distinguish existing sourced inputs from outputs that another task must produce. Read-only conversations cannot create runnable write plans. Scheduler history is team-local, evidence-filtered and heuristic; it does not train a model. See [the live planning comparison and its limits](docs/PLANNING-EVALUATION-20261001.md).
+
+Context details cache snapshots by run revision and coalesce pagination requests. Display settings offer automatic scaling or 25–150%; Settings also allows changing the assistant display name.

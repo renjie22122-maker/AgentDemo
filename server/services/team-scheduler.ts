@@ -1,3 +1,9 @@
+import {
+  resourceConflict,
+  routingScore,
+  workerExpertise,
+  type WorkerExpertise,
+} from './task-routing.js';
 import { Teams } from './team-space.js';
 import type { Conversation, Run } from '../../shared/types.js';
 import { Store } from '../storage/store.js';
@@ -9,10 +15,17 @@ export interface SchedulingPolicy {
   enabled: boolean;
   workers: string[];
   maxLoad: number;
+  expertise?: WorkerExpertise[];
 }
 export class TeamScheduler {
   constructor(private store: Store) {}
-  configure(lead: Run, workers: string[], maxLoad: number, enabled: boolean) {
+  configure(
+    lead: Run,
+    workers: string[],
+    maxLoad: number,
+    enabled: boolean,
+    expertise: WorkerExpertise[] = [],
+  ) {
     const root = rootRun(this.store, lead);
     assert(
       new Teams(this.store).authority(lead),
@@ -43,11 +56,19 @@ export class TeamScheduler {
         'Enroll only active members in this run tree.',
       );
     }
+    expertise = expertise.map((p) => workerExpertise.parse(p));
+    assert(
+      new Set(expertise.map((p) => p.runId)).size === expertise.length &&
+        expertise.every((p) => workers.includes(p.runId)),
+      'SCHEDULER_PROFILE',
+      'Expertise must name distinct enrolled members.',
+    );
     return this.store.put<SchedulingPolicy>('team-scheduling', {
       id: root,
       enabled,
       workers,
       maxLoad,
+      expertise,
     });
   }
   dispatch(caller: Run) {
@@ -62,7 +83,13 @@ export class TeamScheduler {
       )
         return [];
       const board = new TaskBoard(this.store).get(lead),
-        assignments: { taskId: string; runId: string; title: string; acceptance: string }[] = [];
+        assignments: {
+          taskId: string;
+          runId: string;
+          title: string;
+          acceptance: string;
+          routing?: unknown;
+        }[] = [];
       const candidates = policy.workers
         .map((id) => this.store.get<Run>('run', id))
         .filter(
@@ -101,8 +128,31 @@ export class TeamScheduler {
           weight: t.weight,
           maxLoad: policy.maxLoad,
         }));
-      this.store.put('team-scheduler-diagnostics', { id: root, blocked });
+
       for (const task of ready) {
+        const conflict = board.tasks.find(
+          (t) =>
+            t.id !== task.id &&
+            ['running', 'blocked'].includes(t.status) &&
+            resourceConflict(task, t),
+        );
+        if (conflict) {
+          blocked.push({
+            taskId: task.id,
+            reason: 'File access overlaps active task ' + conflict.id,
+            weight: task.weight,
+            maxLoad: policy.maxLoad,
+          });
+          continue;
+        }
+        const score = (id: string) =>
+          routingScore(
+            task,
+            policy.expertise?.find((p) => p.runId === id),
+            board.tasks.filter((t) => t.owner === id),
+            load(id),
+          );
+
         const eligible = candidates
           .filter((r) => {
             const c = this.store.get<Conversation>('conversation', r.conversationId);
@@ -120,24 +170,44 @@ export class TeamScheduler {
           })
           .sort(
             (a, b) =>
+              score(b.id).score - score(a.id).score ||
               load(a.id) - load(b.id) ||
               completed(a.id) - completed(b.id) ||
               a.createdAt - b.createdAt ||
               a.id.localeCompare(b.id),
           );
         const member = eligible[0];
-        if (!member) continue;
+        if (!member) {
+          if (!blocked.some((b) => b.taskId === task.id))
+            blocked.push({
+              taskId: task.id,
+              reason:
+                task.execution === 'isolated' && task.dependsOn.length
+                  ? 'Dependent write requires a refreshed isolated workspace; lead-managed'
+                  : 'No eligible worker with sufficient capacity and permissions',
+              weight: task.weight,
+              maxLoad: policy.maxLoad,
+            });
+          continue;
+        }
+        const routing = {
+          ...score(member.id),
+          basis: 'declared expertise, scoped verified history and current load',
+        };
+
         task.owner = member.id;
         task.status = 'running';
         this.store.remove('team-worker-idle', member.id);
-        task.note = 'Automatically assigned by ready-task scheduler.';
+        task.note = 'Automatically assigned: ' + JSON.stringify(routing);
         assignments.push({
           taskId: task.id,
           runId: member.id,
           title: task.title,
           acceptance: task.acceptance,
+          routing,
         });
       }
+      this.store.put('team-scheduler-diagnostics', { id: root, blocked });
       if (assignments.length) {
         board.revision++;
         this.store.put('task-board', board);

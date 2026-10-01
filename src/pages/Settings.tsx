@@ -75,6 +75,16 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
         <p>{t('Configure your models and choose how tools may run.')}</p>
       </div>
       <section className="panel">
+        <label>
+          {t('settings') !== 'Settings' ? '\u52a9\u624b\u540d\u79f0' : 'Assistant name'}
+          <input
+            maxLength={60}
+            value={value.agentName || 'AgentDemo'}
+            onChange={(e) => setValue({ ...value, agentName: e.target.value })}
+          />
+        </label>
+      </section>
+      <section className="panel">
         <div className="section-title">
           <h2>
             <PlugZap size={18} />

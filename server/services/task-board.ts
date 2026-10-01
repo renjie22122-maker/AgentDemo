@@ -1,3 +1,4 @@
+import { validateTaskGraph } from './task-graph.js';
 import { Teams } from './team-space.js';
 import { z } from 'zod';
 import type { Run } from '../../shared/types.js';
@@ -13,7 +14,21 @@ export const taskInput = z.object({
   execution: z.enum(['read-only', 'isolated']).optional(),
   weight: z.number().int().min(1).max(8).optional(),
   priority: z.number().int().min(0).max(10).optional(),
+  skills: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
+  readPaths: z.array(z.string().min(1).max(2048)).max(30).optional(),
+  writePaths: z.array(z.string().min(1).max(2048)).max(30).optional(),
+  provides: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
+  requires: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
   artifacts: z.array(z.string().min(1).max(2048)).max(30).optional(),
+  externalInputs: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(100),
+        source: z.string().trim().min(1).max(1000),
+      }),
+    )
+    .max(20)
+    .optional(),
 });
 export interface BoardTask {
   id: string;
@@ -28,6 +43,12 @@ export interface BoardTask {
   weight?: number;
   priority?: number;
   artifacts?: string[];
+  skills?: string[];
+  readPaths?: string[];
+  writePaths?: string[];
+  provides?: string[];
+  requires?: string[];
+  externalInputs?: { name: string; source: string }[];
   verification?: {
     status: 'checked' | 'stale';
     eventId: number;
@@ -69,19 +90,10 @@ export class TaskBoard {
         'PLAN_EXISTS',
         'Update existing tasks rather than discarding work.',
       );
-      assert(input.length > 0 && input.length <= 50, 'PLAN_SIZE', 'Use 1 to 50 tasks.');
-      const ids = new Set(input.map((t) => t.id));
-      assert(ids.size === input.length, 'PLAN_DUPLICATE', 'Task IDs must be unique.');
-      const visited = new Set<string>();
-      const visit = (key: string, trail: Set<string>) => {
-        assert(ids.has(key), 'PLAN_DEPENDENCY', 'Unknown dependency: ' + key);
-        assert(!trail.has(key), 'PLAN_CYCLE', 'Dependencies must form a DAG.');
-        if (visited.has(key)) return;
-        const next = new Set(trail).add(key);
-        for (const dep of input.find((t) => t.id === key)!.dependsOn) visit(dep, next);
-        visited.add(key);
-      };
-      for (const task of input) visit(task.id, new Set());
+      input = validateTaskGraph(
+        input,
+        this.store.get<any>('conversation', run.conversationId).permission === 'read-only',
+      );
       return this.save({
         ...board,
         revision: board.revision + 1,

@@ -125,7 +125,10 @@ function fixture() {
   const child = { id: 'child', conversationId: 'b', parentRunId: 'root' } as any;
   const sibling = { id: 'sibling', conversationId: 'c', parentRunId: 'root' } as any;
   const outsider = { id: 'outside', conversationId: 'd', parentRunId: null } as any;
-  for (const r of [root, child, sibling, outsider]) store.put('run', r);
+  for (const r of [root, child, sibling, outsider]) {
+    store.put('run', r);
+    store.put('conversation', { id: r.conversationId, permission: 'ask' });
+  }
   return { store, board: new TaskBoard(store), root, child, sibling, outsider };
 }
 test('task DAG rejects cycles, stale writes, blocked dependencies and foreign owners', () => {

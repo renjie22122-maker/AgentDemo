@@ -3,33 +3,55 @@ import { Folder, FileText, ArrowUp, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import { ContextUsage } from './ContextUsage';
 import { WebPreview } from './WebPreview';
+const inspectionCache = new Map<string, { data: any; at: number }>();
+const inspectionPending = new Map<string, Promise<any>>();
+function requestInspection(url: string) {
+  let pending = inspectionPending.get(url);
+  if (!pending) {
+    pending = api(url)
+      .then((data) => {
+        inspectionCache.delete(url);
+        inspectionCache.set(url, { data, at: Date.now() });
+        while (inspectionCache.size > 24)
+          inspectionCache.delete(inspectionCache.keys().next().value!);
+        return data;
+      })
+      .finally(() => inspectionPending.delete(url));
+    inspectionPending.set(url, pending);
+  }
+  return pending;
+}
 export function useInspectionResource(url: string | null, live: boolean) {
-  const [data, setData] = useState<any>(null),
-    [error, setError] = useState(''),
+  const [state, setState] = useState<{ url: string | null; data: any }>({ url: null, data: null });
+  const [error, setError] = useState(''),
     [revision, setRevision] = useState(0);
   useEffect(() => {
-    let active = true;
-    setData(null);
+    let active = true,
+      timer: ReturnType<typeof setTimeout>;
     setError('');
     if (!url) return;
-    const load = () =>
-      api(url)
-        .then((v) => {
-          if (active) {
-            setData(v);
-            setError('');
-          }
-        })
-        .catch((e) => {
-          if (active) setError(e.message);
-        });
+    const cached = inspectionCache.get(url);
+    if (cached) setState({ url, data: cached.data });
+    const load = async () => {
+      try {
+        const data = await requestInspection(url);
+        if (active) {
+          setState({ url, data });
+          setError('');
+        }
+      } catch (e: any) {
+        if (active) setError(e.message);
+      } finally {
+        if (active && live) timer = setTimeout(load, 5000);
+      }
+    };
     void load();
-    const timer = live ? setInterval(load, 5000) : undefined;
     return () => {
       active = false;
-      if (timer) clearInterval(timer);
+      clearTimeout(timer);
     };
   }, [url, live, revision]);
+  const data = state.url === url ? state.data : url ? inspectionCache.get(url)?.data : null;
   return { data, error, refresh: () => setRevision((n) => n + 1) };
 }
 export function ContextPanel({ id, zh, live }: { id: string; zh: boolean; live: boolean }) {
@@ -52,6 +74,7 @@ export function ContextPanel({ id, zh, live }: { id: string; zh: boolean; live: 
         </button>
       </div>
       {error && <p role="alert">{error}</p>}
+      {!data && !error && <p role="status">{zh ? '\u52a0\u8f7d\u4e2d\u2026' : 'Loading…'}</p>}
       {data && (
         <>
           <label>

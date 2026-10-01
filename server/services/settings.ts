@@ -1,3 +1,9 @@
+import {
+  protectSettings,
+  restoreSettings,
+  windowsSecrets,
+  type SecretCodec,
+} from './credential-storage.js';
 import { mediaProtocols } from '../../shared/media.js';
 import { writePrivate } from './private-file.js';
 import { existsSync, mkdirSync, readFileSync, renameSync } from 'node:fs';
@@ -26,6 +32,13 @@ export const profileSchema = z.object({
     .default({ input: null, output: null, cached: null }),
 });
 const schema = z.object({
+  agentName: z
+    .string()
+    .trim()
+    .min(1)
+    .max(60)
+    .regex(/^[^\u0000-\u001f\u007f]+$/)
+    .default('AgentDemo'),
   autoReview: z
     .object({
       profileId: z.string().default(''),
@@ -100,11 +113,14 @@ export class Configuration {
   private value: Settings;
   constructor(
     private path: string,
-    private options: { persistSecrets?: boolean } = {},
+    private options: { persistSecrets?: boolean; secretCodec?: SecretCodec } = {},
   ) {
     this.value = existsSync(path)
-      ? schema.parse(JSON.parse(readFileSync(path, 'utf8')))
+      ? schema.parse(restoreSettings(JSON.parse(readFileSync(path, 'utf8')), this.codec()))
       : schema.parse({ profiles: [], defaultProfileId: '' });
+  }
+  private codec() {
+    return this.options.secretCodec || (process.platform === 'win32' ? windowsSecrets : undefined);
   }
   get(): Settings {
     return structuredClone(this.value);
@@ -224,7 +240,9 @@ export class Configuration {
       persisted.embedding.apiKey = '';
       for (const p of persisted.media?.connections || []) p.apiKey = '';
     }
-    writePrivate(this.path + '.tmp', JSON.stringify(persisted, null, 2));
+    const codec = this.codec();
+    const protectedValue = codec ? protectSettings(persisted, codec) : persisted;
+    writePrivate(this.path + '.tmp', JSON.stringify(protectedValue, null, 2));
     renameSync(this.path + '.tmp', this.path);
     this.value = next;
     return this.public();

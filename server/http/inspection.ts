@@ -9,6 +9,8 @@ import { assert } from '../core/errors.js';
 
 export function inspectionRoutes(app: FastifyInstance, runtime: Runtime) {
   const { store, config } = runtime;
+  const snapshots = new Map<string, Promise<any>>();
+  let previousConfig = JSON.stringify(config.public());
   app.get<{ Params: { id: string } }>('/api/conversations/:id/context', async (req) => {
     const c = store.get<Conversation>('conversation', req.params.id);
     const q = z
@@ -18,11 +20,8 @@ export function inspectionRoutes(app: FastifyInstance, runtime: Runtime) {
         summary: z.literal('1').optional(),
       })
       .parse(req.query);
-    const runs = store
-      .runs()
-      .filter((r) => r.conversationId === c.id)
-      .sort((a, b) => b.createdAt - a.createdAt);
-    const run = q.runId ? store.get<Run>('run', q.runId) : runs[0];
+    const runs = store.runMetadata(c.id).sort((a, b) => b.createdAt - a.createdAt);
+    const run = q.runId ? store.runHeader(q.runId) : runs[0];
     assert(
       !run || run.conversationId === c.id,
       'CONTEXT_SCOPE',
@@ -30,11 +29,35 @@ export function inspectionRoutes(app: FastifyInstance, runtime: Runtime) {
       403,
     );
     const profile = config.get().profiles.find((p) => p.id === (run?.profileId || c.profileId));
-    const messages = run?.checkpoints || [];
-    const tools = run ? runtime.registry.specs(await runtime.context(run)) : [];
-    const budget = profile
-      ? contextBudget(messages, tools, profile, config.get().compactionRatio, run?.contextSample)
-      : null;
+    const currentConfig = JSON.stringify(config.public());
+    if (previousConfig !== currentConfig) {
+      snapshots.clear();
+      previousConfig = currentConfig;
+    }
+    const key = JSON.stringify([c, run?.id, run ? store.runRevision(run.id) : 0]);
+    let pending = snapshots.get(key);
+    if (!pending) {
+      pending = (async () => {
+        const full = run ? store.get<Run>('run', run.id) : undefined;
+        const messages = full?.checkpoints || [];
+        const tools = full ? runtime.registry.specs(await runtime.context(full)) : [];
+        const budget = profile
+          ? contextBudget(
+              messages,
+              tools,
+              profile,
+              config.get().compactionRatio,
+              full?.contextSample,
+            )
+          : null;
+        return { messages, budget, characters: JSON.stringify(messages).length };
+      })();
+      snapshots.set(key, pending);
+      while (snapshots.size > 4) snapshots.delete(snapshots.keys().next().value!);
+      pending.catch(() => snapshots.delete(key));
+    }
+    const { messages, budget, characters } = await pending;
+    if (characters > 6_000_000) snapshots.delete(key);
     return {
       budget,
       runId: run?.id || null,
@@ -45,25 +68,27 @@ export function inspectionRoutes(app: FastifyInstance, runtime: Runtime) {
       measuredInput: run?.lastContextInputTokens ?? null,
       measuredAt: run?.lastContextMeasuredAt ?? null,
       compressionThresholdTokens: budget?.threshold ?? null,
-      characters: JSON.stringify(messages).length,
+      characters,
       offset: q.offset,
       compactions: store
-        .events(c.id)
+        .events(c.id, 0, 'context.compacted')
         .filter((e) => e.type === 'context.compacted' && (!run || e.runId === run.id))
         .map((e) => ({ at: e.createdAt, ...e.data })),
-      messages: (q.summary ? [] : messages.slice(q.offset, q.offset + 10)).map((m, i) => {
-        const text =
-          m.content +
-          (m.calls?.length ? '\n\nTool calls:\n' + JSON.stringify(m.calls, null, 2) : '');
-        return {
-          index: q.offset + i,
-          role: m.role,
-          callId: m.callId,
-          characters: text.length,
-          text: text.slice(0, 16000),
-          truncated: text.length > 16000,
-        };
-      }),
+      messages: (q.summary ? [] : messages.slice(q.offset, q.offset + 10)).map(
+        (m: any, i: number) => {
+          const text =
+            m.content +
+            (m.calls?.length ? '\n\nTool calls:\n' + JSON.stringify(m.calls, null, 2) : '');
+          return {
+            index: q.offset + i,
+            role: m.role,
+            callId: m.callId,
+            characters: text.length,
+            text: text.slice(0, 16000),
+            truncated: text.length > 16000,
+          };
+        },
+      ),
     };
   });
   app.get<{ Params: { id: string } }>('/api/conversations/:id/files', async (req) => {

@@ -119,7 +119,14 @@ test('public configuration exposes key presence but never the key value', async 
   });
   assert(!JSON.stringify(config.public()).includes('never-return-this'));
   assert.equal(config.public().profiles[0].hasKey, true);
-  assert((await readFile(join(dir, 'settings.json'), 'utf8')).includes('never-return-this'));
+  assert.equal(
+    (await readFile(join(dir, 'settings.json'), 'utf8')).includes('never-return-this'),
+    process.platform !== 'win32',
+  );
+  assert.equal(
+    new Configuration(join(dir, 'settings.json')).profile('p').apiKey,
+    'never-return-this',
+  );
 });
 
 test('host command chains preserve their tail and large output declares truncation', async () => {

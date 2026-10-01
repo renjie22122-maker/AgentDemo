@@ -19,6 +19,6 @@ MCP server activation trusts the configured executable to start with host-user r
 
 Document content, retrieved text, memory and skill bodies are untrusted task data. Prompt wording alone is not the security boundary.
 
-A machine administrator or malicious local program with access to the user account can read local data and credentials. Keys are not encrypted in an OS vault in this version. Keep `.data` and `.diagnostics` private and out of source control.
+A machine administrator or malicious local program with access to the user account can read local data and credentials. Windows Settings saves encrypt model, embedding and media keys with current-user DPAPI. Existing plaintext settings migrate on the next save. Encryption errors fail closed without plaintext fallback. Other platforms currently retain restricted local-file storage. DPAPI does not protect against a malicious process running as the same user. Keep `.data` and `.diagnostics` private and out of source control.
 
 Test success is not a sandbox security certification. Native AppContainer file boundaries and timeout were subsequently tested on Windows; strict offline preflight refused execution on this computer. Docker remains unverified here. See MIGRATION.md for cleanup, copy and merge limitations.

@@ -83,7 +83,12 @@ export function App() {
     stick = useRef(true),
     upload = useRef<HTMLInputElement>(null),
     draftRef = useRef<HTMLTextAreaElement>(null);
-  const t = translator(language);
+  const translate = translator(language);
+  const agentName = state?.settings.agentName || 'AgentDemo';
+  const t = (key: string) => (key === 'AgentDemo' ? agentName : translate(key));
+  useEffect(() => {
+    document.title = agentName;
+  }, [agentName]);
   const notify = useCallback((text: string) => {
     setToast(text);
     setTimeout(() => setToast(''), 6500);
@@ -611,7 +616,7 @@ export function App() {
             </span>
             <span className="slash">/</span>
             <strong className="truncate">
-              {page === 'chat' ? conversation?.title || t('newChat') : 'AgentDemo'}
+              {page === 'chat' ? conversation?.title || t('newChat') : agentName}
             </strong>
           </div>
           {page === 'chat' && (

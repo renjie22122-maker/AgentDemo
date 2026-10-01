@@ -10,7 +10,7 @@
 - `server/storage/`: SQLite records, ordered events, effects and metering ledger.
 - `server/http/`: loopback authenticated API and SSE.
 - `src/`: React UI; model credentials never enter public state.
-Local invariant, negative-control and integration fixtures are retained in the development workspace and excluded from the public repository.
+  Sanitized regression tests and CI are public; local credentials, conversations and live-test artifacts are excluded.
 
 The runtime receives a model-provider resolver, making it replaceable in tests. Its tool context contains explicit service ports. Provider-specific reasoning blocks live in model messages, not tool execution code. Subagents reuse the same runtime and shared model pool; they do not create a second orchestration engine.
 
@@ -41,13 +41,13 @@ Terminal runs are immutable lifecycle endpoints. Continuing creates a new run us
 
 User messages, assistant messages, tool starts/results, approvals, usage and status changes are persisted as ordered events. Token deltas are ephemeral for efficient streaming; finalized text is durable. An interrupted partial answer is saved with an incomplete marker.
 
-Side-effect intent is recorded before file writes and commands. Completion is recorded afterwards. Missing results remain unknown. The UI requires an inspection note before starting another run, instead of replaying an uncertain command.
+Side-effect intent is recorded before file writes and commands. Completion is recorded afterwards. Missing results remain unknown. Uncertain effects remain visible for inspection; read-only continuation is possible, but uncertain side effects are not automatically replayed.
 
 This does not provide distributed exactly-once execution. A process can fail between a tool's real effect and its durable result. The ledger exposes that ambiguity.
 
 ## Context and delegation
 
-Compaction summarizes complete historical message groups while keeping recent tool-call/result pairs intact. The threshold is a conservative character estimate, not a tokenizer claim. Usage is metered for compaction requests too.
+Compaction summarizes complete historical message groups while keeping recent tool-call/result pairs intact. The threshold is calibrated from measured API usage when available, with an explicit local fallback. Usage is metered for compaction requests too.
 
 Children receive a narrow task and deliverable, project facts, selected skills and authorized knowledge scopes. They do not inherit the complete author transcript. Read-only workers remain the default. Writable workers get isolated folder copies and require explicit versioned integration; child commands require an OS isolation backend and external MCP remains disabled. Wait cycles are rejected; cancellation follows descendants.
 
@@ -57,8 +57,7 @@ The parent cannot become terminal with live direct children. Model concurrency i
 
 Use the provider interface for additional protocols, the tool registry for capabilities, and dedicated services for infrastructure. Do not add provider-specific branches to the tool loop.
 
-AppContainer adapters, isolated writable copies and worker-based HNSW are described in MIGRATION.md. Remaining work includes persistent/calibrated ANN artifacts, stronger migration/versioning, OS-backed credential storage and comparative unseen-task evaluation.
-
+AppContainer adapters, isolated writable copies and worker-based HNSW are described in MIGRATION.md. Remaining work includes persistent/calibrated ANN artifacts, stronger migration/versioning, cross-platform credential vault integration and comparative unseen-task evaluation.
 
 ## Runtime service boundaries
 
@@ -74,7 +73,6 @@ Storage retains JSON domain records for local compatibility, with a versioned sc
 
 Protocol repair permits one additional model request per run for rejected malformed arguments or duplicate call IDs. No tools from the rejected response have executed. Both requests are accounted; authentication failures, ambiguous execution and arbitrary command failures are not replayed.
 
-
 ## Version-bound observations and team handoff
 
 Plans may declare artifact paths. For read_file and run_command, the host hashes declared files before and after execution (4 MB per file, 16 MB per observation). record_verification accepts only an existing successful observation with matching workspace identity and unchanged declared files; a file read must address the declared path. Command success is an observed zero exit code, not a proof of the acceptance criterion. Missing, oversized or inaccessible files cannot be certified.
@@ -82,3 +80,15 @@ Plans may declare artifact paths. For read_file and run_command, the host hashes
 Verification has three user-facing meanings: author-reported (no binding), checked (observed result bound to a version), and stale. inspect_plan and run finalization recheck bound versions; stale records block completion. This is point-in-time validation, not a filesystem lock, adversarial TOCTOU protection, full dependency discovery or independent semantic review. Undeclared dependencies are not covered. Isolated-copy evidence cannot certify the parent copy after merge; recheck in the destination.
 
 inspect_team exposes same-root members, statuses, task ownership and handoff history. Lead-only handoff_task reassigns an unfinished task using an optimistic board revision. The old owner and descendants must be terminal and free of unknown effects; the target must be an active same-team member. It clears old evidence, records the transfer and attempts a steering notification, reporting whether delivery was queued. It does not start workers, grant permissions, copy files or replay operations. Scheduling and selection remain model-directed. Boards are scoped to a run tree, not automatically inherited by a new top-level run.
+
+## October 2026 routing and runtime boundaries
+
+- Task contracts distinguish sourced existing inputs from provided/required outputs; the host derives dependencies and rejects missing producers, ambiguity and cycles.
+- File read/write hints prevent conflicting assignments. These are planning hints, never an OS isolation boundary.
+- Worker skills/path ownership and word overlap supplement capacity. Only checked completion evidence contributes positively to team-local history; blocked relevant work reduces the score. This is bounded heuristic adaptation, not trained scheduling or code-semantic analysis.
+- Existing task weight remains an explicit effort/capacity estimate. No hidden token budget is introduced.
+- Dependent writable tasks still require lead-managed refreshed copies; automatic assignment refuses stale-copy risks.
+- TeamCoordinator owns dispatch and event waits through a narrow port. finalizeRun owns host completion checks. ToolExecutor, ContextManager and DelegationManager retain separate responsibilities. Runtime remains the composition root and model-loop coordinator; recovery/pump decomposition is not complete.
+- Still unproven: optimal delegation, cross-project learning, unseen-task quality/cost superiority. One live planning probe cannot establish these.
+
+The public planning comparison lives in evals/planning. It grades real model proposals against authored DAG expectations without executing generated work. This is planning-protocol evidence, not end-to-end task success or proof that heuristic worker ranking improves throughput.

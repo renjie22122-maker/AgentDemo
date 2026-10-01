@@ -36,7 +36,7 @@ export function Message({
             <Sparkles size={15} />
           </span>
         )}
-        <strong>{user ? 'You' : 'AgentDemo'}</strong>
+        <strong>{user ? 'You' : t('AgentDemo')}</strong>
         <time>
           {new Date(event.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </time>
