@@ -1317,3 +1317,83 @@ test('conversation accepts more than thirty preferred skills and deduplicates th
     await app.close();
   }
 });
+
+test('project folders can be edited, removed and restored without deleting history or files', async () => {
+  const { writeFile, readFile } = await import('node:fs/promises');
+  const f = await setup({ complete: async () => result('unused') });
+  const a = await mkdtemp(join(tmpdir(), 'workspace-a-'));
+  const b = await mkdtemp(join(tmpdir(), 'workspace-b-'));
+  await writeFile(join(a, 'keep.txt'), 'preserve me');
+  const { app } = await createApp({ directory: f.dir, runtime: f.runtime });
+  try {
+    const boot = await app.inject({ url: '/api/bootstrap', headers: { host: '127.0.0.1:8810' } });
+    const headers = {
+      host: '127.0.0.1:8810',
+      cookie: String(boot.headers['set-cookie']).split(';')[0],
+      'x-csrf-token': boot.json().csrf,
+    };
+    const call = (method: any, url: string, payload: any = {}) =>
+      app.inject({ method, url, headers, payload });
+    const made = await call('POST', '/api/projects', { name: 'Workspace', folders: [a] });
+    assert.equal(made.statusCode, 200);
+    const project = made.json(),
+      url = '/api/projects/' + project.id;
+    const chat = f.store.get<any>('conversation', 'chat');
+    f.store.put('conversation', { ...chat, projectId: project.id });
+    f.store.put('memory', {
+      id: 'project-memory',
+      scope: 'project:' + project.id,
+      content: 'kept',
+      active: true,
+    });
+    const edited = await call('PATCH', url, { name: 'Renamed', folders: [a, b] });
+    assert.equal(edited.statusCode, 200);
+    assert.equal(edited.json().folders.length, 2);
+    assert.equal(
+      (await call('PATCH', url, { name: 'Bad', folders: [a, a] })).statusCode >= 400,
+      true,
+    );
+    f.store.put('run', {
+      id: 'busy',
+      conversationId: 'chat',
+      status: 'waiting_approval',
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    assert.equal((await call('DELETE', url)).statusCode >= 400, true);
+    assert.equal((await call('PATCH', url, { name: 'No', folders: [b] })).statusCode >= 400, true);
+    f.store.put('run', {
+      id: 'busy',
+      conversationId: 'chat',
+      status: 'interrupted',
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const removed = await call('DELETE', url);
+    assert.equal(removed.statusCode, 200);
+    assert.ok(removed.json().removedAt);
+    assert.equal(f.store.get<any>('conversation', 'chat').projectId, project.id);
+    assert.equal(f.store.get<any>('memory', 'project-memory').scope, 'project:' + project.id);
+    assert.equal(await readFile(join(a, 'keep.txt'), 'utf8'), 'preserve me');
+    assert.throws(() => f.runtime.start('chat', 'Hello'), /Restore this project/);
+    await assert.rejects(
+      f.runtime.filesForConversation(f.store.get('conversation', 'chat')),
+      /Restore this project/,
+    );
+    assert.equal(
+      (await call('POST', '/api/conversations', { projectId: project.id })).statusCode >= 400,
+      true,
+    );
+    assert.equal((await call('DELETE', url)).json().removedAt, removed.json().removedAt);
+    assert.equal(
+      (await call('PATCH', url, { name: 'Restored', folders: [a, b] })).json().removedAt,
+      null,
+    );
+    assert.equal(
+      (await f.runtime.filesForConversation(f.store.get('conversation', 'chat'))).roots.length,
+      2,
+    );
+  } finally {
+    await app.close();
+  }
+});

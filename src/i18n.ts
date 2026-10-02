@@ -56,8 +56,8 @@ const words: Record<string, [string, string]> = {
   delete: ['Delete', '删除'],
   empty: ['Nothing here yet', '暂无内容'],
   memoryHelp: [
-    'Only confirmed memories are recalled. Model suggestions remain inactive until you approve them.',
-    '只召回已确认记忆。模型提出的候选记忆需要你批准后才生效。',
+    'Only active memories are recalled. Opt-in background learning saves clear preferences; decisions and conflicts require confirmation.',
+    '只召回已生效记忆。可开启后台整理自动保存明确偏好；决策和冲突仍需确认。',
   ],
   knowledgeHelp: [
     'Documents belong to one project or conversation. Other chats cannot search them.',

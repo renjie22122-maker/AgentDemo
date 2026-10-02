@@ -111,7 +111,11 @@ export function Inspector({
                   checked={(conversation as any)[k]}
                   onChange={(e) => void action(() => update({ [k]: e.target.checked }))}
                 />
-                {t(k)}
+                {k === 'memory'
+                  ? t('settings') === 'Settings'
+                    ? 'Use existing memories'
+                    : '使用已有记忆'
+                  : t(k)}
               </label>
             ))}
             <p className="muted">
@@ -122,6 +126,31 @@ export function Inspector({
                 : project
                   ? '默认只召回本项目记忆。'
                   : '普通对话召回已确认的用户偏好，不读取项目记忆。'}
+            </p>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                disabled={!!running}
+                checked={
+                  conversation.generateMemory === true &&
+                  conversation.memoryGenerationTarget ===
+                    conversation.profileId +
+                      '|' +
+                      state.settings.profiles.find((p: any) => p.id === conversation.profileId)
+                        ?.baseUrl
+                }
+                onChange={(e) => void action(() => update({ generateMemory: e.target.checked }))}
+              />
+              {t('settings') === 'Settings'
+                ? 'Let this chat contribute to future memories'
+                : '允许此对话生成未来记忆'}
+            </label>
+            <p className="muted">
+              {t('settings') === 'Settings'
+                ? 'Opt-in: after 2 minutes idle, sends up to 30 recent user messages and 80 same-scope memories to this chat model. Clear preferences activate automatically; decisions/conflicts await confirmation. No tool outputs or attachments. Uses model quota.'
+                : '开启后空闲 2 分钟，将最多 30 条近期用户消息及 80 条同范围记忆发送给此对话模型并消耗额度。明确偏好自动生效；决策和冲突需确认。不发送工具输出和附件。'}
+              <br />
+              {state.settings.profiles.find((p: any) => p.id === conversation.profileId)?.baseUrl}
             </p>
             {project && (
               <label className="checkbox">

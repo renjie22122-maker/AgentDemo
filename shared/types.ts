@@ -78,6 +78,7 @@ export interface Settings {
   mcp: { id: string; name: string; command: string; args: string[]; enabled: boolean }[];
 }
 export interface Project {
+  removedAt?: number | null;
   id: string;
   name: string;
   folders: string[];
@@ -104,6 +105,8 @@ export interface Conversation {
   knowledge: boolean;
   memory: boolean;
   includeUserMemory?: boolean;
+  generateMemory?: boolean;
+  memoryGenerationTarget?: string;
 }
 export interface ContextSample {
   fingerprint: string;
@@ -182,6 +185,11 @@ export interface Skill {
   createdAt: number;
 }
 export interface Memory {
+  topic?: string;
+  automatic?: boolean;
+  kind?: 'preference' | 'decision';
+  sourceConversationId?: string;
+  sourceEventId?: number;
   id: string;
   scope: string;
   content: string;

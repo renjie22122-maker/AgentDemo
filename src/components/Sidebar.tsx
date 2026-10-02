@@ -6,6 +6,7 @@ import {
   FolderPlus,
   Library as LibraryIcon,
   Moon,
+  MoreHorizontal,
   PanelLeftClose,
   Plus,
   Search,
@@ -14,11 +15,12 @@ import {
   Sun,
 } from 'lucide-react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
-import type { Conversation } from '../../shared/types';
+import type { Conversation, Project } from '../../shared/types';
 import { type Language } from '../i18n';
 import type { Action, UiState } from '../types';
 
 interface SidebarProps {
+  editProject: (project: Project) => void;
   t: (key: string) => string;
   state: UiState;
   setSidebar: Dispatch<SetStateAction<boolean>>;
@@ -39,6 +41,7 @@ interface SidebarProps {
   setTheme: Dispatch<SetStateAction<string>>;
 }
 export function Sidebar({
+  editProject,
   t,
   state,
   setSidebar,
@@ -93,24 +96,39 @@ export function Sidebar({
             <Plus size={15} />
           </button>
         </div>
-        {state.projects.map((p: any) => (
-          <details className="project-group" key={p.id} open>
-            <summary>
-              <Folder size={15} />
-              <span>{p.name}</span>
-              <button
-                title={t('newChat')}
-                onClick={(e) => {
-                  e.preventDefault();
-                  void action(() => newChat(p.id));
-                }}
-              >
-                <Plus size={14} />
-              </button>
-            </summary>
-            {filtered.filter((c: any) => c.projectId === p.id).map(chatLink)}
-          </details>
-        ))}
+        {state.projects
+          .filter((p: Project) => !p.removedAt || archived)
+          .map((p: Project) => (
+            <details className="project-group" key={p.id} open>
+              <summary>
+                <Folder size={15} />
+                <span>
+                  {p.name}
+                  {p.removedAt ? (language === 'zh' ? ' · 已移除' : ' · Removed') : ''}
+                </span>
+                <button
+                  title={language === 'zh' ? '管理工作区' : 'Manage workspace'}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    editProject(p);
+                  }}
+                >
+                  <MoreHorizontal size={14} />
+                </button>
+                <button
+                  title={t('newChat')}
+                  disabled={!!p.removedAt}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    void action(() => newChat(p.id));
+                  }}
+                >
+                  <Plus size={14} />
+                </button>
+              </summary>
+              {filtered.filter((c: any) => c.projectId === p.id).map(chatLink)}
+            </details>
+          ))}
         {!state.projects.length && (
           <button className="add-project" onClick={() => setProjectDialog(true)}>
             <FolderPlus size={15} />

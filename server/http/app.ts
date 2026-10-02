@@ -25,6 +25,7 @@ import { extract } from '../services/documents.js';
 import { pickFolder } from '../services/folder-picker.js';
 import { validateRoots } from '../services/paths.js';
 import { Configuration, profileSchema } from '../services/settings.js';
+import { MemoryLearning, memoryKey, memoryTarget } from '../services/memory-learning.js';
 import { SkillClassification } from '../services/skill-classification.js';
 import { Skills } from '../services/skills.js';
 import { Store, id } from '../storage/store.js';
@@ -37,6 +38,8 @@ export async function createApp(options: { directory: string; dist?: string; run
   const runtime = options.runtime || new Runtime(store, config, directory),
     skills = new Skills(store);
   runtime.startTeamMaintenance();
+  const memoryLearning = new MemoryLearning(store, config);
+  memoryLearning.start();
   const app = Fastify({ logger: false, bodyLimit: 8 * 1024 * 1024 });
   const cookie = randomBytes(32).toString('hex'),
     csrf = randomBytes(32).toString('hex');
@@ -121,6 +124,7 @@ export async function createApp(options: { directory: string; dist?: string; run
         (/anthropic/i.test(source) ? 'Anthropic' : /openai/i.test(source) ? 'OpenAI' : 'Other'),
     })),
     memories: store.list('memory'),
+    memoryLearning: store.list('memory-learning').slice(-30),
     documents: store.list('document'),
     settings: config.public(),
   });
@@ -200,7 +204,12 @@ export async function createApp(options: { directory: string; dist?: string; run
         profileId: z.string().optional(),
       })
       .parse(req.body);
-    if (data.projectId) store.get('project', data.projectId);
+    if (data.projectId)
+      assert(
+        !store.get<Project>('project', data.projectId).removedAt,
+        'PROJECT_REMOVED',
+        'Restore this project before creating a conversation.',
+      );
     const now = Date.now();
     const c: Conversation = {
       id: id(),
@@ -247,6 +256,7 @@ export async function createApp(options: { directory: string; dist?: string; run
         knowledge: z.boolean().optional(),
         memory: z.boolean().optional(),
         includeUserMemory: z.boolean().optional(),
+        generateMemory: z.boolean().optional(),
       })
       .parse(req.body);
     if (runtime.active(c.id))
@@ -258,7 +268,16 @@ export async function createApp(options: { directory: string; dist?: string; run
       );
     if (data.profileId) config.profile(data.profileId);
     if (data.skillIds) for (const key of data.skillIds) store.get('skill', key);
-    return store.put('conversation', { ...c, ...data, updatedAt: Date.now() });
+    const memoryGenerationTarget =
+      data.generateMemory === true
+        ? memoryTarget(config.profile(data.profileId || c.profileId))
+        : c.memoryGenerationTarget;
+    return store.put('conversation', {
+      ...c,
+      ...data,
+      memoryGenerationTarget,
+      updatedAt: Date.now(),
+    });
   });
   app.post<{ Params: { id: string } }>('/api/conversations/:id/fork', async (req) => {
     const c = store.get<Conversation>('conversation', req.params.id),
@@ -453,17 +472,26 @@ export async function createApp(options: { directory: string; dist?: string; run
       })
       .parse(req.body);
     const project = store.get<Project>('project', req.params.id);
+    const folders = await validateRoots(data.folders, directory);
+    // Recheck after filesystem awaits so task admission cannot race the update.
     const conversations = store.conversations().filter((c) => c.projectId === project.id);
     assert(
       !conversations.some((c) => runtime.active(c.id)),
       'RUN_ACTIVE',
       'Stop project tasks before changing folders.',
     );
-    return store.put('project', {
-      ...project,
-      name: data.name,
-      folders: await validateRoots(data.folders, directory),
-    });
+    return store.put('project', { ...project, ...data, folders, removedAt: null });
+  });
+  app.delete<{ Params: { id: string } }>('/api/projects/:id', async (req) => {
+    const project = store.get<Project>('project', req.params.id);
+    const conversations = store.conversations().filter((c) => c.projectId === project.id);
+    assert(
+      !conversations.some((c) => runtime.active(c.id)),
+      'RUN_ACTIVE',
+      'Stop project tasks before removing the project.',
+    );
+    // Retain the identity for history and memory scopes. Never delete user files.
+    return store.put('project', { ...project, removedAt: project.removedAt || Date.now() });
   });
   const classification = new SkillClassification(store, config);
   app.post('/api/skills/classify', async (req) => {
@@ -525,6 +553,11 @@ export async function createApp(options: { directory: string; dist?: string; run
     return store.put('memory', { ...old, ...data, revision: old.revision + 1 });
   });
   app.delete<{ Params: { id: string } }>('/api/memories/:id', async (req) => {
+    const forgotten = store.get<Memory>('memory', req.params.id);
+    store.put('memory-forgotten', {
+      id: memoryKey(forgotten.scope, forgotten.content),
+      at: Date.now(),
+    });
     store.remove('memory', req.params.id);
     store.remove('memory-vector', req.params.id);
     return { ok: true };
@@ -780,6 +813,7 @@ export async function createApp(options: { directory: string; dist?: string; run
     );
   }
   app.addHook('onClose', async () => {
+    await memoryLearning.close();
     await runtime.shutdown();
     await runtime.media.close();
     store.close();

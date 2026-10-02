@@ -264,13 +264,42 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
               ? '为当前范围的已确认记忆建立索引（发送到已配置的 embedding 服务）'
               : 'Index confirmed memories in this scope (sends them to the configured embedding service)'}
           </button>
+          <p className="muted">
+            {t('settings') === 'Settings'
+              ? 'In conversation details, enable contribution separately from recall. Background processing saves clear preferences automatically; decisions/conflicts remain candidates. Documents belong in Knowledge.'
+              : '在对话详情中分别开启“使用记忆”和“生成未来记忆”。后台自动保存明确偏好；决策和冲突保留为候选。原始文档请放入知识库。'}
+          </p>
+          <details>
+            <summary>
+              {t('settings') === 'Settings' ? 'Background memory activity' : '后台记忆处理记录'}
+            </summary>
+            {(state.memoryLearning || [])
+              .filter((j: any) => j.scope === (scope.startsWith('project:') ? scope : 'user'))
+              .map((j: any) => (
+                <p key={j.id}>
+                  {new Date(j.at).toLocaleString()} · {j.status} · {j.added || 0}{' '}
+                  {t('settings') === 'Settings' ? 'added' : '新增'} · {j.candidates || 0}{' '}
+                  {t('settings') === 'Settings' ? 'candidates' : '待确认'} {j.reason || ''}
+                </p>
+              ))}
+          </details>
           {state.memories
             .filter((m: any) => m.scope === (scope.startsWith('project:') ? scope : 'user'))
             .map((m: any) => (
               <article className="panel" key={m.id}>
                 <div className="section-title">
                   <span className={'pill ' + (m.active ? 'success' : '')}>
-                    {m.active ? 'Active' : 'Needs confirmation'}
+                    {m.active
+                      ? m.automatic
+                        ? t('settings') === 'Settings'
+                          ? 'Auto-saved'
+                          : '自动保存'
+                        : t('settings') === 'Settings'
+                          ? 'Confirmed'
+                          : '已确认'
+                      : t('settings') === 'Settings'
+                        ? 'Needs confirmation'
+                        : '待确认'}
                   </span>
                   <div className="row">
                     <button

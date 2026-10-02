@@ -21,7 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AgentEvent, Conversation } from '../shared/types';
+import type { AgentEvent, Conversation, Project } from '../shared/types';
 import { api, bootstrap } from './api';
 import { Composer } from './components/Composer';
 import { Inspector } from './components/Inspector';
@@ -54,6 +54,7 @@ export function App() {
     [toast, setToast] = useState(''),
     [sending, setSending] = useState(false),
     [streams, setStreams] = useState<Record<string, any>>({});
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [projectDialog, setProjectDialog] = useState(false),
     [projectName, setProjectName] = useState(''),
     [projectFolders, setProjectFolders] = useState(''),
@@ -524,7 +525,9 @@ export function App() {
   const filtered =
     state?.conversations.filter(
       (c: any) =>
-        c.archived === archived &&
+        (state.projects.some((p) => p.id === c.projectId && p.removedAt)
+          ? archived
+          : c.archived === archived) &&
         c.title.toLowerCase().includes(query.toLowerCase()) &&
         (!!query ||
           c.id === selected ||
@@ -687,6 +690,12 @@ export function App() {
       </div>
       {sidebar && (
         <Sidebar
+          editProject={(p) => {
+            setEditingProject(p);
+            setProjectName(p.name);
+            setProjectFolders(p.folders.join('\n'));
+            setProjectDialog(true);
+          }}
           {...{
             t,
             state,
@@ -695,7 +704,12 @@ export function App() {
             newChat,
             query,
             setQuery,
-            setProjectDialog,
+            setProjectDialog: (value) => {
+              setEditingProject(null);
+              setProjectName('');
+              setProjectFolders('');
+              setProjectDialog(value);
+            },
             archived,
             setArchived,
             filtered,
@@ -756,6 +770,25 @@ export function App() {
             </div>
           )}
         </header>
+        {project?.removedAt && (
+          <div className="workspace-removed-notice" role="status">
+            <span>
+              {language === 'zh'
+                ? '此工作区已移除，历史记录保留。恢复后才能继续任务。'
+                : 'This workspace was removed. History is retained; restore it to continue tasks.'}
+            </span>
+            <button
+              onClick={() => {
+                setEditingProject(project);
+                setProjectName(project.name);
+                setProjectFolders(project.folders.join('\n'));
+                setProjectDialog(true);
+              }}
+            >
+              {language === 'zh' ? '恢复项目' : 'Restore project'}
+            </button>
+          </div>
+        )}
         {page === 'chat' && conversation && (
           <ConversationStatus
             id={conversation.id}
@@ -1147,6 +1180,8 @@ export function App() {
       </main>
       {projectDialog && (
         <ProjectDialog
+          project={editingProject}
+          onSaved={refresh}
           {...{
             t,
             setProjectDialog,
