@@ -474,7 +474,10 @@ export class Runtime implements TeamPort {
         teamStrategy: ctx.conversation.teamStrategy || 'auto',
         teamMode: ctx.conversation.teamMode || 'hierarchy',
         isolatedCopy: !!ctx.conversation.isolationId,
-        selectedSkills: skills,
+        selectedSkills: skills.slice(0, 20),
+        selectedSkillCount: skills.length,
+        skillDiscovery:
+          'Use find_skills for the complete enabled catalog; only the first 20 selected descriptions are included here.',
         knowledgeScopes: ctx.scopes,
         confirmedMemories: memories,
       }) +

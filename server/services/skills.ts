@@ -1,5 +1,5 @@
 import { lstat, readFile, readdir } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, resolve, basename } from 'node:path';
 import { parse } from 'yaml';
 import type { Skill } from '../../shared/types.js';
 import { assert } from '../core/errors.js';
@@ -24,7 +24,7 @@ export class Skills {
     assert((await lstat(root)).isDirectory(), 'SKILL_DIRECTORY', 'Choose a skill directory.');
     const candidates: string[] = [];
     async function walk(path: string, depth: number) {
-      if (depth > 3 || candidates.length >= 200) return;
+      if (depth > 8) return;
       for (const e of await readdir(path, { withFileTypes: true })) {
         if (e.isSymbolicLink()) continue;
         if (e.isFile() && e.name === 'SKILL.md') candidates.push(join(path, e.name));
@@ -40,6 +40,11 @@ export class Skills {
       const value = {
         id: existing?.id || id(),
         ...parsed,
+        sourceGroup: /anthropic/i.test(path)
+          ? 'Anthropic'
+          : /openai/i.test(path)
+            ? 'OpenAI'
+            : basename(root),
         source: path,
         enabled: true,
         createdAt: existing?.createdAt || Date.now(),

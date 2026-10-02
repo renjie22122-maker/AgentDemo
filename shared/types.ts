@@ -170,6 +170,8 @@ export interface Attachment {
   createdAt: number;
 }
 export interface Skill {
+  categories?: Array<{ id: string; labelEn: string; labelZh: string }>;
+  sourceGroup?: string;
   id: string;
   name: string;
   description: string;

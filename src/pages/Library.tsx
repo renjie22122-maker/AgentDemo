@@ -1,4 +1,6 @@
-import { BookOpen, FileText, Plus, Search, Trash2, Upload } from 'lucide-react';
+import { SkillClassificationPanel } from '../components/SkillClassificationPanel';
+import { SkillPicker } from '../components/SkillPicker';
+import { FileText, Plus, Search, Trash2, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { api } from '../api';
 export function Library({ page, state, selected, t, refresh, notify }: any) {
@@ -70,26 +72,19 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
               {t('import')}
             </button>
           </section>
-          <div className="cards">
-            {state.skills.map((s: any) => (
-              <article className="panel" key={s.id}>
-                <div className="section-title">
-                  <h3>
-                    <BookOpen size={18} />
-                    {s.name}
-                  </h3>
-                  <button
-                    title={t('delete')}
-                    onClick={() => go(() => api('/skills/' + s.id, undefined, 'DELETE'))}
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-                <p>{s.description}</p>
-                <small className="muted">{s.id.slice(0, 8)}</small>
-              </article>
-            ))}
-          </div>
+          <SkillClassificationPanel
+            state={state}
+            refresh={refresh}
+            notify={notify}
+            zh={t('settings') !== 'Settings'}
+          />
+          <SkillPicker
+            skills={state.skills}
+            selected={[]}
+            zh={t('settings') !== 'Settings'}
+            disabled={busy}
+            onDelete={(id) => void go(() => api('/skills/' + id, undefined, 'DELETE'))}
+          />
         </>
       ) : page === 'knowledge' ? (
         <>

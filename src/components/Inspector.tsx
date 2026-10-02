@@ -1,3 +1,4 @@
+import { SkillPicker } from './SkillPicker';
 import { ContextPanel, FilesPanel } from './InspectorPanels';
 import { X } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
@@ -95,30 +96,13 @@ export function Inspector({
                 ? 'Checked skills are preferred. The agent may discover other enabled library skills when relevant; disable a skill in the library to exclude it.'
                 : '勾选的技能优先使用；Agent 也可按需发现技能库中其他已启用技能。如需排除，请在技能库禁用。'}
             </p>
-            <div className="skill-options">
-              {state.skills.map((s: any) => (
-                <label className="checkbox" key={s.id}>
-                  <input
-                    disabled={running}
-                    type="checkbox"
-                    checked={conversation.skillIds.includes(s.id)}
-                    onChange={(e) =>
-                      void action(() =>
-                        update({
-                          skillIds: e.target.checked
-                            ? [...conversation.skillIds, s.id]
-                            : conversation.skillIds.filter((k) => k !== s.id),
-                        }),
-                      )
-                    }
-                  />
-                  <span>
-                    {s.name}
-                    <small>{s.id.slice(0, 8)}</small>
-                  </span>
-                </label>
-              ))}
-            </div>
+            <SkillPicker
+              skills={state.skills}
+              selected={conversation.skillIds}
+              disabled={!!running}
+              zh={t('settings') !== 'Settings'}
+              onChange={(skillIds) => void action(() => update({ skillIds }))}
+            />
             {['knowledge', 'memory'].map((k) => (
               <label className="checkbox" key={k}>
                 <input

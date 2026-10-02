@@ -1,3 +1,4 @@
+import { approvalRisk } from '../../shared/approval-risk';
 import {
   AlertCircle,
   Check,
@@ -198,11 +199,31 @@ export function Activity({ events, t }: { events: AgentEvent[]; t: (s: string) =
 }
 export function InputCard({ input, t, refresh, notify }: any) {
   const [answer, setAnswer] = useState('');
+  const [sending, setSending] = useState(false);
+  const zh = t('settings') !== 'Settings';
   const pending = input.status === 'pending';
-  const respond = (allow: boolean) =>
-    api('/inputs/' + input.id, { answer: answer || (allow ? 'Approved' : 'Denied'), allow })
-      .then(refresh)
-      .catch((e: any) => notify(e.message));
+  const risk = input.payload.risk || approvalRisk(input.payload);
+  const respond = async (allow: boolean, alternative = false) => {
+    if (sending) return;
+    setSending(true);
+    try {
+      await api('/inputs/' + input.id, {
+        answer:
+          answer ||
+          (alternative
+            ? 'Do not execute this operation. Propose a safer or narrower alternative and explain it.'
+            : allow
+              ? 'Approved once for the exact operation shown.'
+              : 'Denied'),
+        allow,
+      });
+      await refresh();
+    } catch (e: any) {
+      notify(e.message);
+    } finally {
+      setSending(false);
+    }
+  };
   return (
     <details
       key={input.id + ':' + input.status}
@@ -214,13 +235,54 @@ export function InputCard({ input, t, refresh, notify }: any) {
       <summary className="input-title">
         <AlertCircle size={17} />
         <strong>{input.kind === 'approval' ? t('approval') : input.payload.question}</strong>
+        {input.kind === 'approval' && (
+          <span
+            className={'risk-badge risk-' + risk.level}
+            title={t('settings') === 'Settings' ? risk.reason : risk.zh}
+          >
+            {t('settings') === 'Settings'
+              ? (
+                  {
+                    low: 'Low risk',
+                    medium: 'Review scope',
+                    high: 'High risk',
+                    unknown: 'Uncertain',
+                  } as any
+                )[risk.level]
+              : ({ low: '低风险', medium: '注意范围', high: '高风险', unknown: '风险未明' } as any)[
+                  risk.level
+                ]}
+          </span>
+        )}
         {!pending && <span className="input-answer-preview">{input.answer}</span>}
         <span className="pill">{input.status}</span>
       </summary>
       <div className="input-content">
         {input.kind === 'approval' ? (
           <>
+            {pending && input.payload.autoReview?.decision === 'ask' && (
+              <div className="review-question" role="note">
+                <strong>{zh ? '需要你确认' : 'Your confirmation is needed'}</strong>
+                <p>
+                  {input.payload.clarification ||
+                    (zh
+                      ? '是否允许执行下方这一项具体操作？请核对对象、范围及审核原因；批准仅限本次。'
+                      : 'May I carry out the exact operation below? Review its target, scope and assessment. Approval applies once only.')}
+                </p>
+                <small>
+                  {zh
+                    ? '你也可以补充限制或选择换一种方案。补充限制时请点“换一种方案”，不会执行当前操作。'
+                    : 'You may add constraints or request an alternative. Use “Request alternative” for changed constraints; the current operation will not execute.'}
+                </small>
+              </div>
+            )}
             <p>{input.payload.reason}</p>
+            <p className={'risk-explanation risk-' + risk.level}>
+              {t('settings') === 'Settings' ? risk.reason : risk.zh}
+              {t('settings') === 'Settings'
+                ? ' · Heuristic signal, not a safety guarantee.'
+                : ' · 自动提示，不是安全保证。'}
+            </p>
             {input.payload.background && (
               <p className="muted">
                 {t('settings') === 'Settings'
@@ -294,14 +356,38 @@ export function InputCard({ input, t, refresh, notify }: any) {
             <input
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
-              placeholder={input.kind === 'approval' ? 'Optional note' : t('answer')}
+              disabled={sending}
+              placeholder={
+                input.kind === 'approval'
+                  ? zh
+                    ? '补充说明或限制（可选）'
+                    : 'Notes or constraints (optional)'
+                  : t('answer')
+              }
             />
             <div className="row end">
               {input.kind === 'approval' && (
-                <button onClick={() => respond(false)}>{t('deny')}</button>
+                <>
+                  <button disabled={sending} onClick={() => void respond(false)}>
+                    {t('deny')}
+                  </button>
+                  {input.payload.autoReview?.decision === 'ask' && (
+                    <button disabled={sending} onClick={() => void respond(false, true)}>
+                      {zh ? '换一种方案' : 'Request alternative'}
+                    </button>
+                  )}
+                </>
               )}
-              <button className="primary" onClick={() => respond(true)}>
-                {input.kind === 'approval' ? t('allow') : t('answer')}
+              <button className="primary" disabled={sending} onClick={() => void respond(true)}>
+                {sending
+                  ? zh
+                    ? '提交中…'
+                    : 'Submitting…'
+                  : input.kind === 'approval'
+                    ? zh
+                      ? '仅本次允许'
+                      : 'Allow once'
+                    : t('answer')}
               </button>
             </div>
           </>

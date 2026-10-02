@@ -8,6 +8,18 @@ import { Inputs } from '../server/services/approvals.js';
 import { Configuration } from '../server/services/settings.js';
 import { Store } from '../server/storage/store.js';
 import type { Run } from '../shared/types.js';
+function approved() {
+  return JSON.stringify({
+    risk: 'low',
+    authorization: 'explicit',
+    evidence: [0],
+    bounded: true,
+    effectsKnown: true,
+    sensitiveData: false,
+    securityChange: false,
+    reason: 'Explicit bounded read',
+  });
+}
 async function setup() {
   const dir = await mkdtemp(join(tmpdir(), 'agentdemo-review-'));
   const store = new Store(join(dir, 'db.sqlite')),
@@ -34,6 +46,7 @@ async function setup() {
     checkpoints: [],
   } as unknown as Run;
   store.put('run', run);
+  store.event('chat', 'run', 'user.message', { content: 'Read the requested file.' });
   return { store, config, run };
 }
 test('automatic approval is a separate tool-free request and records its rationale and usage', async () => {
@@ -46,7 +59,7 @@ test('automatic approval is a separate tool-free request and records its rationa
       return {
         message: {
           role: 'assistant',
-          content: '{"decision":"allow","reason":"Explicit bounded read"}',
+          content: approved(),
         },
         usage: { input: 20, output: 10, cached: 0, measured: true },
       };
@@ -99,7 +112,7 @@ test('ask mode bypasses reviewer and mode changes invalidate automatic permissio
       count++;
       f.store.put('conversation', { id: 'chat', permission: 'ask' });
       return {
-        message: { role: 'assistant', content: '{"decision":"allow","reason":"ok"}' },
+        message: { role: 'assistant', content: approved() },
         usage: { input: 1, output: 1, cached: 0, measured: true },
       };
     },
@@ -108,4 +121,142 @@ test('ask mode bypasses reviewer and mode changes invalidate automatic permissio
   assert.equal(await review.review(f.run, {}, new AbortController().signal), null);
   assert.equal(count, 1);
   f.store.close();
+});
+
+test('only exact built-in queries shortcut review; composed commands and high risk do not', async () => {
+  const f = await setup();
+  let calls = 0;
+  const reviewer = new AutoReview(f.store, f.config, () => ({
+    complete: async () => {
+      calls++;
+      return {
+        message: { role: 'assistant', content: '{"decision":"ask","reason":"uncertain"}' },
+        usage: { input: 1, output: 1, cached: 0, measured: true },
+      };
+    },
+  }));
+  try {
+    const signal = new AbortController().signal;
+    assert.equal(
+      (await reviewer.review(f.run, { command: 'cd', cwd: '.', backend: 'approval-host' }, signal))
+        .decision,
+      'allow',
+    );
+    assert.equal(calls, 0);
+    for (const command of ['cd & echo other', 'cd > changed.txt', 'pwd', 'ver', 'python test.py'])
+      assert.equal(
+        (await reviewer.review(f.run, { command, cwd: '.', backend: 'approval-host' }, signal))
+          .decision,
+        'ask',
+      );
+    assert.equal(calls, 5);
+    assert.equal(
+      (
+        await reviewer.review(
+          f.run,
+          { command: 'git push', cwd: '.', backend: 'approval-host' },
+          signal,
+        )
+      ).decision,
+      'ask',
+    );
+    assert.equal(calls, 5);
+  } finally {
+    f.store.close();
+  }
+});
+
+test('new instructions, configuration or changed action invalidate approval', async () => {
+  for (const change of ['message', 'execution', 'action']) {
+    const f = await setup(),
+      payload = { command: 'echo hello' };
+    const reviewer = new AutoReview(f.store, f.config, () => ({
+      complete: async () => {
+        if (change === 'message') f.store.event('chat', 'run', 'user.message', { content: 'Stop' });
+        if (change === 'execution')
+          f.store.put('conversation', {
+            id: 'chat',
+            permission: 'auto',
+            execution: { backend: 'approval-host', network: 'host' },
+          });
+        if (change === 'action') payload.command = 'different action';
+        return {
+          message: { role: 'assistant', content: approved() },
+          usage: { input: 1, output: 1, cached: 0, measured: true },
+        };
+      },
+    }));
+    try {
+      const result = await reviewer.review(f.run, payload, new AbortController().signal);
+      assert.equal(result.decision, 'ask');
+      assert.match(result.reason, /changed/);
+      assert.equal(result.policyVersion, '2026-10-02.1');
+    } finally {
+      f.store.close();
+    }
+  }
+});
+
+test('reviewer sees same-session manual decisions only, never automatic grants as human authority', async () => {
+  const f = await setup();
+  for (const [id, chat, auto] of [
+    ['human', 'chat', false],
+    ['other', 'other', false],
+    ['machine', 'chat', true],
+  ] as const) {
+    f.store.put('input', {
+      id,
+      conversationId: chat,
+      kind: 'approval',
+      status: 'answered',
+      answer: 'Approved once',
+      payload: { command: 'echo hello', ...(auto ? { autoReview: { decision: 'allow' } } : {}) },
+    });
+  }
+  const reviewer = new AutoReview(f.store, f.config, () => ({
+    complete: async (req) => {
+      const evidence = JSON.parse(req.messages[1].content);
+      assert.deepEqual(
+        evidence.humanDecisions.map((d: any) => d.id),
+        ['human'],
+      );
+      assert.match(evidence.humanDecisions[0].scope, /one-time/);
+      return {
+        message: { role: 'assistant', content: approved() },
+        usage: { input: 1, output: 1, cached: 0, measured: true },
+      };
+    },
+  }));
+  try {
+    await reviewer.review(f.run, { command: 'echo hello' }, new AbortController().signal);
+  } finally {
+    f.store.close();
+  }
+});
+
+test('review clarification pauses exact action; alternative returns denial without executing', async () => {
+  const f = await setup();
+  const inputs = new Inputs(f.store, async () => ({
+    decision: 'ask',
+    reason: 'Need target confirmation',
+    assessment: { clarification: 'May I write only the specified report?' },
+  }));
+  try {
+    const waiting = inputs.request(
+      f.run,
+      'approval',
+      { command: 'example' },
+      new AbortController().signal,
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    const item = f.store.list<any>('input')[0];
+    assert.equal(item.payload.clarification, 'May I write only the specified report?');
+    assert.equal(f.store.get<any>('run', 'run').status, 'waiting_approval');
+    inputs.answer(item.id, 'Use a read-only alternative instead', false);
+    assert.match(await waiting, /DENIED BY USER/);
+    assert.equal(f.store.get<any>('run', 'run').status, 'running');
+    assert.equal(f.store.get<any>('input', item.id).status, 'denied');
+  } finally {
+    f.store.close();
+  }
 });

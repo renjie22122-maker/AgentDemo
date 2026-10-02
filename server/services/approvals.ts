@@ -1,3 +1,4 @@
+import { approvalRisk } from '../../shared/approval-risk.js';
 import type { PendingInput, Run } from '../../shared/types.js';
 import { abortError, assert } from '../core/errors.js';
 import { Store, id } from '../storage/store.js';
@@ -23,7 +24,7 @@ export class Inputs {
       runId: run.id,
       conversationId: run.conversationId,
       kind,
-      payload,
+      payload: kind === 'approval' ? { ...payload, risk: approvalRisk(payload) } : payload,
       status: 'pending',
       answer: null,
       createdAt: Date.now(),
@@ -31,7 +32,12 @@ export class Inputs {
     if (kind === 'approval' && this.review) {
       const review = await this.review(run, payload, signal);
       if (review) {
-        item.payload = { ...payload, autoReview: review };
+        item.payload = {
+          ...item.payload,
+          autoReview: review,
+          clarification:
+            review.decision === 'ask' ? review.assessment?.clarification || null : null,
+        };
         signal.throwIfAborted();
         if (review.decision === 'allow') {
           item.status = 'answered';

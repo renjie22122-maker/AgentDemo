@@ -25,6 +25,7 @@ import { extract } from '../services/documents.js';
 import { pickFolder } from '../services/folder-picker.js';
 import { validateRoots } from '../services/paths.js';
 import { Configuration, profileSchema } from '../services/settings.js';
+import { SkillClassification } from '../services/skill-classification.js';
 import { Skills } from '../services/skills.js';
 import { Store, id } from '../storage/store.js';
 export async function createApp(options: { directory: string; dist?: string; runtime?: Runtime }) {
@@ -113,7 +114,12 @@ export async function createApp(options: { directory: string; dist?: string; run
     conversations: store.conversations(),
     projects: store.list('project'),
     runs: store.runMetadata().map(({ checkpoints, ...r }) => r),
-    skills: store.list<Skill>('skill').map(({ content, source, ...s }) => s),
+    skills: store.list<Skill>('skill').map(({ content, source, ...s }) => ({
+      ...s,
+      sourceGroup:
+        s.sourceGroup ||
+        (/anthropic/i.test(source) ? 'Anthropic' : /openai/i.test(source) ? 'OpenAI' : 'Other'),
+    })),
     memories: store.list('memory'),
     documents: store.list('document'),
     settings: config.public(),
@@ -234,7 +240,10 @@ export async function createApp(options: { directory: string; dist?: string; run
           .optional(),
         teamMode: z.enum(['hierarchy', 'host', 'creative']).optional(),
         teamStrategy: z.enum(['off', 'auto', 'prefer']).optional(),
-        skillIds: z.array(z.string()).max(30).optional(),
+        skillIds: z
+          .array(z.string())
+          .transform((ids) => [...new Set(ids)])
+          .optional(),
         knowledge: z.boolean().optional(),
         memory: z.boolean().optional(),
       })
@@ -454,6 +463,17 @@ export async function createApp(options: { directory: string; dist?: string; run
       name: data.name,
       folders: await validateRoots(data.folders, directory),
     });
+  });
+  const classification = new SkillClassification(store, config);
+  app.post('/api/skills/classify', async (req) => {
+    const { profileId } = z
+      .object({ profileId: z.string(), consent: z.literal(true) })
+      .parse(req.body);
+    return classification.preview(profileId);
+  });
+  app.post('/api/skills/classify/apply', async (req) => {
+    const { id } = z.object({ id: z.string() }).parse(req.body);
+    return classification.apply(id);
   });
   app.post('/api/skills/import', async (req) => {
     const { path } = z.object({ path: z.string().min(1) }).parse(req.body);

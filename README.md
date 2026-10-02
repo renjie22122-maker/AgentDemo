@@ -172,3 +172,13 @@ Use `run_command` with `background: true` for an independent long-running operat
 An optional `readyText` marks an observed stdout phrase, not service health; follow it with a targeted approved health check. Stop task-owned servers after use. Command completion, timeout, cancellation and unknown outcomes are recorded separately. After a service crash, formerly running jobs become unknown and are never automatically replayed or killed by a stale PID. Conflicting work in the same environment must be serialized by the agent; automatic filesystem conflict prediction is not provided.
 
 Background commands also support deferred approval. Their job and approval IDs are returned while the decision is pending, permitting unrelated authorized work. The exact captured command starts only after approval and execution-configuration revalidation; rejection/cancellation starts nothing. Command timeouts start after approval. Pending approvals are included in the run's completion barrier, and service recovery cancels pre-execution jobs rather than treating them as executed. Ordinary foreground commands, questions and non-command approvals retain their synchronous workflow.
+
+### Approval guidance and skill selection
+
+Approval cards show a heuristic risk label with text as well as color: low, review scope, high, or uncertain. This is not a safety guarantee. Automatic review retains initial and recent user intent, uses separate per-conversation request queues, and can approve the exact argument-free `cd` built-in query without an auxiliary model request. Composed commands never use this shortcut; high-risk matches and review failures require human review. Project source files are not added to reviewer requests.
+
+Skill selection has no fixed 30-item cap and deduplicates IDs. Import no longer silently stops at 200 skills (directory traversal remains bounded to eight levels and excludes links/dependency folders). Search, overlapping purpose categories, source groups and selection-state filters support bulk select/clear. Classification is inferred metadata, not a capability test. Only the first 20 selected descriptions are placed in the initial model context; the complete enabled catalog remains available through paginated `find_skills`.
+
+### AI skill classification
+
+Skills Library offers an explicit metadata-only model classification request, a preview and a separate Apply action. Sources remain import-derived. New category labels appear in skill filters after applying. Changed catalogs invalidate old previews; existing categories stay unchanged on errors. Imported skills still use local fallback categories until classified. Auto-review now includes recent same-conversation manual decisions as scoped evidence, never as reusable grants.

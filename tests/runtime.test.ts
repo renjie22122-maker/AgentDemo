@@ -1285,3 +1285,35 @@ for (const decision of ['approve', 'deny', 'cancel', 'changed'] as const)
       }
     },
   );
+
+test('conversation accepts more than thirty preferred skills and deduplicates them', async () => {
+  const f = await setup({ complete: async () => result('done') });
+  const { app } = await createApp({
+    directory: f.dir,
+    runtime: f.runtime,
+  });
+  try {
+    for (let i = 0; i < 45; i++)
+      f.store.put('skill', {
+        id: 's' + i,
+        name: 'Skill ' + i,
+        description: 'fixture',
+        enabled: true,
+        content: 'fixture',
+        source: 'fixture',
+      });
+    const boot = await app.inject({ method: 'GET', url: '/api/bootstrap' });
+    const csrf = boot.json().csrf;
+    const cookie = String(boot.headers['set-cookie']).split(';')[0];
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/conversations/chat',
+      headers: { cookie, 'x-csrf-token': csrf },
+      payload: { skillIds: [...Array.from({ length: 45 }, (_, i) => 's' + i), 's0'] },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.equal(response.json().skillIds.length, 45);
+  } finally {
+    await app.close();
+  }
+});
