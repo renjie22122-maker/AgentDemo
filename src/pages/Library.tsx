@@ -1,3 +1,5 @@
+import { MemoryDefaults } from '../components/MemoryDefaults';
+import { KnowledgeAutomation } from '../components/KnowledgeAutomation';
 import { MemoryDetails, MemoryWorkbench, DocumentVersion } from '../components/MemoryWorkbench';
 import { SkillClassificationPanel } from '../components/SkillClassificationPanel';
 import { SkillPicker } from '../components/SkillPicker';
@@ -127,6 +129,15 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
                 }}
               />
             </div>
+            <KnowledgeAutomation
+              scope={scope}
+              embedding={state.settings.embedding}
+              profile={state.settings.profiles.find(
+                (p: any) => p.id === state.settings.defaultProfileId,
+              )}
+              zh={t('settings') !== 'Settings'}
+              notify={notify}
+            />
             <details>
               <summary>{t('Paste a document')}</summary>
               <input
@@ -201,6 +212,16 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
             .filter((d: any) => !scope || d.scope === scope)
             .map((d: any) => (
               <article className="panel row" key={d.id}>
+                <button
+                  disabled={!text || !scope}
+                  onClick={() =>
+                    go(() => api('/knowledge/feedback', { scope, query: text, documentId: d.id }))
+                  }
+                >
+                  {t('settings') === 'Settings'
+                    ? 'Correct source for this query'
+                    : '标记为当前查询的正确来源'}
+                </button>
                 <FileText size={20} />
                 <div className="grow">
                   <strong>{d.name}</strong>
@@ -209,7 +230,8 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
                   </p>
                   <DocumentVersion document={d} go={go} zh={t('settings') !== 'Settings'} />
                 </div>
-                {state.settings.embedding.model && (
+                {(state.settings.embedding.backend === 'local' ||
+                  state.settings.embedding.model) && (
                   <button
                     onClick={() =>
                       go(async () => {
@@ -276,6 +298,12 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
               {t('create')}
             </button>
           </section>
+          <MemoryDefaults
+            scope={scope.startsWith('project:') ? scope : 'user'}
+            state={state}
+            zh={t('settings') !== 'Settings'}
+            notify={notify}
+          />
           <button
             disabled={busy}
             onClick={() =>
@@ -284,14 +312,18 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
               )
             }
           >
-            {t('settings') !== 'Settings'
-              ? '为当前范围的已确认记忆建立索引（发送到已配置的 embedding 服务）'
-              : 'Index confirmed memories in this scope (sends them to the configured embedding service)'}
+            {state.settings.embedding.backend === 'local'
+              ? t('settings') !== 'Settings'
+                ? '本地索引当前范围的有效记忆'
+                : 'Index active memories locally'
+              : t('settings') !== 'Settings'
+                ? '为当前范围的有效记忆建立索引（发送到已配置的 embedding 服务）'
+                : 'Index active memories with the configured embedding API'}
           </button>
           <p className="muted">
             {t('settings') === 'Settings'
-              ? 'In conversation details, enable contribution separately from recall. Background processing saves clear preferences automatically; decisions/conflicts remain candidates. Documents belong in Knowledge.'
-              : '在对话详情中分别开启“使用记忆”和“生成未来记忆”。后台自动保存明确偏好；决策和冲突保留为候选。原始文档请放入知识库。'}
+              ? 'Enable Automatic memory management in conversation details. Sourced facts are maintained automatically; uncertain conflicts are quarantined. Local embedding indexes learned active memories automatically. Documents belong in Knowledge.'
+              : '在对话详情开启“自动管理记忆”，后台整理有来源的事实，不确定冲突自动隔离。本地 embedding 会自动索引新学习的有效记忆；原始文档请放入知识库。'}
           </p>
           <details>
             <summary>

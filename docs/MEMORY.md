@@ -117,3 +117,109 @@ not a distributed graph engine. Semantic duplicate consolidation remains a revie
 problem rather than an automatic overwrite. Source backups and SQLite free pages are
 outside application-level forgetting. Historical query times describe validity, not
 a full reconstruction of what every model knew at that moment.
+
+## Automatic management
+
+Conversation details now offer one **Automatic memory management** switch.
+It enables extraction and recall together and disables cross-project user-memory mixing.
+It uses the displayed conversation model and the existing bounded human-message source
+window; no tool logs or attachments are sent. Existing conversations are not silently opted in.
+Switching off stops extraction and recall, including discarding in-flight extraction results.
+
+Explicit sourced preferences, decisions and episodes activate automatically. Exact duplicates
+are consolidated. A newer source can replace older automatic facts only for the same
+entity and attribute; ambiguous conflicts and manually maintained facts are retained without
+interrupting the conversation. History remains auditable. A sourced graph link is generated
+for each active memory; this is not autonomous discovery of arbitrary causal relationships.
+Expired entries are excluded by retrieval, not destructively erased. Embedding indexing and
+document revision imports retain their existing separate controls; this switch does not
+grant a new external embedding destination permission.
+
+## Local bilingual retrieval and automatic knowledge maintenance
+
+Settings offers a local CPU backend, pinned multilingual-e5-small ONNX q8, alongside the
+existing OpenAI-compatible embedding API. The first local request downloads public model
+weights; subsequent inference uses the disk cache. E5 query and passage prefixes differ.
+Embedding, SQLite FTS and HNSW run locally; generating an answer still uses the conversation
+LLM and may send retrieved excerpts to that configured provider.
+
+In Knowledge, choose a scope, register source files/folders within its project, and enable
+automatic maintenance. An empty source list indexes only explicitly imported documents.
+The 30-second worker creates versions for changed content, reuses matching same-scope chunk
+vectors, retires removed files, and exposes status/errors. Transient network failures retry with exponential backoff (30 seconds to one hour), including
+after three failures. Configuration failures pause after three attempts until settings are saved. Changing the embedding destination
+requires saving the scope setting again. Session knowledge never scans project folders.
+No implicit global computer scan or attachment retention is enabled.
+
+The scanner supports text, Markdown, CSV, JSON, DOCX, XLSX and text PDFs; it excludes hidden,
+dependency and build directories and links. Limits: 12 registered paths, 1,000 supported
+files, 10,000 visited entries and 25 MB per source. Narrow the source set if a limit is hit.
+Images and scanned PDF pages use local Windows OCR during automatic maintenance. OCR requires
+installed Windows language packs, is fallible, and scanned pages are limited to 50 per PDF. File history remains until explicitly
+removed. ANN uses local HNSW at 2,000 eligible vectors, exact similarity below that threshold.
+The ANN algorithm is language-independent; semantic bilingual quality depends on E5.
+
+Automatic memory management also indexes newly learned active memories locally when the
+local embedding backend is selected. Remote memory indexing retains explicit control.
+
+Local smoke evaluation (2026-10-02): real CPU q8 vectors had 384 dimensions;
+3/4 tiny bilingual/cross-language queries ranked the intended passage first. The Chinese
+refund query ranked the English refund passage third, behind two unrelated Chinese texts.
+This is a known quality limitation, not a passed semantic benchmark. HNSW returned the
+same nearest neighbors as exact similarity in this probe. Production retrieval returns
+multiple cited candidates; this is not evidence of high recall on a large corpus.
+Model download is resumable and the pinned ONNX weights are SHA-256 checked before loading.
+
+## Scope defaults, background work and evidence-based adaptation
+
+The Memory page stores separate defaults for ordinary chats and each project. New chats
+inherit only the authorized model destination; chat overrides are preserved. Existing chats
+are not silently opted in. Switching model destinations requires a new explicit selection.
+
+Background work lists indexing, memory, graph extraction, command jobs, team work, dependency
+preparation and schedules. Schedules persist a dispatch identifier before starting a run.
+They support one-shot/repeating prompts and completion of a command in the same conversation.
+The service must remain running. Missed intervals coalesce, runs do not overlap within a chat,
+and failed/interrupted runs or uncertain effects require inspection rather than blind replay.
+External CI/webhook subscriptions are not implemented by this scheduler.
+
+Disputed automatic memories are reconsidered when new extraction provides evidence; explicit
+newer same-attribute user statements can supersede old automatic records. Ambiguous identity
+or conflicting manual records remain quarantined. This does not autonomously research the web.
+
+Optional document relationship extraction requires explicitly selecting a model destination.
+It processes at most eight chunks / 14,000 characters per document. Labels and relation phrases
+must appear in source quotes; exact same-scope entities are reused across documents. Ambiguous
+aliases are rejected. Retired or deleted sources stop supporting retrieval. Literal quotes
+prove provenance, not entailment: these are sourced assertions, not independently verified facts.
+
+Retrieval feedback lets users mark a document as the correct source for a query. Maintenance
+compares lexical and hybrid retrieval using those labels; at least 15 cases and five held-out
+cases with a 0.1 MRR improvement are required for automatic strategy selection. Agent-authored
+labels are excluded. This is bounded strategy selection, not automatic model, reranker or
+chunk-size search. Small sets and repeated feedback are not a generalization benchmark.
+
+The prepare_skill_environment tool creates reusable project-local pip/npm environments through
+normal command approval and sandbox enforcement. npm lifecycle scripts are disabled. It checks
+dependency consistency, not full skill behavior. Missing credentials, account connections and
+ambiguous/failed installations still require appropriate user action.
+
+## Recovery assistance
+
+Background failures now show a classified cause and a repair action. Temporary connection
+failures use backoff. Authorization, missing dependencies, capacity limits and unknown outcomes
+are not treated as transient network problems. A changed saved credential triggers another
+indexing attempt only when the destination and scope still match the previous authorization.
+The stored recovery marker is a digest, never a credential. The worker checks every 30 seconds.
+
+After fixing local configuration or dependencies, **Recheck after repair** resets only failed
+index attempts in that enabled scope. It cannot enable a disabled scope or authorize a new
+embedding destination. Completed index jobs are retained.
+
+Failed skill preparation is recorded even when command invocation throws. **Ask Agent to
+diagnose and repair** opens work in the original conversation. The agent first inspects the
+environment, then uses the existing command approval and sandbox flow. Repeated clicks for
+the same failure reuse the dispatched run. Repair assistance is a new diagnosis, not a replay
+of the failed install. Credentials and account connections are not automatically acquired;
+the host does not claim the skill is ready until dependency preparation reports success,
+and end-to-end behavior still needs verification.

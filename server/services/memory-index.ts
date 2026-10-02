@@ -14,7 +14,7 @@ export class MemoryIndex {
     private embeddings: Embeddings,
   ) {}
   // Explicit user action only: inactive candidates never leave the machine for embedding.
-  async index(scope?: string) {
+  async index(scope?: string, allowed: () => boolean = () => true) {
     const fingerprint = this.embeddings.fingerprint();
     let indexed = 0;
     for (const m of this.store
@@ -27,9 +27,11 @@ export class MemoryIndex {
       )) {
       const existing = this.store.maybe<any>('memory-vector', m.id);
       if (existing?.hash === hash(m) && existing?.model === fingerprint) continue;
+      if (!allowed() || this.embeddings.fingerprint() !== fingerprint) break;
       const [values] = await this.embeddings.encode([m.content]);
       const current = this.store.maybe<Memory>('memory', m.id);
       if (
+        allowed() &&
         current &&
         memoryValid(current) &&
         new MemoryLifecycle(this.store).evidenceValid(current) &&
@@ -69,7 +71,7 @@ export class MemoryIndex {
       fallback: string | undefined;
     if (this.embeddings.enabled() && vectors.length) {
       try {
-        const [q] = await this.embeddings.encode([query], signal);
+        const [q] = await this.embeddings.encode([query], signal, 'query');
         for (const { m, v } of vectors) {
           const score = cosine(q, v.values);
           if (score >= 0.35) scores.set(m.id, score);

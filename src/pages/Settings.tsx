@@ -576,10 +576,25 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
       </section>
       <section className="panel">
         <h2>{t('Embedding connection')}</h2>
+        <label>
+          {t('settings') === 'Settings' ? 'Embedding backend' : '向量模型执行位置'}
+          <select
+            value={value.embedding.backend || 'remote'}
+            onChange={(e) =>
+              setValue({
+                ...value,
+                embedding: { ...value.embedding, backend: e.target.value as 'local' | 'remote' },
+              })
+            }
+          >
+            <option value="local">Local · multilingual-e5-small · 中文 / English · CPU</option>
+            <option value="remote">API · Remote / local endpoint</option>
+          </select>
+        </label>
         <p className="muted">
-          {t(
-            'Optional. Indexing sends document chunks to this endpoint. Lexical search works without it; vector search is exact, not ANN.',
-          )}
+          {t('settings') === 'Settings'
+            ? 'Local multilingual E5 runs on CPU; first use downloads model files. Documents stay local. API mode sends chunks to the configured endpoint. Retrieval uses local FTS and HNSW.'
+            : '本地多语言 E5 使用 CPU，首次下载模型，文档不上传。API 模式将分块发送到配置的服务。FTS 与 HNSW 检索均在本机执行。'}
         </p>
         <div className="form-grid">
           <label>

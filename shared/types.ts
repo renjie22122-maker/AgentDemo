@@ -74,7 +74,7 @@ export interface Settings {
   commandBackend: 'approval-host' | 'docker' | 'native-windows';
   nativePython?: string;
   nativeNetwork?: 'deny' | 'host';
-  embedding: { baseUrl: string; apiKey: string; model: string };
+  embedding: { baseUrl: string; apiKey: string; model: string; backend?: 'remote' | 'local' };
   mcp: { id: string; name: string; command: string; args: string[]; enabled: boolean }[];
 }
 export interface Project {
@@ -106,6 +106,8 @@ export interface Conversation {
   memory: boolean;
   includeUserMemory?: boolean;
   generateMemory?: boolean;
+  automaticMemory?: boolean;
+  memoryPolicy?: 'inherit' | 'override';
   memoryGenerationTarget?: string;
 }
 export interface ContextSample {

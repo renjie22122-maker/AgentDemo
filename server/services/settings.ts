@@ -95,7 +95,12 @@ const schema = z.object({
   nativePython: z.string().default(''),
   nativeNetwork: z.enum(['deny', 'host']).default('deny'),
   embedding: z
-    .object({ baseUrl: z.string(), apiKey: z.string(), model: z.string() })
+    .object({
+      baseUrl: z.string(),
+      apiKey: z.string(),
+      model: z.string(),
+      backend: z.enum(['remote', 'local']).optional(),
+    })
     .default({ baseUrl: '', apiKey: '', model: '' }),
   mcp: z
     .array(

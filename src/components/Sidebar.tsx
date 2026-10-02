@@ -148,6 +148,7 @@ export function Sidebar({
           ['knowledge', LibraryIcon],
           ['skills', BookOpen],
           ['memory', Brain],
+          ['background', LibraryIcon],
           ['settings', Settings],
         ].map(([key, Icon]: any) => (
           <button className={page === key ? 'selected' : ''} key={key} onClick={() => setPage(key)}>

@@ -1,0 +1,106 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Store } from '../server/storage/store.js';
+import { Knowledge } from '../server/services/knowledge.js';
+import { KnowledgeMaintenance } from '../server/services/knowledge-maintenance.js';
+
+test('automatic sources preserve versions, reuse vectors, isolate scopes and retire deleted files', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'knowledge-auto-'));
+  const root = join(dir, 'docs'),
+    data = join(dir, 'data');
+  await mkdir(root);
+  await mkdir(data);
+  const store = new Store(join(data, 'db.sqlite'));
+  let calls = 0;
+  const embedding: any = {
+    enabled: () => true,
+    fingerprint: () => 'fixture',
+    encode: async (texts: string[]) => {
+      calls += texts.length;
+      return texts.map(() => [1, 0]);
+    },
+  };
+  const knowledge = new Knowledge(store, embedding);
+  const manager = new KnowledgeMaintenance(store, knowledge, embedding, data);
+  store.put('project', { id: 'p', folders: [root] });
+  store.put('knowledge-watch', {
+    id: 'project:p',
+    paths: [root],
+    enabled: true,
+    target: 'fixture',
+    revision: 1,
+  });
+  await writeFile(join(root, 'guide.md'), '# Guide\nThe retention period is seven days.');
+  await manager.tick();
+  assert.equal(store.list<any>('document').length, 1);
+  assert.equal(calls, 1);
+  await manager.tick();
+  assert.equal(calls, 1);
+  await writeFile(join(root, 'guide.md'), '# Guide\nThe retention period is fourteen days.');
+  await manager.tick();
+  const docs = store.list<any>('document');
+  assert.equal(docs.length, 2);
+  assert.equal(docs.filter((d) => d.validUntil == null).length, 1);
+  assert.equal(knowledge.search(['project:other'], 'retention').length, 0);
+  assert.equal(knowledge.search(['project:p'], 'fourteen')[0].text.includes('fourteen'), true);
+  await rm(join(root, 'guide.md'));
+  await manager.tick();
+  assert.equal(knowledge.search(['project:p'], 'retention').length, 0);
+  assert.equal(store.get<any>('knowledge-watch', 'project:p').status, 'synced');
+  await manager.close();
+  knowledge.close();
+  store.close();
+  await rm(dir, { recursive: true, force: true });
+});
+test('destination changes and disabled scopes never embed; repeated failure stops after three tries', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'knowledge-auto-'));
+  const store = new Store(join(dir, 'db.sqlite'));
+  let calls = 0;
+  const embedding: any = {
+    enabled: () => true,
+    fingerprint: () => 'local',
+    encode: async () => {
+      calls++;
+      throw Error('invalid fixture vectors');
+    },
+  };
+  const knowledge = new Knowledge(store, embedding);
+  const manager = new KnowledgeMaintenance(store, knowledge, embedding, dir);
+  store.put('conversation', { id: 's', projectId: null });
+  knowledge.import('session:s', 'doc', 'some readable content');
+  store.put('knowledge-watch', {
+    id: 'session:s',
+    paths: [],
+    enabled: true,
+    target: 'other',
+    revision: 1,
+  });
+  await manager.tick();
+  assert.equal(calls, 0);
+  store.put('knowledge-watch', {
+    id: 'session:s',
+    paths: [],
+    enabled: false,
+    target: 'local',
+    revision: 2,
+  });
+  await manager.tick();
+  assert.equal(calls, 0);
+  store.put('knowledge-watch', {
+    id: 'session:s',
+    paths: [],
+    enabled: true,
+    target: 'local',
+    revision: 3,
+  });
+  for (let i = 0; i < 5; i++) await manager.tick();
+  assert.equal(calls, 3);
+  assert.equal(store.get<any>('knowledge-watch', 'session:s').status, 'needs_attention');
+  await manager.close();
+  knowledge.close();
+  store.close();
+  await rm(dir, { recursive: true, force: true });
+});

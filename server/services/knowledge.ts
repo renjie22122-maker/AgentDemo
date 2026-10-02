@@ -146,15 +146,50 @@ export class Knowledge {
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
   }
-  async index(key: string) {
+  async index(key: string, allowed: () => boolean = () => true) {
     assert(this.embeddings?.enabled(), 'EMBEDDING_DISABLED', 'Configure embeddings first.');
+    const fingerprint = this.embeddings!.fingerprint();
     const rows = this.store.db
-      .prepare('SELECT id,text FROM chunks WHERE document_id=? ORDER BY ordinal')
+      .prepare('SELECT id,text,vector FROM chunks WHERE document_id=? ORDER BY ordinal')
       .all(key) as any[];
     assert(rows.length, 'NOT_FOUND', 'Document not found');
     for (let i = 0; i < rows.length; i += 16) {
-      const batch = rows.slice(i, i + 16),
-        vectors = await this.embeddings!.encode(batch.map((r) => r.text));
+      const batch = rows.slice(i, i + 16).filter((r) => {
+        try {
+          return JSON.parse(r.vector || 'null')?.model !== this.embeddings!.fingerprint();
+        } catch {
+          return true;
+        }
+      });
+      if (!batch.length) continue;
+      const vectors: number[][] = [];
+      for (const row of batch) {
+        assert(
+          allowed() && this.embeddings!.fingerprint() === fingerprint,
+          'INDEX_CANCELLED',
+          'Index configuration changed.',
+        );
+        const reuse = this.store.db
+          .prepare(
+            'SELECT vector FROM chunks WHERE text=? AND scope=(SELECT scope FROM chunks WHERE id=?) AND vector IS NOT NULL LIMIT 100',
+          )
+          .all(row.text, row.id) as any[];
+        const cached = reuse
+          .map((r) => {
+            try {
+              return JSON.parse(r.vector);
+            } catch {
+              return null;
+            }
+          })
+          .find((v) => v?.model === fingerprint);
+        vectors.push(cached?.values || (await this.embeddings!.encode([row.text]))[0]);
+      }
+      assert(
+        allowed() && this.embeddings!.fingerprint() === fingerprint,
+        'EMBEDDING_CHANGED',
+        'Embedding configuration changed during indexing.',
+      );
       this.store.transaction(() => {
         for (let n = 0; n < batch.length; n++)
           this.store.db
@@ -173,11 +208,18 @@ export class Knowledge {
     limit = 6,
     signal?: AbortSignal,
     asOf = Date.now(),
+    bypassPolicy = false,
   ) {
+    if (
+      !bypassPolicy &&
+      scopes.length === 1 &&
+      this.store.maybe<any>('retrieval-policy', scopes[0])?.mode === 'lexical'
+    )
+      return this.search(scopes, query, limit, asOf);
     const lexical = this.search(scopes, query, 30, asOf);
     if (!this.embeddings?.enabled() || !scopes.length)
       return this.enrich(lexical, query, limit, asOf);
-    const [q] = await this.embeddings.encode([query], signal);
+    const [q] = await this.embeddings.encode([query], signal, 'query');
     const rows = this.store.db
       .prepare(
         'SELECT * FROM chunks WHERE vector IS NOT NULL AND scope IN (' +

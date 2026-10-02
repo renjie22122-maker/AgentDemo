@@ -1,17 +1,33 @@
+import { createHash } from 'node:crypto';
+import { localEncode } from './local-embedding.js';
 import type { Settings } from '../../shared/types.js';
 import { assert } from '../core/errors.js';
 export class Embeddings {
   constructor(private settings: () => Settings['embedding']) {}
   enabled() {
     const s = this.settings();
-    return !!(s.baseUrl && s.model);
+    return s.backend === 'local' || !!(s.baseUrl && s.model);
   }
   fingerprint() {
     const s = this.settings();
-    return s.baseUrl.replace(/\/$/, '') + '#' + s.model;
+    return s.backend === 'local'
+      ? 'local#Xenova/multilingual-e5-small@0b7ea4d6ad2e9d527e013a65b805a4b4df72f648:q8:mean'
+      : s.baseUrl.replace(/\/$/, '') + '#' + s.model;
   }
-  async encode(texts: string[], signal?: AbortSignal): Promise<number[][]> {
+  recoveryRevision() {
     const s = this.settings();
+    // Persist only a digest; credentials are never returned in diagnostics.
+    return createHash('sha256')
+      .update(JSON.stringify([this.fingerprint(), s.apiKey]))
+      .digest('hex');
+  }
+  async encode(
+    texts: string[],
+    signal?: AbortSignal,
+    purpose: 'query' | 'passage' = 'passage',
+  ): Promise<number[][]> {
+    const s = this.settings();
+    if (s.backend === 'local') return localEncode(texts, purpose, signal);
     assert(this.enabled(), 'EMBEDDING_DISABLED', 'Configure an embedding connection first.');
     const u = new URL(s.baseUrl);
     assert(

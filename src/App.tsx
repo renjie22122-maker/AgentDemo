@@ -1,3 +1,4 @@
+import { BackgroundPage } from './pages/Background';
 import { conversationMarkdown } from './conversation-copy';
 import { mediaTimeline } from './media-timeline';
 import { MediaGallery } from './components/MediaGallery';
@@ -815,7 +816,20 @@ export function App() {
             }}
           />
         )}
-        {page === 'settings' ? (
+        {page === 'background' ? (
+          <div className="page-scroll">
+            <BackgroundPage
+              state={state}
+              zh={language === 'zh'}
+              notify={notify}
+              openConversation={(id: string) => {
+                setSelected(id);
+                setPage('chat');
+                void refresh();
+              }}
+            />
+          </div>
+        ) : page === 'settings' ? (
           <div className="page-scroll">
             <SettingsPage settings={state.settings} t={t} refresh={refresh} notify={notify} />
           </div>

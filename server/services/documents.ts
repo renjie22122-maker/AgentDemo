@@ -1,9 +1,16 @@
+import { ocrImage } from './ocr.js';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
-export async function extract(path: string): Promise<string> {
+export async function extract(path: string, options: { ocr?: boolean } = {}): Promise<string> {
   const ext = extname(path).toLowerCase();
   if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext))
-    return '[Image attachment. Use a vision-capable model; no OCR was performed.]';
+    return options.ocr
+      ? ocrImage(path)
+      : '[Image attachment. Use a vision-capable model; no OCR was performed.]';
   if (ext === '.docx') {
     const mammoth = await import('mammoth');
     return (await mammoth.extractRawText({ path })).value;
@@ -30,9 +37,32 @@ export async function extract(path: string): Promise<string> {
       for (let i = 1; i <= Math.min(doc.numPages, 500); i++) {
         const page = await doc.getPage(i);
         const content = await page.getTextContent();
-        pages.push(
-          '[Page ' + i + ']\n' + content.items.map((x) => ('str' in x ? x.str : '')).join(' '),
-        );
+        let text = content.items.map((x) => ('str' in x ? x.str : '')).join(' ');
+        if (options.ocr && text.trim().length < 12) {
+          if (i > 50) throw Error('Scanned PDF OCR supports up to 50 pages; split this document.');
+          const require = createRequire(import.meta.url);
+          const canvasModule = createRequire(require.resolve('pdfjs-dist/package.json'))(
+            '@napi-rs/canvas',
+          );
+          const viewport = page.getViewport({ scale: 1.5 });
+          if (viewport.width * viewport.height > 16000000)
+            throw Error('PDF page exceeds OCR pixel limit');
+          const canvas = canvasModule.createCanvas(
+            Math.ceil(viewport.width),
+            Math.ceil(viewport.height),
+          );
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport, canvas } as any)
+            .promise;
+          const dir = await mkdtemp(join(tmpdir(), 'agentdemo-ocr-'));
+          try {
+            const image = join(dir, 'page.png');
+            await writeFile(image, canvas.toBuffer('image/png'));
+            text = await ocrImage(image);
+          } finally {
+            await rm(dir, { recursive: true, force: true });
+          }
+        }
+        pages.push('[Page ' + i + ']\n' + text);
       }
       return pages.join('\n\n');
     } finally {

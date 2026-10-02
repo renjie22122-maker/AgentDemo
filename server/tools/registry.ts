@@ -688,6 +688,43 @@ export function tools() {
         }),
       ),
   });
+  registry.add({
+    name: 'schedule_followup',
+    effect: 'write',
+    description:
+      'Schedule a requested follow-up in this conversation, at a timestamp or after a background command finishes. Requires confirmation, preserves current permissions, and never replays unknown effects.',
+    schema: z.object({
+      prompt: z.string().min(1).max(10000),
+      dueAt: z.number().int().nonnegative(),
+      intervalMs: z.number().int().min(60000).optional(),
+      jobId: z.string().optional(),
+    }),
+    run: async (a, c) => {
+      if (a.jobId)
+        assert(
+          c.store.get<any>('command-job', a.jobId).conversationId === c.conversation.id,
+          'SCOPE',
+          'Trigger must belong to this conversation.',
+        );
+      const answer = await c.inputs.request(
+        c.run,
+        'approval',
+        { reason: 'Schedule future model work (uses quota)', ...a },
+        c.signal,
+      );
+      if (answer.startsWith('DENIED')) return text(answer);
+      const profile = c.config.profile(c.conversation.profileId);
+      const task = c.store.put('scheduled-work', {
+        id: id(),
+        conversationId: c.conversation.id,
+        ...a,
+        enabled: true,
+        status: 'waiting',
+        target: JSON.stringify([profile.id, profile.baseUrl, c.conversation.projectId]),
+      });
+      return text(task);
+    },
+  });
   installSkills(registry);
   registry.add({
     name: 'suggest_memory',

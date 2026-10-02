@@ -8,6 +8,7 @@ const words: Record<string, [string, string]> = {
   knowledge: ['Knowledge', '知识库'],
   skills: ['Skills', '技能'],
   memory: ['Memory', '记忆'],
+  background: ['Background work', '后台任务'],
   search: ['Search chats…', '搜索对话…'],
   welcome: ['What would you like to build?', '今天想完成什么？'],
   welcomeSub: [

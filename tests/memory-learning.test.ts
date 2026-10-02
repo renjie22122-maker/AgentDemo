@@ -212,3 +212,52 @@ test('malformed output is recorded once and not retried in an idle loop', async 
     f.store.close();
   }
 });
+
+test('automatic mode activates sourced decisions and creates scoped graph once', async () => {
+  const f = await fixture();
+  f.store.put('conversation', { ...f.c, automaticMemory: true });
+  const learning = new MemoryLearning(
+    f.store,
+    f.config,
+    () =>
+      ({
+        complete: async () => response([{ ...f.item, kind: 'decision' }]),
+      }) as any,
+  );
+  await learning.tick();
+  const memories = f.store.list<any>('memory');
+  assert.equal(memories.length, 1);
+  assert.equal(memories[0].active, true);
+  assert.equal(f.store.list<any>('knowledge-edge').length, 1);
+  assert.equal(f.store.list<any>('knowledge-edge')[0].scope, 'user');
+  await learning.tick();
+  assert.equal(f.store.list<any>('knowledge-edge').length, 1);
+  await learning.close();
+});
+test('automatic mode quarantines ambiguous conflicts without activating competing facts', async () => {
+  const f = await fixture();
+  f.store.put('conversation', { ...f.c, automaticMemory: true });
+  f.store.put('memory', {
+    id: 'old',
+    scope: 'user',
+    content: 'Long responses',
+    topic: f.item.topic,
+    active: true,
+    revision: 1,
+    createdAt: 1,
+    source: 'manual',
+  });
+  const learning = new MemoryLearning(
+    f.store,
+    f.config,
+    () =>
+      ({
+        complete: async () => response([{ ...f.item, conflictsWith: ['old'] }]),
+      }) as any,
+  );
+  await learning.tick();
+  assert.equal(f.store.list<any>('memory').filter((m) => m.active).length, 1);
+  assert.equal(f.store.list<any>('memory').find((m) => m.id !== 'old').status, 'disputed');
+  assert.equal(f.store.list<any>('knowledge-edge').length, 0);
+  await learning.close();
+});

@@ -103,7 +103,7 @@ export function Inspector({
               zh={t('settings') !== 'Settings'}
               onChange={(skillIds) => void action(() => update({ skillIds }))}
             />
-            {['knowledge', 'memory'].map((k) => (
+            {['knowledge'].map((k) => (
               <label className="checkbox" key={k}>
                 <input
                   disabled={running}
@@ -132,26 +132,32 @@ export function Inspector({
                 type="checkbox"
                 disabled={!!running}
                 checked={
-                  conversation.generateMemory === true &&
+                  conversation.automaticMemory === true &&
                   conversation.memoryGenerationTarget ===
                     conversation.profileId +
                       '|' +
                       state.settings.profiles.find((p: any) => p.id === conversation.profileId)
                         ?.baseUrl
                 }
-                onChange={(e) => void action(() => update({ generateMemory: e.target.checked }))}
+                onChange={(e) => void action(() => update({ automaticMemory: e.target.checked }))}
               />
-              {t('settings') === 'Settings'
-                ? 'Let this chat contribute to future memories'
-                : '允许此对话生成未来记忆'}
+              {t('settings') === 'Settings' ? 'Automatic memory management' : '自动管理记忆'}
             </label>
             <p className="muted">
               {t('settings') === 'Settings'
-                ? 'Opt-in: after 2 minutes idle, sends up to 30 recent user messages and 80 same-scope memories to this chat model. Clear preferences activate automatically; decisions/conflicts await confirmation. No tool outputs or attachments. Uses model quota.'
-                : '开启后空闲 2 分钟，将最多 30 条近期用户消息及 80 条同范围记忆发送给此对话模型并消耗额度。明确偏好自动生效；决策和冲突需确认。不发送工具输出和附件。'}
+                ? 'Opt-in: after 2 minutes idle, sends up to 30 recent user messages and 80 same-scope memories to this chat model. Automatically extracts, recalls, consolidates and builds sourced memory relations. Newer explicit same-attribute facts replace older automatic entries; uncertain conflicts are excluded without prompting. Turning off stops extraction and recall. No tool outputs or attachments. Uses model quota.'
+                : '开启后空闲 2 分钟，将最多 30 条近期用户消息及 80 条同范围记忆发送给此对话模型并消耗额度。自动提取、召回、去重并建立来源关系；同属性的新明确陈述替代旧自动记忆，不确定冲突自动隔离，不打断询问。关闭后停止提取和召回。不发送工具输出和附件。'}
               <br />
               {state.settings.profiles.find((p: any) => p.id === conversation.profileId)?.baseUrl}
             </p>
+            <button
+              disabled={!!running}
+              onClick={() => void action(() => update({ memoryPolicy: 'inherit' }))}
+            >
+              {t('settings') === 'Settings'
+                ? 'Use scope memory defaults'
+                : '恢复继承本范围记忆设置'}
+            </button>
             {project && (
               <label className="checkbox">
                 <input

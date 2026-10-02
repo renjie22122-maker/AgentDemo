@@ -179,7 +179,13 @@ export class MemoryLifecycle {
     next.status = next.active ? 'active' : conflicts.length ? 'disputed' : 'candidate';
     return this.record(old, next, 'edited');
   }
-  resolve(winnerId: string, loserIds: string[], revision: number, at = Date.now()) {
+  resolve(
+    winnerId: string,
+    loserIds: string[],
+    revision: number,
+    at = Date.now(),
+    automatic = false,
+  ) {
     return this.store.transaction(() => {
       const winner = this.store.get<Memory>('memory', winnerId);
       assert(winner.revision === revision, 'MEMORY_CHANGED', 'Memory changed. Refresh.');
@@ -219,7 +225,9 @@ export class MemoryLifecycle {
           conflictsWith: [],
           revision: winner.revision + 1,
         },
-        'conflict resolved by user',
+        automatic
+          ? 'newer explicit source automatically superseded prior memory'
+          : 'conflict resolved by user',
       );
     });
   }

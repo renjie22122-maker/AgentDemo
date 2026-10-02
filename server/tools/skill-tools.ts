@@ -1,3 +1,4 @@
+import { diagnoseFailure } from '../services/failure-diagnosis.js';
 import { dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { lstat, readFile, mkdir, writeFile } from 'node:fs/promises';
@@ -54,6 +55,106 @@ export async function materializeSkill(
   };
 }
 export function installSkills(registry: ToolRegistry) {
+  registry.add({
+    name: 'prepare_skill_environment',
+    effect: 'execute',
+    description:
+      'Prepare reusable project-local pip or npm dependencies after reading the skill. Uses normal command approval and sandbox. Never installs global packages or credentials. npm lifecycle scripts disabled; account/MCP login remains a user connection task. A failed/unknown command is not automatically replayed.',
+    schema: z.object({
+      id: z.string(),
+      manager: z.enum(['pip', 'npm']),
+      packages: z
+        .array(
+          z
+            .string()
+            .regex(
+              /^(?:@[a-zA-Z0-9._-]+\/)?[a-zA-Z0-9][a-zA-Z0-9._/-]*(?:(?:==|@)[a-zA-Z0-9._-]+)?$/,
+            ),
+        )
+        .min(1)
+        .max(20),
+    }),
+    run: async (a, c) => {
+      const skill = enabled(c.store, a.id);
+      const key = createHash('sha256')
+        .update(JSON.stringify([c.conversation.projectId, skill.id, a.manager, a.packages]))
+        .digest('hex')
+        .slice(0, 16);
+      const root = '.skill-env/' + key;
+      await c.files.resolve(root, true);
+      const py = process.platform === 'win32' ? root + '/Scripts/python.exe' : root + '/bin/python';
+      const command =
+        a.manager === 'pip'
+          ? 'python -m venv "' +
+            root +
+            '" && "' +
+            py +
+            '" -m pip install ' +
+            a.packages.join(' ') +
+            ' && "' +
+            py +
+            '" -m pip check'
+          : 'npm install --prefix "' +
+            root +
+            '" --ignore-scripts --no-audit --no-fund ' +
+            a.packages.join(' ') +
+            ' && npm ls --prefix "' +
+            root +
+            '" --depth=0';
+      let result;
+      try {
+        result = await registry.invoke(
+          'run_command',
+          {
+            command,
+            folder: 0,
+            timeoutSeconds: 600,
+            reason: 'Prepare isolated dependencies for skill ' + skill.name,
+            background: false,
+          },
+          c,
+        );
+      } catch (error: any) {
+        c.store.put('skill-environment', {
+          id: key,
+          conversationId: c.conversation.id,
+          skillId: skill.id,
+          path: root,
+          manager: a.manager,
+          packages: a.packages,
+          status: 'needs_attention',
+          diagnosis: diagnoseFailure(error),
+          updatedAt: Date.now(),
+        });
+        throw error;
+      }
+      let status = 'needs_attention';
+      try {
+        if (JSON.parse(result.content).code === 0) status = 'ready';
+      } catch {}
+      c.store.put('skill-environment', {
+        id: key,
+        conversationId: c.conversation.id,
+        skillId: skill.id,
+        path: root,
+        manager: a.manager,
+        packages: a.packages,
+        status,
+        diagnosis: status === 'ready' ? undefined : diagnoseFailure(result.content),
+        updatedAt: Date.now(),
+      });
+      return {
+        ...result,
+        content: JSON.stringify({
+          status,
+          path: root,
+          commandResult: result.content,
+          note: 'Installation check only; run the skill to verify end-to-end behavior.',
+        }),
+      };
+    },
+  });
+
   const text = (value: unknown) => ({
     content: typeof value === 'string' ? value : JSON.stringify(value),
   });
