@@ -43,7 +43,9 @@ export class Teams {
         new Set(members).size === members.length &&
         members.includes(run.id),
       'TEAM_MEMBERS',
-      'Choose 2–32 distinct members including coordinator.',
+      'Choose 2-32 distinct current run IDs, including coordinator ' +
+        run.id +
+        '. Names and stable agent IDs are not run IDs; use continue_agent for idle members first.',
     );
     for (const key of members) {
       const r = this.store.get<Run>('run', key);

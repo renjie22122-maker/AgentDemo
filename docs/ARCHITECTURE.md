@@ -98,3 +98,26 @@ inspect_team exposes same-root members, statuses, task ownership and handoff his
 - Still unproven: optimal delegation, cross-project learning, unseen-task quality/cost superiority. One live planning probe cannot establish these.
 
 The public planning comparison lives in evals/planning. It grades real model proposals against authored DAG expectations without executing generated work. This is planning-protocol evidence, not end-to-end task success or proof that heuristic worker ranking improves throughput.
+
+### Persistent delegated members
+
+A delegated conversation is a stable member (agentId); each activation has a
+separate runId. list_agents discovers direct members from prior parent turns,
+continue_agent starts an idle member with its retained checkpoints, and
+close_agent archives an idle member without deleting history. Idle members
+make no model calls. Normal compaction still applies, so retained context is
+not an exact or infallible memory store. Private histories are not broadcast.
+
+Continuation requires direct delegation provenance (a user fork is not a member),
+matching project/recorded workspace roots, enabled delegation, depth/call capacity,
+and no active descendants, pending background commands or unknown effects.
+Current parent knowledge/skill/model policies are applied without promoting a
+read-only member. Writable members retain a ready isolated copy; after a successful
+merge they receive a fresh copy. Merging still requires explicit approval and
+version checks. No interrupted operations are automatically replayed.
+Continuation receipts use the same crash reconciliation as spawn receipts.
+
+Team rosters and boards remain run-scoped: continue members first, then configure
+the new team with the returned current run IDs and current coordinator run ID.
+This preserves member continuity, not a cross-run migration of old task-board
+ownership or completed approvals.

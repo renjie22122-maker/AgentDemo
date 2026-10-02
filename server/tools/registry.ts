@@ -40,6 +40,9 @@ export interface TeamPort {
     mode?: 'read-only' | 'isolated',
     controlTicket?: string,
   ): Promise<string>;
+  members?(parent: Run): unknown;
+  continueMember?(parent: Run, key: string, message: string, ticket?: string): Promise<unknown>;
+  closeMember?(parent: Run, key: string): unknown;
   reviewChanges?(parent: Run, key: string, version?: string): Promise<any>;
   wait(parent: Run, keys: string[], signal: AbortSignal): Promise<unknown>;
   message(parent: Run, key: string, message: string): void;
@@ -113,7 +116,10 @@ export class ToolRegistry {
             !['read', 'network'].includes(d.effect) &&
             d.name !== 'ask_user'
           ) &&
-          !(d.name === 'spawn_agent' && ctx.conversation.teamStrategy === 'off') &&
+          !(
+            ['spawn_agent', 'continue_agent'].includes(d.name) &&
+            ctx.conversation.teamStrategy === 'off'
+          ) &&
           !(
             ctx.run.depth > 0 &&
             !ctx.conversation.isolationId &&
@@ -148,7 +154,7 @@ export class ToolRegistry {
     if (!def || !this.specs(ctx).some((d) => d.name === name))
       throw new NotStartedError('TOOL_DENIED', 'Tool unavailable in the current task permissions.');
     const team = new Teams(ctx.store).get(ctx.run);
-    if (team && name === 'spawn_agent')
+    if (team && ['spawn_agent', 'continue_agent'].includes(name))
       throw new NotStartedError(
         'TEAM_ROSTER_FIXED',
         'Create all peer members before configuring the fixed roster.',
@@ -175,7 +181,12 @@ export class ToolRegistry {
         )
       : null;
     try {
-      if (ctx.callId && (def.atomic || name === 'spawn_agent' || name === 'record_verification')) {
+      if (
+        ctx.callId &&
+        (def.atomic ||
+          ['spawn_agent', 'continue_agent'].includes(name) ||
+          name === 'record_verification')
+      ) {
         const receipt = prepareCoordination(
           ctx.store,
           ctx.run,
@@ -228,7 +239,7 @@ export class ToolRegistry {
   }
   coordinationMode(name: string): 'atomic' | 'spawn' | undefined {
     if (this.definitions.get(name)?.atomic || name === 'record_verification') return 'atomic';
-    if (name === 'spawn_agent') return 'spawn';
+    if (['spawn_agent', 'continue_agent'].includes(name)) return 'spawn';
     return undefined;
   }
   effect(name: string) {
@@ -782,16 +793,49 @@ export function tools() {
       deliverable: z.string().min(10).max(2000),
       mode: z.enum(['read-only', 'isolated']).default('read-only'),
     }),
+    run: async (a, c) => {
+      const runId = await c.team.spawn(
+        c.run,
+        a.task,
+        a.deliverable,
+        a.mode,
+        c.callId ? c.run.id + ':' + c.callId : undefined,
+      );
+      return text({ runId, agentId: c.store.get<Run>('run', runId).conversationId });
+    },
+  });
+  registry.add({
+    name: 'list_agents',
+    effect: 'read',
+    description:
+      'List persistent direct members owned by this conversation, including idle members from earlier turns. agentId is stable; runId identifies one execution. Closed members retain history.',
+    schema: z.object({}),
+    run: (_a, c) => text(c.team.members!(c.run)),
+  });
+  registry.add({
+    name: 'continue_agent',
+    effect: 'coordinate',
+    description:
+      'Continue an idle direct member in its original private conversation with retained context, across user turns. Pass its stable agentId (a previous runId also works). Returns a NEW runId for wait_agents/configure_team. No automatic replay of old tools. Continue before configuring a fixed team roster; active members use message_agent.',
+    schema: z.object({ agentId: z.string(), message: z.string().min(1).max(12000) }),
     run: async (a, c) =>
-      text({
-        runId: await c.team.spawn(
+      text(
+        await c.team.continueMember!(
           c.run,
-          a.task,
-          a.deliverable,
-          a.mode,
+          a.agentId,
+          a.message,
           c.callId ? c.run.id + ':' + c.callId : undefined,
         ),
-      }),
+      ),
+  });
+  registry.add({
+    name: 'close_agent',
+    effect: 'coordinate',
+    atomic: true,
+    description:
+      'Close an idle direct member without deleting its conversation or history. Does not stop active work.',
+    schema: z.object({ agentId: z.string() }),
+    run: (a, c) => text(c.team.closeMember!(c.run, a.agentId)),
   });
   registry.add({
     name: 'review_agent_changes',

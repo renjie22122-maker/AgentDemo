@@ -1422,3 +1422,144 @@ test('general library is shared by general chats but excluded from projects and 
     f.store.close();
   }
 });
+
+test('persistent members retain private context across parent turns without spawning a replacement', async () => {
+  const f = await setup({
+    complete: async (req) => {
+      const txt = JSON.stringify(req.messages);
+      return result(txt.includes('remember-token') ? 'member remembers remember-token' : 'done');
+    },
+  });
+  try {
+    const p1 = f.runtime.start('chat', 'first parent turn');
+    await until(() => f.store.get<any>('run', p1.id).status === 'completed');
+    const key = await f.runtime.spawn(
+      p1,
+      'Read-only collaborator remember-token; respond briefly.',
+      'Confirm the assigned token.',
+    );
+    await until(() => f.store.get<any>('run', key).status === 'completed');
+    const old = f.store.get<any>('run', key),
+      member = old.conversationId;
+    const p2 = f.runtime.start('chat', 'second parent turn');
+    await until(() => f.store.get<any>('run', p2.id).status === 'completed');
+    assert.throws(() => f.runtime.message(p2, key, 'hello'), /unrelated/);
+    const next: any = await f.runtime.continueMember(
+      p2,
+      member,
+      'What was your earlier assigned token?',
+    );
+    assert.equal(next.agentId, member);
+    assert.notEqual(next.runId, key);
+    await until(() => f.store.get<any>('run', next.runId).status === 'completed');
+    assert.equal(f.store.get<any>('run', next.runId).parentRunId, p2.id);
+    assert(
+      f.store
+        .events(member)
+        .some(
+          (e) =>
+            e.runId === next.runId &&
+            e.type === 'assistant.message' &&
+            e.data.text.includes('remember-token'),
+        ),
+    );
+    assert.equal((f.runtime.members(p2) as any[]).length, 1);
+    assert.equal(f.store.runs(member).length, 2);
+    const other = { ...p2, conversationId: 'someone-else' };
+    await assert.rejects(
+      f.runtime.continueMember(other, member, 'hi'),
+      /owned by this conversation/,
+    );
+    f.runtime.closeMember(p2, member);
+    await assert.rejects(f.runtime.continueMember(p2, member, 'hi'), /closed/);
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});
+test('continuation refuses unknown effects, changed scope and disabled delegation', async () => {
+  const f = await setup({ complete: async () => result('done') });
+  try {
+    const p = f.runtime.start('chat', 'parent');
+    await until(() => f.store.get<any>('run', p.id).status === 'completed');
+    const key = await f.runtime.spawn(
+      p,
+      'Read-only collaborator for testing lifecycle.',
+      'Confirm the lifecycle probe.',
+    );
+    await until(() => f.store.get<any>('run', key).status === 'completed');
+    const child = f.store.get<any>('run', key),
+      c = f.store.get<any>('conversation', 'chat');
+    const effect = f.store.beginEffect(key, 'run_command', { command: 'unknown' });
+    await assert.rejects(f.runtime.continueMember(p, key, 'continue'), /unresolved/);
+    f.store.endEffect(effect, 'inspected', 'completed');
+    f.store.put('conversation', { ...c, teamStrategy: 'off' });
+    await assert.rejects(f.runtime.continueMember(p, key, 'continue'), /disabled/);
+    f.store.put('conversation', c);
+    f.store.put('agent-binding', {
+      id: child.conversationId,
+      owner: 'chat',
+      roots: ['changed'],
+      mode: 'read-only',
+    });
+    await assert.rejects(f.runtime.continueMember(p, key, 'continue'), /roots changed/);
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});
+
+test('writable continuation retains unmerged copy then renews merged copy, concurrent activation is single', async () => {
+  const f = await setup({ complete: async () => result('done') });
+  const { writeFile, readFile } = await import('node:fs/promises');
+  const project = await mkdtemp(join(tmpdir(), 'persistent-write-'));
+  try {
+    await writeFile(join(project, 'a.txt'), 'base');
+    f.store.put('project', { id: 'p', folders: [project] });
+    f.store.put('conversation', { ...f.store.get<any>('conversation', 'chat'), projectId: 'p' });
+    const p1 = f.runtime.start('chat', 'first');
+    await until(() => f.store.get<any>('run', p1.id).status === 'completed');
+    const key = await f.runtime.spawn(
+      p1,
+      'Independent collaborator for isolated file changes.',
+      'Return the file change summary.',
+      'isolated',
+    );
+    await until(() => f.store.get<any>('run', key).status === 'completed');
+    const child = f.store.get<any>('run', key),
+      ctx = await f.runtime.context(child);
+    await writeFile(await ctx.files.resolve('a.txt'), 'changed');
+    const p2 = f.runtime.start('chat', 'followup');
+    await until(() => f.store.get<any>('run', p2.id).status === 'completed');
+    const results = await Promise.allSettled([
+      f.runtime.continueMember(p2, key, 'Check your earlier work'),
+      f.runtime.continueMember(p2, key, 'Concurrent followup'),
+    ]);
+    assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
+    const next: any = (results.find((r) => r.status === 'fulfilled') as PromiseFulfilledResult<any>)
+      .value;
+    await until(() => f.store.get<any>('run', next.runId).status === 'completed');
+    assert.equal(
+      f.store.get<any>('conversation', child.conversationId).isolationId,
+      ctx.conversation.isolationId,
+    );
+    await assert.rejects(f.runtime.reviewChanges!(p1, key), /Not owned/);
+    const review = await f.runtime.reviewChanges!(p2, next.runId);
+    assert('version' in review);
+    await f.runtime.reviewChanges!(p2, next.runId, review.version);
+    assert.equal(await readFile(join(project, 'a.txt'), 'utf8'), 'changed');
+    const again: any = await f.runtime.continueMember(
+      p2,
+      next.runId,
+      'Work on the current merged revision',
+    );
+    await until(() => f.store.get<any>('run', again.runId).status === 'completed');
+    assert.notEqual(
+      f.store.get<any>('conversation', child.conversationId).isolationId,
+      ctx.conversation.isolationId,
+    );
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});

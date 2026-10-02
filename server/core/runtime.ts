@@ -771,6 +771,11 @@ export class Runtime implements TeamPort {
   awaitAssignment(run: Run, signal: AbortSignal) {
     return this.teamCoordinator.awaitAssignment(run, signal);
   }
+  members: NonNullable<TeamPort['members']> = (...args) => this.delegation.members(...args);
+  continueMember: NonNullable<TeamPort['continueMember']> = (...args) =>
+    this.delegation.continueMember(...args);
+  closeMember: NonNullable<TeamPort['closeMember']> = (...args) =>
+    this.delegation.closeMember(...args);
   spawn: TeamPort['spawn'] = (...args) => this.delegation.spawn(...args);
   reviewChanges = (parent: Run, key: string, version?: string) =>
     this.delegation.reviewChanges(parent, key, version);

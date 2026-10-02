@@ -89,7 +89,7 @@ export function reconcileCoordination(store: Store, onlyRun?: Run) {
         });
       if (
         receipt?.state === 'prepared' &&
-        tool === 'spawn_agent' &&
+        ['spawn_agent', 'continue_agent'].includes(tool) &&
         receipt.epoch !== executionEpoch
       ) {
         const children = store
@@ -99,7 +99,7 @@ export function reconcileCoordination(store: Store, onlyRun?: Run) {
           receipt = store.put<CoordinationReceipt>('coordination-receipt', {
             ...receipt,
             state: 'completed',
-            result: JSON.stringify({ runId: children[0].id }),
+            result: JSON.stringify({ runId: children[0].id, agentId: children[0].conversationId }),
           });
         if (!children.length)
           receipt = store.put<CoordinationReceipt>('coordination-receipt', {

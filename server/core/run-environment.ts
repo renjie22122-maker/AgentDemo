@@ -10,7 +10,7 @@ import type { ToolContext } from '../tools/registry.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { assert } from './errors.js';
-import { SYSTEM, TEAM_PROTOCOL, BACKGROUND_GUIDANCE } from './prompts.js';
+import { SYSTEM, TEAM_PROTOCOL, BACKGROUND_GUIDANCE, MEMBER_CONTINUITY } from './prompts.js';
 // No lifecycle, scheduler, provider or execution-controller access.
 export class RunEnvironment {
   constructor(
@@ -67,8 +67,11 @@ export class RunEnvironment {
       SYSTEM +
       BACKGROUND_GUIDANCE +
       TEAM_PROTOCOL +
+      MEMBER_CONTINUITY +
       '\n\nCurrent runtime configuration (established facts; use only what is relevant to the task): ' +
       JSON.stringify({
+        runId: run.id,
+        agentId: run.conversationId,
         displayName: this.config.get().agentName || 'AgentDemo',
         model: profile.model,
         transport: profile.transport,
