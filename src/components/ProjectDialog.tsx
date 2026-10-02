@@ -1,5 +1,5 @@
 import { FolderPlus, Trash2, X } from 'lucide-react';
-import { useState, type Dispatch, type SetStateAction } from 'react';
+import { useState, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import type { Project } from '../../shared/types';
 import { api } from '../api';
 import { type Language } from '../i18n';
@@ -33,6 +33,49 @@ export function ProjectDialog({
 }: ProjectDialogProps) {
   const zh = language === 'zh';
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [pickerError, setPickerError] = useState('');
+  const picker = useRef<AbortController | null>(null);
+  useEffect(() => () => picker.current?.abort(), []);
+  const cancelPicker = () => {
+    picker.current?.abort();
+    picker.current = null;
+    setPicking(false);
+  };
+  const browse = () =>
+    void action(async () => {
+      const controller = new AbortController();
+      picker.current = controller;
+      setPicking(true);
+      setPickerError('');
+      try {
+        const result = await api('/pick-folder', {}, 'POST', {}, controller.signal);
+        if (!controller.signal.aborted && result.path)
+          setProjectFolders((old) =>
+            [
+              ...new Set([
+                ...old
+                  .split('\n')
+                  .map((p) => p.trim())
+                  .filter(Boolean),
+                result.path,
+              ]),
+            ].join('\n'),
+          );
+      } catch {
+        if (!controller.signal.aborted)
+          setPickerError(
+            zh
+              ? '文件夹选择器未完成。请重试，或直接粘贴路径。'
+              : 'Folder selection did not finish. Retry or paste a path.',
+          );
+      } finally {
+        if (picker.current === controller) {
+          picker.current = null;
+          setPicking(false);
+        }
+      }
+    });
   const [confirmRemove, setConfirmRemove] = useState(false);
   const folders = projectFolders
     .split('\n')
@@ -40,6 +83,7 @@ export function ProjectDialog({
     .filter(Boolean);
   const perform = (fn: () => Promise<unknown>) =>
     void action(async () => {
+      cancelPicker();
       setBusy(true);
       try {
         await fn();
@@ -87,29 +131,29 @@ export function ProjectDialog({
             onChange={(e) => setProjectName(e.target.value)}
           />
         </label>
-        <button
-          disabled={busy || folders.length >= 12}
-          onClick={() =>
-            perform(async () => {
-              const result = await api('/pick-folder', {});
-              if (result.path)
-                setProjectFolders((old) =>
-                  [
-                    ...new Set([
-                      ...old
-                        .split('\n')
-                        .map((p) => p.trim())
-                        .filter(Boolean),
-                      result.path,
-                    ]),
-                  ].join('\n'),
-                );
-            })
-          }
-        >
+        <button disabled={busy || picking || folders.length >= 12} onClick={browse}>
           <FolderPlus size={16} />
-          {zh ? '选择并添加文件夹…' : 'Browse and add folder…'}
+          {picking
+            ? zh
+              ? '等待系统文件夹选择…'
+              : 'Waiting for folder selection…'
+            : zh
+              ? '选择并添加文件夹…'
+              : 'Browse and add folder…'}
         </button>
+        {picking && (
+          <div role="status">
+            <p className="muted">
+              {zh
+                ? '请在系统窗口中选择文件夹；窗口可能位于浏览器后面。也可以取消选择并直接输入路径。'
+                : 'Choose a folder in the system window; it may be behind your browser. You can cancel and enter a path instead.'}
+            </p>
+            <button onClick={cancelPicker}>
+              {zh ? '取消文件夹选择' : 'Cancel folder selection'}
+            </button>
+          </div>
+        )}
+        {pickerError && <p role="alert">{pickerError}</p>}
         <p className="muted">
           {zh
             ? '可以重复选择多个文件夹，也可以在下方每行粘贴一个绝对路径。非 Windows 平台请使用路径输入。'
@@ -158,8 +202,8 @@ export function ProjectDialog({
               onClick={() =>
                 perform(async () => {
                   await api('/projects/' + project.id, {}, 'DELETE');
-                  await onSaved();
                   setProjectDialog(false);
+                  await onSaved();
                 })
               }
             >
@@ -182,8 +226,8 @@ export function ProjectDialog({
                   { name: projectName, folders },
                   project ? 'PATCH' : 'POST',
                 );
-                await onSaved();
                 setProjectDialog(false);
+                await onSaved();
                 setProjectName('');
                 setProjectFolders('');
                 if (!project) await newChat(p.id);

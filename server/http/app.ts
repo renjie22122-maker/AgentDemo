@@ -449,7 +449,16 @@ export async function createApp(options: { directory: string; dist?: string; run
     );
     return store.put('feedback', { id: id(), ...data, createdAt: Date.now() });
   });
-  app.post('/api/pick-folder', async () => ({ path: await pickFolder() }));
+  app.post('/api/pick-folder', async (_req, reply) => {
+    const controller = new AbortController();
+    const disconnected = () => controller.abort();
+    reply.raw.once('close', disconnected);
+    try {
+      return { path: await pickFolder(controller.signal) };
+    } finally {
+      reply.raw.off('close', disconnected);
+    }
+  });
   app.post('/api/projects', async (req) => {
     const data = z
       .object({
