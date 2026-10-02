@@ -1,3 +1,4 @@
+import { memoryValid } from './memory-lifecycle.js';
 import type { Memory } from '../../shared/types.js';
 export function terms(text: string) {
   const words = text.toLowerCase().match(/[a-z0-9_]+|[\u3400-\u9fff]+/g) || [];
@@ -21,8 +22,7 @@ export function recallMemories(
   const queryTerms = terms(query);
   const eligible = memories.filter(
     (m) =>
-      m.active &&
-      (!m.expiresAt || m.expiresAt > now) &&
+      memoryValid(m, now) &&
       (m.scope === 'user' || (!!projectId && m.scope === 'project:' + projectId)),
   );
   const frequency = new Map<string, number>();
@@ -60,6 +60,14 @@ export function recallMemories(
       source: m.source,
       scope: m.scope,
       revision: m.revision,
+      status: m.status,
+      kind: m.kind,
+      validFrom: m.validFrom,
+      validUntil: m.validUntil,
+      entityId: m.entityId,
+      attribute: m.attribute,
+      evidence: m.evidence,
+      conditions: m.conditions,
     });
     if (selected.length === 12) break;
   }

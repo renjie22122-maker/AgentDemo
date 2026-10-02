@@ -1,3 +1,4 @@
+import { memoryValid, MemoryLifecycle } from './memory-lifecycle.js';
 import { createHash } from 'node:crypto';
 import type { Memory } from '../../shared/types.js';
 import { Store } from '../storage/store.js';
@@ -20,14 +21,18 @@ export class MemoryIndex {
       .list<Memory>('memory')
       .filter(
         (m) =>
-          (!scope || m.scope === scope) && m.active && (!m.expiresAt || m.expiresAt > Date.now()),
+          (!scope || m.scope === scope) &&
+          memoryValid(m) &&
+          new MemoryLifecycle(this.store).evidenceValid(m),
       )) {
       const existing = this.store.maybe<any>('memory-vector', m.id);
       if (existing?.hash === hash(m) && existing?.model === fingerprint) continue;
       const [values] = await this.embeddings.encode([m.content]);
       const current = this.store.maybe<Memory>('memory', m.id);
       if (
-        current?.active &&
+        current &&
+        memoryValid(current) &&
+        new MemoryLifecycle(this.store).evidenceValid(current) &&
         hash(current) === hash(m) &&
         this.embeddings.fingerprint() === fingerprint
       ) {
@@ -42,15 +47,19 @@ export class MemoryIndex {
     projectId: string | null,
     signal: AbortSignal,
     includeUserMemory = true,
+    asOf = Date.now(),
   ) {
     const memories = this.store
         .list<Memory>('memory')
-        .filter((m) => includeUserMemory || m.scope !== 'user'),
+        .filter(
+          (m) =>
+            (includeUserMemory || m.scope !== 'user') &&
+            new MemoryLifecycle(this.store).evidenceValid(m),
+        ),
       scores = new Map<string, number>();
     const eligible = memories.filter(
       (m) =>
-        m.active &&
-        (!m.expiresAt || m.expiresAt > Date.now()) &&
+        memoryValid(m, asOf) &&
         (m.scope === 'user' || (!!projectId && m.scope === 'project:' + projectId)),
     );
     const vectors = eligible
@@ -74,11 +83,15 @@ export class MemoryIndex {
     // Re-read scope/activation after any remote request; concurrent deletion or edits must win.
     const current = this.store
       .list<Memory>('memory')
-      .filter((m) => includeUserMemory || m.scope !== 'user');
+      .filter(
+        (m) =>
+          (includeUserMemory || m.scope !== 'user') &&
+          new MemoryLifecycle(this.store).evidenceValid(m),
+      );
     for (const m of memories)
       if (!current.some((c) => c.id === m.id && hash(c) === hash(m))) scores.delete(m.id);
     return {
-      memories: recallMemories(current, query, projectId, Date.now(), scores),
+      memories: recallMemories(current, query, projectId, asOf, scores),
       method,
       fallback,
     };

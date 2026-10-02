@@ -148,6 +148,8 @@ test('HNSW knowledge scope, deletion and embedding model changes invalidate gene
   };
   const kb = new Knowledge(f.store, embedding as any);
   try {
+    f.store.put('document', { id: 'doc-a', scope: 'project:a', createdAt: 1 });
+    f.store.put('document', { id: 'doc-b', scope: 'project:b', createdAt: 1 });
     const stmt = f.store.db.prepare(
       'INSERT INTO chunks(id,scope,document_id,name,ordinal,text,source_hash,vector) VALUES(?,?,?,?,?,?,?,?)',
     );

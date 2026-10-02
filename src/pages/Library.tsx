@@ -1,3 +1,4 @@
+import { MemoryDetails, MemoryWorkbench, DocumentVersion } from '../components/MemoryWorkbench';
 import { SkillClassificationPanel } from '../components/SkillClassificationPanel';
 import { SkillPicker } from '../components/SkillPicker';
 import { FileText, Plus, Search, Trash2, Upload } from 'lucide-react';
@@ -5,7 +6,7 @@ import { useRef, useState } from 'react';
 import { api } from '../api';
 export function Library({ page, state, selected, t, refresh, notify }: any) {
   const [scope, setScope] = useState(
-    page === 'memories'
+    page === 'memories' || page === 'memory'
       ? state.conversations.find((c: any) => c.id === selected)?.projectId
         ? 'project:' + state.conversations.find((c: any) => c.id === selected).projectId
         : 'user'
@@ -19,6 +20,7 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
     [name, setName] = useState(''),
     [results, setResults] = useState<any[]>([]),
     [busy, setBusy] = useState(false);
+  const [knowledgeDate, setKnowledgeDate] = useState('');
   const file = useRef<HTMLInputElement>(null);
   const go = async (fn: () => Promise<any>) => {
     setBusy(true);
@@ -159,18 +161,39 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
               <button
                 disabled={!scope || !text}
                 onClick={() =>
-                  go(async () => setResults(await api('/knowledge/search', { scope, query: text })))
+                  go(async () =>
+                    setResults(
+                      await api('/knowledge/search', {
+                        scope,
+                        query: text,
+                        asOf: knowledgeDate ? Date.parse(knowledgeDate + 'Z') : undefined,
+                      }),
+                    ),
+                  )
                 }
               >
                 <Search size={16} />
               </button>
             </div>
+            <label>
+              {t('settings') === 'Settings'
+                ? 'As of (UTC, blank for current)'
+                : '历史时点（UTC，留空查当前）'}
+              <input
+                type="datetime-local"
+                value={knowledgeDate}
+                onChange={(e) => setKnowledgeDate(e.target.value)}
+              />
+            </label>
             {results.map((r) => (
               <div className="search-result" key={r.id}>
                 <strong>
-                  {r.name} · chunk {r.ordinal}
+                  {r.name} · v{r.version || 1} · chunk {r.ordinal}
                 </strong>
                 <p>{r.text}</p>
+                <small>
+                  {r.source} · {r.documentId} · {r.id}
+                </small>
               </div>
             ))}
           </section>
@@ -184,6 +207,7 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
                   <p className="muted">
                     {d.characters.toLocaleString()} characters · {d.scope}
                   </p>
+                  <DocumentVersion document={d} go={go} zh={t('settings') !== 'Settings'} />
                 </div>
                 {state.settings.embedding.model && (
                   <button
@@ -283,6 +307,12 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
                 </p>
               ))}
           </details>
+          <MemoryWorkbench
+            key={scope}
+            scope={scope.startsWith('project:') ? scope : 'user'}
+            go={go}
+            zh={t('settings') !== 'Settings'}
+          />
           {state.memories
             .filter((m: any) => m.scope === (scope.startsWith('project:') ? scope : 'user'))
             .map((m: any) => (
@@ -315,6 +345,12 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
                   </div>
                 </div>
                 <p>{m.content}</p>
+                <MemoryDetails
+                  key={m.id + ':' + m.revision}
+                  memory={m}
+                  go={go}
+                  zh={t('settings') !== 'Settings'}
+                />
                 <small className="muted">
                   {m.scope} · {m.source} · rev {m.revision}
                 </small>

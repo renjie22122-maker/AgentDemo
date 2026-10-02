@@ -1,3 +1,5 @@
+import { KnowledgeGraph } from '../services/knowledge-graph.js';
+import { MemoryLifecycle } from '../services/memory-lifecycle.js';
 import { deleteConversation } from '../services/conversation-delete.js';
 import { mediaRoutes } from './media.js';
 import { normalizeImage } from '../services/images.js';
@@ -26,7 +28,7 @@ import { extract } from '../services/documents.js';
 import { pickFolder } from '../services/folder-picker.js';
 import { validateRoots } from '../services/paths.js';
 import { Configuration, profileSchema } from '../services/settings.js';
-import { MemoryLearning, memoryKey, memoryTarget } from '../services/memory-learning.js';
+import { MemoryLearning, memoryTarget } from '../services/memory-learning.js';
 import { SkillClassification } from '../services/skill-classification.js';
 import { Skills } from '../services/skills.js';
 import { Store, id } from '../storage/store.js';
@@ -538,9 +540,151 @@ export async function createApp(options: { directory: string; dist?: string; run
     );
     return runtime.memories.index(scope);
   });
+  const memoryLifecycle = new MemoryLifecycle(store);
+  const memoryFields = {
+    topic: z.string().max(80).optional(),
+    entityId: z.string().max(200).optional(),
+    attribute: z.string().max(80).optional(),
+    value: z.string().max(1200).optional(),
+    kind: z.enum(['preference', 'decision', 'episode', 'experience']).optional(),
+    validFrom: z.number().int().nonnegative().optional(),
+    validUntil: z.number().int().nonnegative().nullable().optional(),
+    conditions: z.string().max(4000).optional(),
+    evidence: z
+      .array(
+        z.object({
+          conversationId: z.string(),
+          eventId: z.number().int(),
+          quote: z.string().max(1200).optional(),
+        }),
+      )
+      .max(20)
+      .optional(),
+  };
+  function checkMemoryScope(scope: string) {
+    assert(
+      scope === 'user' || (scope.startsWith('project:') && store.maybe('project', scope.slice(8))),
+      'SCOPE',
+      'Select a valid memory scope.',
+    );
+  }
+  app.get<{ Params: { id: string } }>('/api/memories/:id/history', async (req) =>
+    store
+      .list<any>('memory-history')
+      .filter((h) => h.memoryId === req.params.id)
+      .sort((a, b) => b.after.revision - a.after.revision),
+  );
+  app.post<{ Params: { id: string } }>('/api/memories/:id/resolve', async (req) => {
+    const data = z
+      .object({
+        losers: z.array(z.string()).max(80),
+        revision: z.number().int(),
+        at: z.number().optional(),
+      })
+      .parse(req.body);
+    return memoryLifecycle.resolve(req.params.id, data.losers, data.revision, data.at);
+  });
+  app.post<{ Params: { id: string } }>('/api/memories/:id/undo', async (req) => {
+    const { historyId } = z.object({ historyId: z.string() }).parse(req.body);
+    return memoryLifecycle.undo(req.params.id, historyId);
+  });
+  app.post('/api/memories/inspect', async (req) => {
+    const { scope } = z.object({ scope: z.string() }).parse(req.body);
+    checkMemoryScope(scope);
+    return memoryLifecycle.inspect(scope);
+  });
+  app.post('/api/memories/consolidate', async (req) => {
+    const { scope } = z.object({ scope: z.string() }).parse(req.body);
+    checkMemoryScope(scope);
+    return memoryLifecycle.consolidate(scope);
+  });
+  app.get<{ Querystring: { scope: string } }>('/api/memory-entities', async (req) => {
+    checkMemoryScope(req.query.scope);
+    return store.list<any>('memory-entity').filter((e) => e.scope === req.query.scope);
+  });
+  app.post('/api/memory-entities', async (req) => {
+    const d = z
+      .object({
+        id: z.string().optional(),
+        scope: z.string(),
+        name: z.string().trim().min(1).max(100),
+        aliases: z.array(z.string().trim().min(1).max(100)).max(20),
+      })
+      .parse(req.body);
+    checkMemoryScope(d.scope);
+    return memoryLifecycle.saveEntity(d.scope, d.name, d.aliases, d.id);
+  });
+  const graph = new KnowledgeGraph(store);
+  const graphEvidence = z.object({
+    type: z.enum(['memory', 'document', 'event']),
+    id: z.string(),
+    conversationId: z.string().optional(),
+    quote: z.string().trim().min(1).max(1200),
+  });
+  const edgeInput = z.object({
+    scope: z.string(),
+    from: z.string(),
+    to: z.string(),
+    relation: z.string().trim().min(1).max(120),
+    evidence: z.array(graphEvidence).min(1).max(10),
+    active: z.boolean().default(false),
+    validFrom: z
+      .number()
+      .int()
+      .nonnegative()
+      .default(() => Date.now()),
+    validUntil: z.number().int().nonnegative().nullable().default(null),
+  });
+  app.get<{ Querystring: { scope: string } }>('/api/knowledge-graph', async (req) => {
+    checkMemoryScope(req.query.scope);
+    return graph.list(req.query.scope);
+  });
+  app.post('/api/knowledge-graph', async (req) => {
+    const d = edgeInput.parse(req.body);
+    checkMemoryScope(d.scope);
+    return graph.put(d);
+  });
+  app.patch<{ Params: { id: string } }>('/api/knowledge-graph/:id', async (req) => {
+    const old = store.get<any>('knowledge-edge', req.params.id);
+    const d = z.object({ active: z.boolean(), revision: z.number().int() }).parse(req.body);
+    assert(d.revision === old.revision, 'GRAPH_CHANGED', 'Refresh this relationship.');
+    return graph.put({ ...old, active: d.active }, old.id);
+  });
+  app.delete<{ Params: { id: string } }>('/api/knowledge-graph/:id', async (req) => {
+    store.remove('knowledge-edge', req.params.id);
+    for (const h of store.list<any>('knowledge-edge-history'))
+      if (h.edgeId === req.params.id) store.remove('knowledge-edge-history', h.id);
+    return { ok: true };
+  });
+  app.post('/api/knowledge-graph/search', async (req) => {
+    const d = z
+      .object({
+        scope: z.string(),
+        query: z.string().min(1),
+        asOf: z.number().optional(),
+        depth: z.number().int().min(1).max(3).default(2),
+      })
+      .parse(req.body);
+    checkMemoryScope(d.scope);
+    return graph.search([d.scope], d.query, d.asOf, d.depth);
+  });
+  app.post('/api/memories/search', async (req) => {
+    const d = z
+      .object({ scope: z.string(), query: z.string().min(1), asOf: z.number().optional() })
+      .parse(req.body);
+    checkMemoryScope(d.scope);
+    return runtime.memories.recall(
+      d.query,
+      d.scope === 'user' ? null : d.scope.slice(8),
+      new AbortController().signal,
+      d.scope === 'user',
+      d.asOf,
+    );
+  });
   app.post('/api/memories', async (req) => {
     const data = z
       .object({
+        ...memoryFields,
         content: z.string().trim().min(1).max(4000),
         scope: z.string(),
         source: z.string().max(1000).default('User'),
@@ -554,28 +698,24 @@ export async function createApp(options: { directory: string; dist?: string; run
       'SCOPE',
       'Select a valid memory scope.',
     );
-    return store.put('memory', { id: id(), ...data, revision: 1, createdAt: Date.now() });
+    return memoryLifecycle.create({ id: id(), ...data, revision: 1, createdAt: Date.now() });
   });
   app.patch<{ Params: { id: string } }>('/api/memories/:id', async (req) => {
     const old = store.get<Memory>('memory', req.params.id);
     const data = z
       .object({
+        ...memoryFields,
+        revision: z.number().int().optional(),
         content: z.string().min(1).max(4000).optional(),
         active: z.boolean().optional(),
         expiresAt: z.number().nullable().optional(),
       })
       .parse(req.body);
-    return store.put('memory', { ...old, ...data, revision: old.revision + 1 });
+    const { revision, ...patch } = data;
+    return memoryLifecycle.update(old.id, patch, revision);
   });
   app.delete<{ Params: { id: string } }>('/api/memories/:id', async (req) => {
-    const forgotten = store.get<Memory>('memory', req.params.id);
-    store.put('memory-forgotten', {
-      id: memoryKey(forgotten.scope, forgotten.content),
-      at: Date.now(),
-    });
-    store.remove('memory', req.params.id);
-    store.remove('memory-vector', req.params.id);
-    return { ok: true };
+    return memoryLifecycle.forget(req.params.id);
   });
   function checkScope(scope: string) {
     assert(
@@ -587,15 +727,29 @@ export async function createApp(options: { directory: string; dist?: string; run
   }
   app.post('/api/knowledge/text', async (req) => {
     const data = z
-      .object({ scope: z.string(), name: z.string().min(1), text: z.string().min(1).max(5000000) })
+      .object({
+        scope: z.string(),
+        name: z.string().min(1),
+        text: z.string().min(1).max(5000000),
+        revisionOf: z.string().optional(),
+        source: z.string().max(2000).optional(),
+        validFrom: z.number().int().nonnegative().optional(),
+        publishedAt: z.number().int().nonnegative().optional(),
+      })
       .parse(req.body);
     checkScope(data.scope);
-    return runtime.knowledge.import(data.scope, data.name, data.text);
+    return runtime.knowledge.import(data.scope, data.name, data.text, data);
   });
   app.post('/api/knowledge/search', async (req) => {
-    const data = z.object({ scope: z.string(), query: z.string().min(1) }).parse(req.body);
+    const data = z
+      .object({
+        scope: z.string(),
+        query: z.string().min(1),
+        asOf: z.number().int().nonnegative().optional(),
+      })
+      .parse(req.body);
     checkScope(data.scope);
-    return runtime.knowledge.hybrid([data.scope], data.query);
+    return runtime.knowledge.hybrid([data.scope], data.query, 6, undefined, data.asOf);
   });
   app.post<{ Params: { id: string } }>('/api/knowledge/:id/index', async (req) =>
     runtime.knowledge.index(req.params.id),

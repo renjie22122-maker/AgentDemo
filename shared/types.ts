@@ -187,7 +187,20 @@ export interface Skill {
 export interface Memory {
   topic?: string;
   automatic?: boolean;
-  kind?: 'preference' | 'decision';
+  kind?: 'preference' | 'decision' | 'episode' | 'experience';
+  status?: 'candidate' | 'active' | 'superseded' | 'disputed' | 'forgotten';
+  recordedAt?: number;
+  validFrom?: number;
+  validUntil?: number | null;
+  supersedes?: string[];
+  sourceRefs?: string[];
+  duplicateOf?: string;
+  conflictsWith?: string[];
+  entityId?: string;
+  attribute?: string;
+  value?: string;
+  conditions?: string;
+  evidence?: { conversationId: string; eventId: number; quote?: string }[];
   sourceConversationId?: string;
   sourceEventId?: number;
   id: string;

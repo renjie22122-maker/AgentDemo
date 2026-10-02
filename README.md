@@ -84,6 +84,12 @@ Projects can explicitly opt into recalling user memory. Project memories are not
 
 Memory generation is off until enabled for a conversation. During idle time, it sends up to 30 recent user messages and 80 same-scope memories to that conversation's configured model endpoint. Clear, nonconflicting preferences can activate automatically; decisions and conflicts await confirmation. View and delete entries in Memory. See [memory controls and data flow](docs/MEMORY.md).
 
+Memory management also supports effective dates, explicit conflict replacement, revision history,
+source-level forgetting and evidence-gated experiences. The workbench manages confirmed entity
+aliases and source-backed relationships, and queries up to three hops at a chosen time.
+Knowledge documents can be imported as new versions; retrieval returns versioned citations
+and neighboring passages. See [memory and evidence graphs](docs/MEMORY.md).
+
 ### Media services
 
 Configure media providers separately from the chat model. Adapters include OpenAI-compatible services, fal.ai, Replicate, Gemini, ElevenLabs, Deepgram, AssemblyAI, Meshy, Tripo and MiniMax.
