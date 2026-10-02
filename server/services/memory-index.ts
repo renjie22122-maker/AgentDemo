@@ -13,12 +13,15 @@ export class MemoryIndex {
     private embeddings: Embeddings,
   ) {}
   // Explicit user action only: inactive candidates never leave the machine for embedding.
-  async index() {
+  async index(scope?: string) {
     const fingerprint = this.embeddings.fingerprint();
     let indexed = 0;
     for (const m of this.store
       .list<Memory>('memory')
-      .filter((m) => m.active && (!m.expiresAt || m.expiresAt > Date.now()))) {
+      .filter(
+        (m) =>
+          (!scope || m.scope === scope) && m.active && (!m.expiresAt || m.expiresAt > Date.now()),
+      )) {
       const existing = this.store.maybe<any>('memory-vector', m.id);
       if (existing?.hash === hash(m) && existing?.model === fingerprint) continue;
       const [values] = await this.embeddings.encode([m.content]);
@@ -34,8 +37,15 @@ export class MemoryIndex {
     }
     return { indexed, model: fingerprint };
   }
-  async recall(query: string, projectId: string | null, signal: AbortSignal) {
-    const memories = this.store.list<Memory>('memory'),
+  async recall(
+    query: string,
+    projectId: string | null,
+    signal: AbortSignal,
+    includeUserMemory = true,
+  ) {
+    const memories = this.store
+        .list<Memory>('memory')
+        .filter((m) => includeUserMemory || m.scope !== 'user'),
       scores = new Map<string, number>();
     const eligible = memories.filter(
       (m) =>
@@ -62,7 +72,9 @@ export class MemoryIndex {
       }
     }
     // Re-read scope/activation after any remote request; concurrent deletion or edits must win.
-    const current = this.store.list<Memory>('memory');
+    const current = this.store
+      .list<Memory>('memory')
+      .filter((m) => includeUserMemory || m.scope !== 'user');
     for (const m of memories)
       if (!current.some((c) => c.id === m.id && hash(c) === hash(m))) scores.delete(m.id);
     return {

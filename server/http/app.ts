@@ -246,6 +246,7 @@ export async function createApp(options: { directory: string; dist?: string; run
           .optional(),
         knowledge: z.boolean().optional(),
         memory: z.boolean().optional(),
+        includeUserMemory: z.boolean().optional(),
       })
       .parse(req.body);
     if (runtime.active(c.id))
@@ -483,7 +484,17 @@ export async function createApp(options: { directory: string; dist?: string; run
     store.remove('skill', req.params.id);
     return { ok: true };
   });
-  app.post('/api/memories/index', async () => runtime.memories.index());
+  app.post('/api/memories/index', async (req) => {
+    const { scope } = z.object({ scope: z.string().optional() }).parse(req.body || {});
+    assert(
+      !scope ||
+        scope === 'user' ||
+        (scope.startsWith('project:') && store.maybe('project', scope.slice(8))),
+      'SCOPE',
+      'Select a valid memory scope.',
+    );
+    return runtime.memories.index(scope);
+  });
   app.post('/api/memories', async (req) => {
     const data = z
       .object({

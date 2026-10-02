@@ -182,3 +182,14 @@ Skill selection has no fixed 30-item cap and deduplicates IDs. Import no longer 
 ### AI skill classification
 
 Skills Library offers an explicit metadata-only model classification request, a preview and a separate Apply action. Sources remain import-derived. New category labels appear in skill filters after applying. Changed catalogs invalidate old previews; existing categories stay unchanged on errors. Imported skills still use local fallback categories until classified. Auto-review now includes recent same-conversation manual decisions as scoped evidence, never as reusable grants.
+
+### Memory scope
+
+New conversations already enable confirmed-memory recall by default. General chats
+recall user preferences only. Project chats recall their own project memories;
+including user preferences requires the conversation's explicit checkbox.
+Candidates remain inactive until confirmed. The agent can propose durable
+preferences/decisions via suggest_memory; users need not retype them manually.
+Memory management filters and embedding indexing follow the selected scope.
+Short-term context remains the current conversation, while knowledge libraries
+contain source documents for retrieval rather than personal preferences.

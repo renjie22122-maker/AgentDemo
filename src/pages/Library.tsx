@@ -5,7 +5,15 @@ import { useRef, useState } from 'react';
 import { api } from '../api';
 export function Library({ page, state, selected, t, refresh, notify }: any) {
   const [scope, setScope] = useState(
-    selected ? 'session:' + selected : state.projects[0] ? 'project:' + state.projects[0].id : '',
+    page === 'memories'
+      ? state.conversations.find((c: any) => c.id === selected)?.projectId
+        ? 'project:' + state.conversations.find((c: any) => c.id === selected).projectId
+        : 'user'
+      : selected
+        ? 'session:' + selected
+        : state.projects[0]
+          ? 'project:' + state.projects[0].id
+          : '',
   );
   const [text, setText] = useState(''),
     [name, setName] = useState(''),
@@ -205,7 +213,11 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
                   value={scope.startsWith('project:') ? scope : 'user'}
                   onChange={(e) => setScope(e.target.value)}
                 >
-                  <option value="user">{t('User · all chats')}</option>
+                  <option value="user">
+                    {t('settings') === 'Settings'
+                      ? 'General chats · user preferences'
+                      : '普通对话 · 用户偏好'}
+                  </option>
                   {state.projects.map((p: any) => (
                     <option key={p.id} value={'project:' + p.id}>
                       {p.name}
@@ -217,7 +229,11 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder={t('Preference or verified fact…')}
+              placeholder={
+                t('settings') === 'Settings'
+                  ? 'Optional: add a preference manually. You can also ask the agent to remember it.'
+                  : '可选：手工添加偏好。也可在聊天里说“记住这个偏好”，由 Agent 提出候选。'
+              }
             />
             <button
               className="primary"
@@ -236,36 +252,45 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
               {t('create')}
             </button>
           </section>
-          <button disabled={busy} onClick={() => go(() => api('/memories/index', {}))}>
+          <button
+            disabled={busy}
+            onClick={() =>
+              go(() =>
+                api('/memories/index', { scope: scope.startsWith('project:') ? scope : 'user' }),
+              )
+            }
+          >
             {t('settings') !== 'Settings'
-              ? '为已确认记忆建立语义索引（发送到已配置的 embedding 服务）'
-              : 'Index confirmed memories (sends them to the configured embedding service)'}
+              ? '为当前范围的已确认记忆建立索引（发送到已配置的 embedding 服务）'
+              : 'Index confirmed memories in this scope (sends them to the configured embedding service)'}
           </button>
-          {state.memories.map((m: any) => (
-            <article className="panel" key={m.id}>
-              <div className="section-title">
-                <span className={'pill ' + (m.active ? 'success' : '')}>
-                  {m.active ? 'Active' : 'Needs confirmation'}
-                </span>
-                <div className="row">
-                  <button
-                    onClick={() =>
-                      go(() => api('/memories/' + m.id, { active: !m.active }, 'PATCH'))
-                    }
-                  >
-                    {m.active ? 'Deactivate' : 'Confirm'}
-                  </button>
-                  <button onClick={() => go(() => api('/memories/' + m.id, undefined, 'DELETE'))}>
-                    <Trash2 size={15} />
-                  </button>
+          {state.memories
+            .filter((m: any) => m.scope === (scope.startsWith('project:') ? scope : 'user'))
+            .map((m: any) => (
+              <article className="panel" key={m.id}>
+                <div className="section-title">
+                  <span className={'pill ' + (m.active ? 'success' : '')}>
+                    {m.active ? 'Active' : 'Needs confirmation'}
+                  </span>
+                  <div className="row">
+                    <button
+                      onClick={() =>
+                        go(() => api('/memories/' + m.id, { active: !m.active }, 'PATCH'))
+                      }
+                    >
+                      {m.active ? 'Deactivate' : 'Confirm'}
+                    </button>
+                    <button onClick={() => go(() => api('/memories/' + m.id, undefined, 'DELETE'))}>
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <p>{m.content}</p>
-              <small className="muted">
-                {m.scope} · {m.source} · rev {m.revision}
-              </small>
-            </article>
-          ))}
+                <p>{m.content}</p>
+                <small className="muted">
+                  {m.scope} · {m.source} · rev {m.revision}
+                </small>
+              </article>
+            ))}
         </>
       )}
     </div>

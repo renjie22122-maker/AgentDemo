@@ -103,6 +103,7 @@ export interface Conversation {
   skillIds: string[];
   knowledge: boolean;
   memory: boolean;
+  includeUserMemory?: boolean;
 }
 export interface ContextSample {
   fingerprint: string;

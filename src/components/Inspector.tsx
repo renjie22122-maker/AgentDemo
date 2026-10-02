@@ -114,6 +114,28 @@ export function Inspector({
                 {t(k)}
               </label>
             ))}
+            <p className="muted">
+              {t('settings') === 'Settings'
+                ? project
+                  ? 'Project memories only by default.'
+                  : 'General chat recalls confirmed user preferences; no project memory.'
+                : project
+                  ? '默认只召回本项目记忆。'
+                  : '普通对话召回已确认的用户偏好，不读取项目记忆。'}
+            </p>
+            {project && (
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  disabled={!!running || !conversation.memory}
+                  checked={conversation.includeUserMemory === true}
+                  onChange={(e) =>
+                    void action(() => update({ includeUserMemory: e.target.checked }))
+                  }
+                />
+                {t('settings') === 'Settings' ? 'Also use user preferences' : '同时使用用户偏好'}
+              </label>
+            )}
             {run && (
               <>
                 <h4>{t('usage')}</h4>

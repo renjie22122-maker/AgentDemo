@@ -423,7 +423,12 @@ export class Runtime implements TeamPort {
       ...(this.steering.get(run.id) || []).map((m) => m.content),
     ].join('\n');
     const recalled = ctx.conversation.memory
-      ? await this.memories.recall(query, ctx.conversation.projectId, ctx.signal)
+      ? await this.memories.recall(
+          query,
+          ctx.conversation.projectId,
+          ctx.signal,
+          !ctx.conversation.projectId || ctx.conversation.includeUserMemory === true,
+        )
       : { memories: [], method: 'disabled', fallback: undefined };
     const memories = recalled.memories;
     this.store.event(run.conversationId, run.id, 'memory.recalled', {
@@ -444,6 +449,14 @@ export class Runtime implements TeamPort {
         reasoning: profile.reasoning,
         os: process.platform,
         project: ctx.conversation.projectId,
+        memoryPolicy: {
+          enabled: ctx.conversation.memory,
+          scope: ctx.conversation.projectId ? 'project:' + ctx.conversation.projectId : 'user',
+          includeUserPreferences:
+            !ctx.conversation.projectId || ctx.conversation.includeUserMemory === true,
+          guidance:
+            'When memory is enabled and the user expresses a durable preference or verified reusable decision, consider suggest_memory without making them retype it. Candidates require user confirmation. Never store secrets, temporary tasks, or your own unverified claims. Project decisions belong to this project only. Do not turn every answer into a memory suggestion.',
+        },
         folders: ctx.conversation.projectId
           ? ctx.files.roots
           : 'No project. Only a private conversation artifact directory.',
