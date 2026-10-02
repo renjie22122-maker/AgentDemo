@@ -1,3 +1,4 @@
+import { deleteConversation } from '../services/conversation-delete.js';
 import { mediaRoutes } from './media.js';
 import { normalizeImage } from '../services/images.js';
 import { matchModel } from '../../shared/model-metadata.js';
@@ -278,6 +279,10 @@ export async function createApp(options: { directory: string; dist?: string; run
       memoryGenerationTarget,
       updatedAt: Date.now(),
     });
+  });
+  app.delete<{ Params: { id: string } }>('/api/conversations/:id', async (req) => {
+    const data = z.object({ confirmTitle: z.string(), permanent: z.literal(true) }).parse(req.body);
+    return deleteConversation(store, directory, req.params.id, data.confirmTitle);
   });
   app.post<{ Params: { id: string } }>('/api/conversations/:id/fork', async (req) => {
     const c = store.get<Conversation>('conversation', req.params.id),

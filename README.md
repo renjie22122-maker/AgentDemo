@@ -59,6 +59,10 @@ Use the **…** button beside a project in the sidebar to rename it or add/remov
 
 **Remove Project** disables the workspace without deleting disk files, conversations, knowledge or memories. Find removed projects in the sidebar archive view and save their settings to restore them. Their memory scope stays separate. Stop active project tasks before changing folders or removing a project.
 
+### Delete a conversation
+
+Open the conversation menu and choose **Permanently delete**. Type its exact title in the second confirmation dialog. This removes the chat, its agent children, run records and exclusive local attachments/artifacts. Independent branches, saved memories and project files remain. Stop active tasks and background operations first. Deletion cannot be undone in the app; it is not forensic erasure of backups or SQLite free pages.
+
 ### Skills
 
 Import skill directories in the Skills library. Search and filter by source or category, then select or clear skills in bulk. Optional AI classification previews categories before you apply them.

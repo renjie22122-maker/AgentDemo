@@ -225,6 +225,7 @@ export class MemoryLearning {
           });
         });
       } catch {
+        if (!this.store.maybe('conversation', c.id)) return;
         this.store.put('memory-learning', {
           ...job,
           status: this.controller.signal.aborted ? 'cancelled' : 'failed',

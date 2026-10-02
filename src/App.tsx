@@ -43,6 +43,9 @@ export function App() {
       () => (localStorage.getItem('agentdemo.language') as Language) || 'en',
     ),
     [theme, setTheme] = useState(() => localStorage.getItem('agentdemo.theme') || 'dark');
+  const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
+  const [deleteTitle, setDeleteTitle] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const [copying, setCopying] = useState<string | null>(null);
   const [copyFallback, setCopyFallback] = useState<string | null>(null);
   const [sidebar, setSidebar] = useState(() => window.innerWidth > 760),
@@ -489,6 +492,15 @@ export function App() {
                 : language === 'zh'
                   ? '复制整个对话'
                   : 'Copy entire conversation'}
+            </button>
+            <button
+              onClick={() => {
+                setDeleteTarget(c);
+                setDeleteTitle('');
+                setMenu(null);
+              }}
+            >
+              {language === 'zh' ? '彻底删除对话…' : 'Permanently delete…'}
             </button>
             {[
               [
@@ -1178,6 +1190,75 @@ export function App() {
           </div>
         )}
       </main>
+      {deleteTarget && (
+        <div className="modal-backdrop">
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-chat-title"
+          >
+            <h2 id="delete-chat-title">
+              {language === 'zh' ? '彻底删除对话？' : 'Permanently delete conversation?'}
+            </h2>
+            <p>
+              {language === 'zh'
+                ? '将删除此对话及其子 Agent 的消息、运行记录和专属附件/产物，无法在应用内恢复。独立分支、已保存的长期记忆和项目磁盘文件保留。运行中的任务需先停止。'
+                : 'Deletes this conversation, its agent children, messages, run records and exclusive attachments/artifacts. This cannot be undone in the app. Independent branches, saved memories and project files are retained. Stop running tasks first.'}
+            </p>
+            <label>
+              {language === 'zh'
+                ? '输入完整对话标题确认：'
+                : 'Type the exact conversation title to confirm:'}
+              <strong>{deleteTarget.title}</strong>
+              <input
+                autoFocus
+                disabled={deleting}
+                value={deleteTitle}
+                onChange={(e) => setDeleteTitle(e.target.value)}
+              />
+            </label>
+            <div className="row end">
+              <button disabled={deleting} onClick={() => setDeleteTarget(null)}>
+                {t('cancel')}
+              </button>
+              <button
+                disabled={deleting || deleteTitle !== deleteTarget.title}
+                onClick={() =>
+                  void action(async () => {
+                    setDeleting(true);
+                    try {
+                      const result = await api(
+                        '/conversations/' + deleteTarget.id,
+                        { confirmTitle: deleteTitle, permanent: true },
+                        'DELETE',
+                      );
+                      for (const id of result.deleted) detailCache.current.delete(id);
+                      if (selected && result.deleted.includes(selected)) {
+                        setSelected(null);
+                        setDetail(null);
+                        localStorage.removeItem('agentdemo.chat');
+                      }
+                      setDeleteTarget(null);
+                      await refresh();
+                    } finally {
+                      setDeleting(false);
+                    }
+                  })
+                }
+              >
+                {deleting
+                  ? language === 'zh'
+                    ? '正在删除…'
+                    : 'Deleting…'
+                  : language === 'zh'
+                    ? '确认彻底删除'
+                    : 'Delete permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {projectDialog && (
         <ProjectDialog
           project={editingProject}
