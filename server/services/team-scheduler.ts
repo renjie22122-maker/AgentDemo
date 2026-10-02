@@ -1,3 +1,4 @@
+import { adaptiveRouting, startTaskMeasurement } from './routing-outcomes.js';
 import {
   resourceConflict,
   routingScore,
@@ -145,13 +146,31 @@ export class TeamScheduler {
           });
           continue;
         }
-        const score = (id: string) =>
-          routingScore(
+        const scores = new Map<string, any>();
+        const score = (id: string) => {
+          if (scores.has(id)) return scores.get(id);
+          const base = routingScore(
             task,
             policy.expertise?.find((p) => p.runId === id),
             board.tasks.filter((t) => t.owner === id),
             load(id),
           );
+          const empirical = adaptiveRouting(
+            this.store,
+            this.store.get<Run>('run', id),
+            task,
+            Date.now(),
+            policy.expertise?.find((p) => p.runId === id),
+          );
+          const value = {
+            ...base,
+            baseScore: base.score,
+            score: base.score + empirical.adjustment,
+            empirical,
+          };
+          scores.set(id, value);
+          return value;
+        };
 
         const eligible = candidates
           .filter((r) => {
@@ -192,9 +211,17 @@ export class TeamScheduler {
         }
         const routing = {
           ...score(member.id),
-          basis: 'declared expertise, scoped verified history and current load',
+          basis: 'declared expertise, scoped checked history, load and bounded measured feedback',
         };
 
+        startTaskMeasurement(
+          this.store,
+          board,
+          task,
+          member,
+          Date.now(),
+          policy.expertise?.find((p) => p.runId === member.id),
+        );
         task.owner = member.id;
         task.status = 'running';
         this.store.remove('team-worker-idle', member.id);

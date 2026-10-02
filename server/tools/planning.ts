@@ -1,3 +1,5 @@
+import { compilePlan } from '../services/plan-compiler.js';
+import { planningPolicy } from '../services/planning-policy.js';
 import { workerExpertise } from '../services/task-routing.js';
 import { Teams } from '../services/team-space.js';
 import { TeamScheduler } from '../services/team-scheduler.js';
@@ -219,6 +221,24 @@ export function installPlanning(registry: ToolRegistry) {
           .slice(-20)
           .map((e) => ({ id: e.id, tool: e.data.name, output: e.data.output.slice(0, 400) })),
       }),
+    }),
+  });
+  registry.add({
+    name: 'inspect_planning_policy',
+    effect: 'read',
+    description:
+      'Host planning guidance from observed work and current task graph; no model call or side effects.',
+    schema: z.object({}),
+    run: (_a, c) => ({ content: JSON.stringify(planningPolicy(c.store, c.run)) }),
+  });
+  registry.add({
+    name: 'preview_plan',
+    effect: 'read',
+    description:
+      'Compile proposed typed task contracts before committing a plan. Returns dependency layers and verification/resource warnings without creating tasks.',
+    schema: z.object({ tasks: z.array(taskInput).min(1).max(50) }),
+    run: (a, c) => ({
+      content: JSON.stringify(compilePlan(a.tasks, c.conversation.permission === 'read-only')),
     }),
   });
   registry.add({

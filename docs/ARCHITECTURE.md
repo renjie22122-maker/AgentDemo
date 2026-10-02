@@ -14,6 +14,12 @@
 
 The runtime receives a model-provider resolver, making it replaceable in tests. Its tool context contains explicit service ports. Provider-specific reasoning blocks live in model messages, not tool execution code. Subagents reuse the same runtime and shared model pool; they do not create a second orchestration engine.
 
+## Planning and environment boundary
+
+RunEnvironment resolves file scope and constructs model context through explicit store, settings and memory-recall dependencies. It cannot schedule, call providers or mutate execution controllers. Runtime still owns the run lifecycle; this is an incremental separation, not elimination of all orchestration coupling.
+
+Task proposals pass through a typed plan compiler before reaching the board. Scheduling records attributed outcomes and can apply bounded empirical feedback after enough same-scope/model/specialization samples. See [planning and routing](PLANNING-AND-ROUTING.md) for cold-start behavior and evidence limitations.
+
 ## Run lifecycle
 
 ```mermaid

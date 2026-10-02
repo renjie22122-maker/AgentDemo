@@ -162,6 +162,7 @@ corepack pnpm build
 ## 更多文档
 
 - [架构](docs/ARCHITECTURE.md)
+- [计划编译、调度反馈与验收边界](docs/PLANNING-AND-ROUTING.md)
 - [交互指南](docs/INTERACTION.md)
 - [记忆](docs/MEMORY.md)
 - [自动审批](docs/AUTO-REVIEW.md)

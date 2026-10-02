@@ -164,6 +164,7 @@ When filing an issue, include the OS, Node version, selected backend, reproducti
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Planning, routing feedback and verification limits](docs/PLANNING-AND-ROUTING.md)
 - [Interaction guide](docs/INTERACTION.md)
 - [Memory](docs/MEMORY.md)
 - [Automatic approval](docs/AUTO-REVIEW.md)

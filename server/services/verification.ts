@@ -109,7 +109,19 @@ export class Verification {
       const latest = new TaskBoard(this.store).get(run);
       assert(latest.revision === revision, 'PLAN_CHANGED', 'Task changed while checking files.');
       const target = latest.tasks.find((t) => t.id === taskId)!;
-      target.verification = { status: 'checked', eventId, checkedBy: row.run_id, stamp: current };
+      target.verification = {
+        status: 'checked',
+        eventId,
+        checkedBy: row.run_id,
+        stamp: current,
+        independent: !!target.owner && row.run_id !== target.owner,
+        checkKind: data.name === 'read_file' ? 'file-observation' : 'command-check',
+      };
+      if (target.attemptId) {
+        const outcome = this.store.maybe<any>('routing-outcome', target.attemptId);
+        if (outcome?.status === 'awaiting_check')
+          this.store.put('routing-outcome', { ...outcome, status: 'checked' });
+      }
       latest.revision++;
       this.store.put('task-board', latest);
       committed?.(latest);

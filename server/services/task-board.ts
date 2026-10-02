@@ -1,4 +1,5 @@
-import { validateTaskGraph } from './task-graph.js';
+import { compilePlan } from './plan-compiler.js';
+import { startTaskMeasurement, finishTaskMeasurement } from './routing-outcomes.js';
 import { Teams } from './team-space.js';
 import { z } from 'zod';
 import type { Run } from '../../shared/types.js';
@@ -8,12 +9,14 @@ import type { ArtifactStamp } from './verification.js';
 import { assert } from '../core/errors.js';
 export const taskInput = z.object({
   id: z.string().min(1).max(80),
+  kind: z.enum(['inspect', 'implement', 'verify', 'deliver']).optional(),
   title: z.string().min(1).max(300),
   dependsOn: z.array(z.string()).max(50).default([]),
   acceptance: z.string().min(1).max(2000),
   execution: z.enum(['read-only', 'isolated']).optional(),
   weight: z.number().int().min(1).max(8).optional(),
   priority: z.number().int().min(0).max(10).optional(),
+  requiredTools: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
   skills: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
   readPaths: z.array(z.string().min(1).max(2048)).max(30).optional(),
   writePaths: z.array(z.string().min(1).max(2048)).max(30).optional(),
@@ -32,6 +35,8 @@ export const taskInput = z.object({
 });
 export interface BoardTask {
   id: string;
+  kind?: 'inspect' | 'implement' | 'verify' | 'deliver';
+  attemptId?: string;
   title: string;
   dependsOn: string[];
   acceptance: string;
@@ -44,6 +49,7 @@ export interface BoardTask {
   priority?: number;
   artifacts?: string[];
   skills?: string[];
+  requiredTools?: string[];
   readPaths?: string[];
   writePaths?: string[];
   provides?: string[];
@@ -51,6 +57,8 @@ export interface BoardTask {
   externalInputs?: { name: string; source: string }[];
   verification?: {
     status: 'checked' | 'stale';
+    independent?: boolean;
+    checkKind?: 'file-observation' | 'command-check';
     eventId: number;
     checkedBy: string;
     stamp: ArtifactStamp;
@@ -90,10 +98,12 @@ export class TaskBoard {
         'PLAN_EXISTS',
         'Update existing tasks rather than discarding work.',
       );
-      input = validateTaskGraph(
+      const compiled = compilePlan(
         input,
         this.store.get<any>('conversation', run.conversationId).permission === 'read-only',
       );
+      input = compiled.tasks;
+      this.store.put('compiled-plan', { id: board.id, ...compiled, createdAt: Date.now() });
       return this.save({
         ...board,
         revision: board.revision + 1,
@@ -169,6 +179,8 @@ export class TaskBoard {
             ![
               'update_task',
               'create_plan',
+              'preview_plan',
+              'inspect_planning_policy',
               'inspect_plan',
               'handoff_task',
               'inspect_team',
@@ -192,6 +204,15 @@ export class TaskBoard {
           );
         }
       }
+      if (status === 'running')
+        startTaskMeasurement(
+          this.store,
+          board,
+          task,
+          this.store.get<Run>('run', task.owner || run.id),
+        );
+      if (status === 'done' || status === 'blocked')
+        finishTaskMeasurement(this.store, task, status);
       Object.assign(task, {
         status,
         owner: status === 'pending' ? null : task.owner || run.id,
