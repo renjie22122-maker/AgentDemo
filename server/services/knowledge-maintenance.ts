@@ -100,7 +100,7 @@ export class KnowledgeMaintenance {
         !w.paths.every((path) => p.folders.some((root: string) => inside(root, path)))
       )
         return false;
-    } else if (!this.store.maybe('conversation', w.id.slice(8))) return false;
+    } else if (w.id !== 'general' && !this.store.maybe('conversation', w.id.slice(8))) return false;
 
     return (
       !this.stopped &&
@@ -125,7 +125,9 @@ export class KnowledgeMaintenance {
           );
         const project = w.id.startsWith('project:')
           ? this.store.maybe<any>('project', w.id.slice(8))
-          : null;
+          : w.id === 'general'
+            ? { folders: w.paths }
+            : null;
         if (w.id.startsWith('project:') && (!project || project.removedAt))
           throw Error('Project is unavailable.');
         const files: string[] = [];

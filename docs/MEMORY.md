@@ -255,3 +255,16 @@ Folders must belong to the chosen project; register additional project roots
 first. A conversation library accepts uploaded documents, not arbitrary host
 folder paths. Local embedding keeps document content local; external embedding
 uses the destination disclosed when enabling maintenance.
+
+### Shared library for general conversations
+
+Select **All general chats 路 shared library** to configure documents, folder
+sources and automatic indexing once. Existing and new non-project conversations
+with knowledge enabled retrieve this scope in addition to their private session
+documents. Project conversations never add the general scope. Delegated tasks
+inherit the parent conversation's ordinary scope rules.
+Private conversation documents are not migrated or shared automatically.
+Shared folder sources require explicit selection, validation and saving; they
+grant the indexer read access, not command access or a project workspace.
+The scope picker separates shared, project and individual-conversation scopes,
+supports title/project/ID search, and shows 15 choices per page.

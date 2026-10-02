@@ -1397,3 +1397,28 @@ test('project folders can be edited, removed and restored without deleting histo
     await app.close();
   }
 });
+
+test('general library is shared by general chats but excluded from projects and disabled knowledge', async () => {
+  const f = await setup({ complete: async () => result('done') });
+  try {
+    const r = f.runtime.start('chat', 'hi');
+    await until(() => f.store.get<any>('run', r.id).status === 'completed');
+    const run = f.store.get<any>('run', r.id),
+      original = f.store.get<any>('conversation', 'chat');
+    const general = await f.runtime.context(run);
+    assert(general.scopes.includes('general'));
+    f.runtime.knowledge.import('general', 'shared', 'unique_shared_guide');
+    assert.equal(general.knowledge.search(general.scopes, 'unique_shared_guide').length, 1);
+    const projectDir = await mkdtemp(join(tmpdir(), 'scope-project-'));
+    f.store.put('project', { id: 'project', folders: [projectDir] });
+    f.store.put('conversation', { ...original, projectId: 'project' });
+    const project = await f.runtime.context(run);
+    assert(!project.scopes.includes('general'));
+    assert.equal(project.knowledge.search(project.scopes, 'unique_shared_guide').length, 0);
+    f.store.put('conversation', { ...original, knowledge: false });
+    assert.deepEqual((await f.runtime.context(run)).scopes, []);
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});

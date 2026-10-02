@@ -352,7 +352,7 @@ export class Runtime implements TeamPort {
     const c = this.store.get<Conversation>('conversation', run.conversationId);
     const files = await this.filesForConversation(c);
     const scopes = c.knowledge
-      ? ['session:' + c.id, ...(c.projectId ? ['project:' + c.projectId] : [])]
+      ? ['session:' + c.id, ...(c.projectId ? ['project:' + c.projectId] : ['general'])]
       : [];
     if (c.knowledge && run.parentRunId) {
       let parent = this.store.get<Run>('run', run.parentRunId);

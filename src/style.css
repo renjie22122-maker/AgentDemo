@@ -3303,3 +3303,39 @@ input.team-switch:checked::after {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
+
+.knowledge-scope-results {
+  display: grid;
+  gap: 6px;
+  max-height: 360px;
+  overflow: auto;
+  margin: 12px 0;
+}
+.knowledge-scope-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+}
+.knowledge-scope-option strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.knowledge-scope-option small {
+  opacity: 0.7;
+  overflow-wrap: anywhere;
+}
+.knowledge-scope-option[aria-pressed='true'] {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+.knowledge-scope-picker > .row > button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

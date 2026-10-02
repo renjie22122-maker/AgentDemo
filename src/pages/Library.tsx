@@ -1,3 +1,4 @@
+import { KnowledgeScopePicker } from '../components/KnowledgeScopePicker';
 import { libraryConversations } from '../library-scopes';
 import { MemoryDefaults } from '../components/MemoryDefaults';
 import { KnowledgeAutomation } from '../components/KnowledgeAutomation';
@@ -5,7 +6,7 @@ import { MemoryDetails, MemoryWorkbench, DocumentVersion } from '../components/M
 import { SkillClassificationPanel } from '../components/SkillClassificationPanel';
 import { SkillPicker } from '../components/SkillPicker';
 import { FileText, Plus, Search, Trash2, Upload } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { api } from '../api';
 export function Library({ page, state, selected, t, refresh, notify }: any) {
   const selectable = libraryConversations(state.conversations, state.runs);
@@ -18,15 +19,16 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
       : current
         ? current.projectId
           ? 'project:' + current.projectId
-          : 'session:' + current.id
-        : state.projects[0]
-          ? 'project:' + state.projects[0].id
-          : '',
+          : 'general'
+        : 'general',
   );
   const [text, setText] = useState(''),
     [name, setName] = useState(''),
     [results, setResults] = useState<any[]>([]),
     [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setResults([]);
+  }, [scope]);
   const [knowledgeDate, setKnowledgeDate] = useState('');
   const file = useRef<HTMLInputElement>(null);
   const go = async (fn: () => Promise<any>) => {
@@ -40,45 +42,6 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
       setBusy(false);
     }
   };
-  const scopes = (
-    <>
-      <option value="">{t('Choose a scope')}</option>
-      <optgroup label={t('projects')}>
-        {state.projects
-          .filter((p: any) => !p.removedAt)
-          .map((p: any) => (
-            <option key={p.id} value={'project:' + p.id}>
-              {p.name}
-            </option>
-          ))}
-      </optgroup>
-      <optgroup label={t('settings') === 'Settings' ? 'General conversations' : '普通对话'}>
-        {selectable
-          .filter((c: any) => !c.projectId)
-          .map((c: any) => (
-            <option key={c.id} value={'session:' + c.id}>
-              {c.title.slice(0, 60)}
-            </option>
-          ))}
-      </optgroup>
-      {state.projects
-        .filter((p: any) => !p.removedAt)
-        .map((p: any) => (
-          <optgroup
-            key={p.id}
-            label={(t('settings') === 'Settings' ? 'Conversations · ' : '项目对话 · ') + p.name}
-          >
-            {selectable
-              .filter((c: any) => c.projectId === p.id)
-              .map((c: any) => (
-                <option key={c.id} value={'session:' + c.id}>
-                  {c.title.slice(0, 60)}
-                </option>
-              ))}
-          </optgroup>
-        ))}
-    </>
-  );
   return (
     <div className="page">
       <div className="page-heading">
@@ -128,12 +91,13 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
       ) : page === 'knowledge' ? (
         <>
           <section className="panel">
-            <label>
-              {t('scope')}
-              <select value={scope} onChange={(e) => setScope(e.target.value)}>
-                {scopes}
-              </select>
-            </label>
+            <KnowledgeScopePicker
+              scope={scope}
+              onChange={setScope}
+              projects={state.projects}
+              conversations={selectable}
+              zh={t('settings') !== 'Settings'}
+            />
             <div className="row wrap">
               <button disabled={!scope || busy} onClick={() => file.current?.click()}>
                 <Upload size={16} />
@@ -157,6 +121,7 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
               />
             </div>
             <KnowledgeAutomation
+              key={scope}
               scope={scope}
               project={state.projects.find((p: any) => scope === 'project:' + p.id)}
               embedding={state.settings.embedding}

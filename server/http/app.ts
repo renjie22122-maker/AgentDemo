@@ -904,7 +904,8 @@ export async function createApp(options: { directory: string; dist?: string; run
   });
   function checkScope(scope: string) {
     assert(
-      (scope.startsWith('project:') && store.maybe('project', scope.slice(8))) ||
+      scope === 'general' ||
+        (scope.startsWith('project:') && store.maybe('project', scope.slice(8))) ||
         (scope.startsWith('session:') && store.maybe('conversation', scope.slice(8))),
       'SCOPE',
       'Select a conversation or project knowledge scope.',
@@ -931,7 +932,9 @@ export async function createApp(options: { directory: string; dist?: string; run
       })
       .parse(req.body);
     checkScope(data.scope);
-    if (data.paths.length) {
+    if (data.paths.length && data.scope === 'general') {
+      data.paths = await validateRoots(data.paths, directory);
+    } else if (data.paths.length) {
       assert(data.scope.startsWith('project:'), 'SCOPE', 'Folder sources require a project');
       const project = store.get<Project>('project', data.scope.slice(8));
       assert(!project.removedAt, 'PROJECT_REMOVED', 'Restore the project first.');

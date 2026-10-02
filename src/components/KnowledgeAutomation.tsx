@@ -104,11 +104,15 @@ export function KnowledgeAutomation({ scope, zh, embedding, notify, profile, pro
               ? '开启即允许将本范围文档发送到：'
               : 'Enabling authorizes embedding documents in this scope at: ') + embedding.baseUrl}
       </p>
-      {scope.startsWith('project:') && (
+      {(scope.startsWith('project:') || scope === 'general') && (
         <label>
-          {zh
-            ? '登记资料文件或文件夹，每行一个项目内绝对路径'
-            : 'Source files/folders: one absolute path within this project per line'}
+          {scope === 'general'
+            ? zh
+              ? '共享资料文件夹 · 每行一个绝对路径'
+              : 'Shared source folders · one absolute path per line'
+            : zh
+              ? '登记资料文件或文件夹，每行一个项目内绝对路径'
+              : 'Source files/folders: one absolute path within this project per line'}
           <textarea
             value={paths}
             onChange={(e) => setPaths(e.target.value)}
@@ -120,7 +124,7 @@ export function KnowledgeAutomation({ scope, zh, embedding, notify, profile, pro
           />
         </label>
       )}
-      {scope.startsWith('project:') && (
+      {(scope.startsWith('project:') || scope === 'general') && (
         <div className="row wrap">
           <button disabled={busy || picking} onClick={() => void browse()}>
             {zh ? '选择资料文件夹…' : 'Choose source folders…'}
@@ -141,13 +145,17 @@ export function KnowledgeAutomation({ scope, zh, embedding, notify, profile, pro
             </button>
           )}
           <small>
-            {zh
-              ? '递归包含子文件夹；可填写多个路径（最多 12 个）。项目外资料请先在管理项目中添加其文件夹。保存并开启后后台导入。'
-              : 'Includes subfolders recursively; up to 12 source paths. Add external folders to the project first. Save and enable to import in the background.'}
+            {scope === 'general'
+              ? zh
+                ? '仅所选文件夹进入普通对话共享知识库，不授予聊天命令访问权；项目对话不读取此范围。'
+                : 'Only chosen folders enter the shared general-chat library. This grants no command access; project chats exclude this scope.'
+              : zh
+                ? '递归包含子文件夹；可填写多个路径（最多 12 个）。项目外资料请先在管理项目中添加其文件夹。保存并开启后后台导入。'
+                : 'Includes subfolders recursively; up to 12 source paths. Add external folders to the project first. Save and enable to import in the background.'}
           </small>
         </div>
       )}
-      {!scope.startsWith('project:') && (
+      {scope.startsWith('session:') && (
         <p className="muted">
           {zh
             ? '当前为单个对话知识库。导入文件夹请先在上方选择项目；本对话上传的文档仍可自动索引。'

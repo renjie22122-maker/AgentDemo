@@ -122,3 +122,39 @@ test('destination changes and disabled scopes never embed; repeated failure stop
   store.close();
   await rm(dir, { recursive: true, force: true });
 });
+
+test('explicit general folder sources import recursively without creating a project', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'general-library-')),
+    root = join(dir, 'sources'),
+    data = join(dir, 'data');
+  await mkdir(join(root, 'nested'), { recursive: true });
+  await mkdir(data);
+  const store = new Store(join(data, 'db.sqlite'));
+  const embedding: any = {
+    enabled: () => true,
+    fingerprint: () => 'local-test',
+    encode: async (texts: string[]) => texts.map(() => [1, 0]),
+  };
+  const knowledge = new Knowledge(store, embedding),
+    manager = new KnowledgeMaintenance(store, knowledge, embedding, data);
+  try {
+    await writeFile(join(root, 'nested', 'guide.md'), 'Shared library source');
+    store.put('knowledge-watch', {
+      id: 'general',
+      paths: [root],
+      enabled: true,
+      target: 'local-test',
+      revision: 1,
+    });
+    await manager.tick();
+    assert.equal(store.get<any>('knowledge-watch', 'general').status, 'synced');
+    assert.equal(knowledge.search(['general'], 'Shared').length, 1);
+    assert.equal(knowledge.search(['project:p'], 'Shared').length, 0);
+    assert.equal(store.list('project').length, 0);
+  } finally {
+    await manager.close();
+    knowledge.close();
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
