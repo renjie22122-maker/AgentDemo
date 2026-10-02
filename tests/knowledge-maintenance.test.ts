@@ -50,6 +50,24 @@ test('automatic sources preserve versions, reuse vectors, isolate scopes and ret
   await manager.tick();
   assert.equal(knowledge.search(['project:p'], 'retention').length, 0);
   assert.equal(store.get<any>('knowledge-watch', 'project:p').status, 'synced');
+  await mkdir(join(root, 'nested'));
+  await mkdir(join(root, 'node_modules'));
+  await writeFile(join(root, 'nested', 'readme.md'), 'Nested source material');
+  await writeFile(join(root, 'node_modules', 'skip.md'), 'Excluded dependency');
+  await writeFile(join(root, 'binary.exe'), 'unsupported');
+  await manager.tick();
+  assert.deepEqual(store.get<any>('knowledge-watch', 'project:p').scan, {
+    files: 1,
+    updated: 1,
+    unchanged: 0,
+  });
+  assert.equal(knowledge.search(['project:p'], 'Nested')[0].text.includes('Nested'), true);
+  await manager.tick();
+  assert.deepEqual(store.get<any>('knowledge-watch', 'project:p').scan, {
+    files: 1,
+    updated: 0,
+    unchanged: 1,
+  });
   await manager.close();
   knowledge.close();
   store.close();

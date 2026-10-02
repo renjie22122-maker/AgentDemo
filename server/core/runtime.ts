@@ -1,3 +1,4 @@
+import { RunPump } from './run-pump.js';
 import { RunEnvironment } from './run-environment.js';
 import { BackgroundCommands } from '../services/background-commands.js';
 import { finalizeRun } from './finalization.js';
@@ -56,10 +57,8 @@ export class Runtime implements TeamPort {
   private delegation: DelegationManager;
   private teamCoordinator: TeamCoordinator;
   private environment: RunEnvironment;
-  private controllers = new Map<string, AbortController>();
-  private tasks = new Map<string, Promise<void>>();
+  private execution: RunPump;
   private steering = new Map<string, { content: string; attachmentIds: string[] }[]>();
-  private queue: string[] = [];
   private scheduling = false;
   private schedulingTask: Promise<void> = Promise.resolve();
   private reschedule = false;
@@ -71,6 +70,17 @@ export class Runtime implements TeamPort {
     readonly directory: string,
     private resolveProvider: (p: Profile) => ModelProvider = providerFor,
   ) {
+    this.execution = new RunPump({
+      scope: (key) => this.executionScope(store.get<Run>('run', key)),
+      status: (key) => store.get<Run>('run', key).status,
+      limit: () => config.get().maxParallelRuns,
+      execute: (key, signal) => this.execute(key, signal),
+      finished: (key) => {
+        this.steering.delete(key);
+        this.streams.delete(key);
+        this.bus.emit('finished', key);
+      },
+    });
     this.teamCoordinator = new TeamCoordinator(store, {
       events: this.bus,
       filesForConversation: (c) => this.filesForConversation(c),
@@ -89,7 +99,7 @@ export class Runtime implements TeamPort {
     this.delegation = new DelegationManager(store, config, directory, this.bus, {
       context: (run) => this.context(run),
       start: (...args) => this.start(...args),
-      signal: (key) => this.controllers.get(key)?.signal,
+      signal: (key) => this.execution.signal(key),
       pump: () => this.pump(),
       steer: (...args) => this.steer(...args),
     });
@@ -222,7 +232,7 @@ export class Runtime implements TeamPort {
     this.store.put('run', run);
     const queued = this.recordUserMessage(conversationId, run.id, message);
     this.steering.set(run.id, [queued]);
-    this.queue.push(run.id);
+    this.execution.enqueue(run.id);
     this.pump();
     return this.store.get('run', run.id);
   }
@@ -308,14 +318,12 @@ export class Runtime implements TeamPort {
         .runs()
         .filter((c) => c.parentRunId === key && !terminal(c.status)))
         this.stop(child.id, true, manual);
-    const controller = this.controllers.get(key);
-    if (controller) controller.abort();
-    else {
-      this.queue = this.queue.filter((k) => k !== key);
+    if (!this.execution.cancel(key)) {
       this.store.transition(key, 'interrupted', 'Stopped by user.');
       this.bus.emit('finished', key);
     }
   }
+
   private executionScope(run: Run): string {
     const seen = new Set<string>();
     while (run.parentRunId) {
@@ -326,35 +334,7 @@ export class Runtime implements TeamPort {
     return run.conversationId;
   }
   private pump() {
-    const counts = new Map<string, number>();
-    for (const key of this.controllers.keys()) {
-      const run = this.store.get<Run>('run', key);
-      if (['waiting_children', 'waiting_approval', 'waiting_user'].includes(run.status)) continue;
-      const scope = this.executionScope(run);
-      counts.set(scope, (counts.get(scope) || 0) + 1);
-    }
-    // A saturated team must not block an unrelated conversation behind it.
-    for (let i = 0; i < this.queue.length;) {
-      const key = this.queue[i];
-      const scope = this.executionScope(this.store.get<Run>('run', key));
-      if ((counts.get(scope) || 0) >= this.config.get().maxParallelRuns) {
-        i++;
-        continue;
-      }
-      this.queue.splice(i, 1);
-      counts.set(scope, (counts.get(scope) || 0) + 1);
-      const controller = new AbortController();
-      this.controllers.set(key, controller);
-      const task = this.execute(key, controller.signal).finally(() => {
-        this.controllers.delete(key);
-        this.tasks.delete(key);
-        this.steering.delete(key);
-        this.streams.delete(key);
-        this.bus.emit('finished', key);
-        this.pump();
-      });
-      this.tasks.set(key, task);
-    }
+    this.execution.pump();
   }
   private history(conversationId: string): ModelMessage[] {
     return this.store
@@ -394,11 +374,11 @@ export class Runtime implements TeamPort {
       knowledge: this.knowledge,
       team: this,
       mcp: this.mcp,
-      signal: this.controllers.get(run.id)?.signal || new AbortController().signal,
+      signal: this.execution.signal(run.id) || new AbortController().signal,
       scopes,
       auxiliary: (fn) =>
         this.modelPool.run(
-          this.controllers.get(run.id)?.signal || new AbortController().signal,
+          this.execution.signal(run.id) || new AbortController().signal,
           fn,
           this.executionScope(run),
         ),
@@ -798,10 +778,11 @@ export class Runtime implements TeamPort {
   message: TeamPort['message'] = (...args) => this.delegation.message(...args);
   async shutdown() {
     this.shuttingDown = true;
+    this.execution.stopAccepting();
     clearInterval(this.maintenanceTimer);
     await this.maintenanceTask;
-    for (const key of this.controllers.keys()) this.stop(key, true, false);
-    await Promise.allSettled([...this.tasks.values()]);
+    for (const key of this.execution.keys()) this.stop(key, true, false);
+    await this.execution.drained();
     await this.schedulingTask;
     await this.background.shutdown();
     this.knowledge.close();

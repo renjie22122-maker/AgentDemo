@@ -290,3 +290,41 @@ test('team handoff blocks active owners, foreign workers and unknown effects', (
     f.store.close();
   }
 });
+
+test('verification rejects removed manifests and missing current artifacts', async () => {
+  const f = fixture();
+  const { FileScope } = await import('../server/services/paths.js');
+  const { Verification, stamp } = await import('../server/services/verification.js');
+  const { writeFile, rm } = await import('node:fs/promises');
+  const folder = mkdtempSync(join(tmpdir(), 'verify-removal-')),
+    files = new FileScope([folder]);
+  try {
+    await writeFile(join(folder, 'answer.txt'), '31');
+    await writeFile(join(folder, 'package.json'), '{}');
+    f.board.create(
+      f.root,
+      [{ id: 'a', title: 'A', acceptance: 'answer', dependsOn: [], artifacts: ['answer.txt'] }],
+      0,
+    );
+    const snapshot = await stamp(files, ['answer.txt']);
+    const event = f.store.event('a', 'root', 'tool.completed', {
+      name: 'read_file',
+      verification: {
+        before: snapshot,
+        after: snapshot,
+        passed: true,
+        checkedPaths: ['answer.txt'],
+      },
+    });
+    f.board.update(f.root, 'a', 1, 'done', [event.id], 'read');
+    const verify = new Verification(f.store);
+    await rm(join(folder, 'package.json'));
+    await assert.rejects(verify.record(f.root, files, 'a', 2, event.id), /manifests changed/);
+    await writeFile(join(folder, 'package.json'), '{}');
+    await rm(join(folder, 'answer.txt'));
+    await assert.rejects(verify.record(f.root, files, 'a', 2, event.id), /incomplete/);
+  } finally {
+    f.store.close();
+    await rm(folder, { recursive: true, force: true });
+  }
+});

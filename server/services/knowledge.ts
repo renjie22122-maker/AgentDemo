@@ -1,3 +1,4 @@
+import { dirname, join } from 'node:path';
 import { structuredChunks, documentAt, documentEligibilitySQL } from './knowledge-versions.js';
 import { AnnIndex } from './ann.js';
 import { createHash } from 'node:crypto';
@@ -11,7 +12,7 @@ export const terms = (text: string) => {
     .concat([...lower.matchAll(/[\u3400-\u9fff]/g)].map((x) => x[0]));
 };
 export class Knowledge {
-  private ann = new AnnIndex();
+  private ann: AnnIndex;
   lastRetrieval: Record<string, unknown> = {};
   close() {
     this.ann.close();
@@ -20,6 +21,9 @@ export class Knowledge {
     private store: Store,
     private embeddings?: Embeddings,
   ) {
+    this.ann = new AnnIndex(
+      store.path === ':memory:' ? undefined : join(dirname(store.path), 'ann-cache'),
+    );
     store.db
       .exec(`CREATE TABLE IF NOT EXISTS vector_revision(id INTEGER PRIMARY KEY,version INTEGER NOT NULL);
     INSERT OR IGNORE INTO vector_revision VALUES(1,0);
@@ -269,7 +273,9 @@ export class Knowledge {
       );
       ranked = result.result;
       this.lastRetrieval = {
-        backend: 'hnsw',
+        backend: result.backend,
+        cacheSource: result.cacheSource,
+        calibration: result.calibration,
         chunks: vectors.length,
         buildMs: result.buildMs,
         searchMs: result.searchMs,

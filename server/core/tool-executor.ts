@@ -1,3 +1,4 @@
+import { verificationPaths } from '../services/verification-inputs.js';
 import { prepareCoordination } from '../services/coordination-journal.js';
 import { stamp } from '../services/verification.js';
 import { TaskBoard } from '../services/task-board.js';
@@ -21,7 +22,7 @@ export class ToolExecutor {
       calls,
       (name) => this.registry.parallelSafe(name),
       async (call) => {
-        const paths = new TaskBoard(this.store).get(run).tasks.flatMap((t) => t.artifacts || []);
+        const paths = new TaskBoard(this.store).get(run).tasks.flatMap(verificationPaths);
         const observe = paths.length && ['read_file', 'run_command'].includes(call.name);
         const before = observe ? await stamp(ctx.files, paths) : undefined;
         const output = await this.invoke(run, call, ctx, images);

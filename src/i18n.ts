@@ -61,8 +61,8 @@ const words: Record<string, [string, string]> = {
     '只召回已生效记忆。可开启后台整理自动保存明确偏好；决策和冲突仍需确认。',
   ],
   knowledgeHelp: [
-    'Documents belong to one project or conversation. Other chats cannot search them.',
-    '文档绑定到一个项目或会话，其他对话无法检索。',
+    'Project documents are shared within that project. Conversation documents stay in that conversation and its delegated tasks. Unrelated projects and chats cannot retrieve them.',
+    '项目文档供该项目内对话使用；会话文档仅供当前对话及其委派子任务使用，不跨其他项目或无关对话。',
   ],
   skillsHelp: [
     'Import folders containing SKILL.md, then select skills in each chat. Skills do not grant permissions.',

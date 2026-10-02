@@ -33,3 +33,22 @@ A real DeepSeek Flash trial read a randomized raster code and color exclusively 
 ## 2026-10-01 update
 
 147 Windows regression tests, TypeScript checking and production build passed. Two real-model planning comparisons each used 15 tasks, 3 repetitions and 2 arms. See [the results and limitations](PLANNING-EVALUATION-20261001.md); these are planning-protocol checks, not autonomous coding or learned-scheduler benchmarks.
+
+## Dependency-aware snapshots and dispatch shutdown
+
+Verification snapshots include task artifacts and declared readPaths (including bounded
+directory traversal), root package/lock/config manifests, and recognizable relative JS/TS
+imports/re-exports/require calls. The lexical import recognizer is conservative, not a full
+language resolver: comments may cause false positives, dynamic imports and package resolution
+are incomplete. Declare additional inputs explicitly. Standard dependency/build/private
+directories are excluded when walking directories. Snapshots cap at 512 entries, 4 MB per file
+and 16 MB total; exceeding limits or unresolved imports marks them incomplete and rejects binding.
+
+Opened-file metadata is checked before/after hashing and against the current scoped path.
+Checks reject changes during execution, manifest removal and declared directory input deletion
+before recording. This narrows stale-evidence gaps; it is not a lock or adversarial TOCTOU proof.
+A concurrent writer can still race between observations or restore earlier bytes.
+A check's zero exit code still does not establish its acceptance criterion.
+
+RunPump is tested for per-conversation fairness, queued cancellation and shutdown draining.
+Stopping acceptance prevents completed tasks from dispatching queued work during shutdown.

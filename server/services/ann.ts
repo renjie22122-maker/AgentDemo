@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
 import { AppError } from '../core/errors.js';
 export class AnnIndex {
+  constructor(private cacheDirectory?: string) {}
   private worker?: Worker;
   private serial = 0;
   private pending = new Map<
@@ -16,6 +18,17 @@ export class AnnIndex {
     k = 30,
     signal?: AbortSignal,
   ): Promise<any> {
+    if (!rows.length)
+      return signal?.aborted
+        ? Promise.reject(new AppError('CANCELLED', 'Cancelled'))
+        : Promise.resolve({
+            result: [],
+            backend: 'empty',
+            cacheSource: 'none',
+            buildMs: 0,
+            searchMs: 0,
+          });
+    key = createHash('sha256').update(key).update(JSON.stringify(rows)).digest('hex');
     const next = this.chain.catch(() => {}).then(() => this.request(key, rows, query, k, signal));
     this.chain = next;
     return next;
@@ -71,7 +84,14 @@ export class AnnIndex {
       });
       signal?.addEventListener('abort', abort, { once: true });
       worker.ref();
-      worker.postMessage({ id, key, rows: this.generation === key ? undefined : rows, query, k });
+      worker.postMessage({
+        cacheDirectory: this.cacheDirectory,
+        id,
+        key,
+        rows: this.generation === key ? undefined : rows,
+        query,
+        k,
+      });
     });
   }
   private fail(error: Error) {

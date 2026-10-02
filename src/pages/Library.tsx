@@ -1,3 +1,4 @@
+import { libraryConversations } from '../library-scopes';
 import { MemoryDefaults } from '../components/MemoryDefaults';
 import { KnowledgeAutomation } from '../components/KnowledgeAutomation';
 import { MemoryDetails, MemoryWorkbench, DocumentVersion } from '../components/MemoryWorkbench';
@@ -7,13 +8,17 @@ import { FileText, Plus, Search, Trash2, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { api } from '../api';
 export function Library({ page, state, selected, t, refresh, notify }: any) {
+  const selectable = libraryConversations(state.conversations, state.runs);
+  const current = selectable.find((c: any) => c.id === selected);
   const [scope, setScope] = useState(
     page === 'memories' || page === 'memory'
       ? state.conversations.find((c: any) => c.id === selected)?.projectId
         ? 'project:' + state.conversations.find((c: any) => c.id === selected).projectId
         : 'user'
-      : selected
-        ? 'session:' + selected
+      : current
+        ? current.projectId
+          ? 'project:' + current.projectId
+          : 'session:' + current.id
         : state.projects[0]
           ? 'project:' + state.projects[0].id
           : '',
@@ -38,17 +43,39 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
   const scopes = (
     <>
       <option value="">{t('Choose a scope')}</option>
-      {state.projects.map((p: any) => (
-        <option key={p.id} value={'project:' + p.id}>
-          {t('projects')} · {p.name}
-        </option>
-      ))}
-      {state.conversations
-        .filter((c: any) => !c.archived)
-        .map((c: any) => (
-          <option key={c.id} value={'session:' + c.id}>
-            {c.title}
-          </option>
+      <optgroup label={t('projects')}>
+        {state.projects
+          .filter((p: any) => !p.removedAt)
+          .map((p: any) => (
+            <option key={p.id} value={'project:' + p.id}>
+              {p.name}
+            </option>
+          ))}
+      </optgroup>
+      <optgroup label={t('settings') === 'Settings' ? 'General conversations' : '普通对话'}>
+        {selectable
+          .filter((c: any) => !c.projectId)
+          .map((c: any) => (
+            <option key={c.id} value={'session:' + c.id}>
+              {c.title.slice(0, 60)}
+            </option>
+          ))}
+      </optgroup>
+      {state.projects
+        .filter((p: any) => !p.removedAt)
+        .map((p: any) => (
+          <optgroup
+            key={p.id}
+            label={(t('settings') === 'Settings' ? 'Conversations · ' : '项目对话 · ') + p.name}
+          >
+            {selectable
+              .filter((c: any) => c.projectId === p.id)
+              .map((c: any) => (
+                <option key={c.id} value={'session:' + c.id}>
+                  {c.title.slice(0, 60)}
+                </option>
+              ))}
+          </optgroup>
         ))}
     </>
   );
@@ -131,6 +158,7 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
             </div>
             <KnowledgeAutomation
               scope={scope}
+              project={state.projects.find((p: any) => scope === 'project:' + p.id)}
               embedding={state.settings.embedding}
               profile={state.settings.profiles.find(
                 (p: any) => p.id === state.settings.defaultProfileId,

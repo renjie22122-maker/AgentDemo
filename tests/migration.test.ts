@@ -130,7 +130,14 @@ test('HNSW 15k vectors: held-out recall and generation replacement', async () =>
       other.result.map((r: any) => r.id),
       ['private-other'],
     );
-    const cached = await ann.search('new-scope', [], rows[0].values, 1);
+    const cached = await ann.search(
+      'new-scope',
+      [{ id: 'private-other', values: rows[0].values }],
+      rows[0].values,
+      1,
+    );
+    const emptied = await ann.search('new-scope', [], rows[0].values, 1);
+    assert.deepEqual(emptied.result, []);
     assert.equal(cached.result[0].id, 'private-other');
   } finally {
     ann.close();

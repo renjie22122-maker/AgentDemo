@@ -15,7 +15,7 @@ export class Store {
   private transactionDepth = 0;
   private pendingEvents: AgentEvent[] = [];
   onEvent: (event: AgentEvent) => void = () => {};
-  constructor(path: string) {
+  constructor(readonly path: string) {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');

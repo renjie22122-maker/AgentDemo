@@ -17,6 +17,7 @@ export interface KnowledgeWatch {
   target: string;
   revision: number;
   status?: string;
+  scan?: { files: number; updated: number; unchanged: number };
   error?: string;
   updatedAt?: number;
   failures?: number;
@@ -173,6 +174,8 @@ export class KnowledgeMaintenance {
             if (e.code !== 'ENOENT') throw e;
           }
         }
+        let updated = 0,
+          unchanged = 0;
         for (const path of [...new Set(files)]) {
           if (!this.current(w)) return;
           const key = createHash('sha256')
@@ -182,13 +185,17 @@ export class KnowledgeMaintenance {
             .update(await readFile(path))
             .digest('hex');
           const old = this.store.maybe<any>('knowledge-source', key);
-          if (old?.hash === hash && !old.removed) continue;
+          if (old?.hash === hash && !old.removed) {
+            unchanged++;
+            continue;
+          }
           const text = await extract(path, { ocr: true });
           if (!this.current(w)) return;
           const doc: any = this.knowledge.import(w.id, basename(path), text, {
             source: path,
             revisionOf: old?.removed ? undefined : old?.documentId,
           });
+          updated++;
           this.store.put('knowledge-source', {
             id: key,
             scope: w.id,
@@ -243,6 +250,7 @@ export class KnowledgeMaintenance {
           this.store.put('knowledge-watch', {
             ...w,
             status: 'synced',
+            scan: { files: new Set(files).size, updated, unchanged },
             failures: 0,
             failureKind: undefined,
             nextRetryAt: undefined,

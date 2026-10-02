@@ -223,3 +223,35 @@ the same failure reuse the dispatched run. Repair assistance is a new diagnosis,
 of the failed install. Credentials and account connections are not automatically acquired;
 the host does not claim the skill is ready until dependency preparation reports success,
 and end-to-end behavior still needs verification.
+
+## Persistent ANN cache
+
+Large-corpus HNSW indexes are cached beside the database under ann-cache (up to four binary
+generations plus manifests). Keys include candidate IDs and vector contents, in addition to
+scope/model generation. Reload verifies the binary SHA-256, dimensions and IDs; corruption
+rebuilds the derived cache. Empty candidate sets never reuse old neighbors.
+
+Each build/load probes up to four synthetic vector mixtures against exact top-10 similarity.
+Below 95% sampled recall, ef rises from 256 to 512/1024; continued failure selects exact search.
+This calibrates approximate-neighbor fidelity, not semantic relevance, truth or confidence.
+Retrieval diagnostics expose cache source and calibration. This is a bounded engineering smoke
+check, not a representative large-corpus benchmark.
+
+Caches are local derived data and can include embeddings of recently retired documents until
+generation eviction. Eligibility filtering and content keys prevent their return to current
+retrieval. Deleting source records is not forensic erasure of cached files or database backups.
+
+### Folder import
+
+In Knowledge, select a **project** scope, then use **Folder import and automatic
+maintenance**. Paste up to 12 absolute source paths (one per line), choose folders
+with the system picker, or add the project's folders. Enable and save the scope.
+Subfolders are scanned recursively every 30 seconds, with content hashes avoiding
+repeat imports. The UI shows supported-file, updated and unchanged counts.
+Only supported document formats are parsed; hidden entries, dependency/build
+folders and symbolic links are skipped. Limits are 1,000 supported files,
+10,000 scanned entries and 25 MB per file. Errors are visible.
+Folders must belong to the chosen project; register additional project roots
+first. A conversation library accepts uploaded documents, not arbitrary host
+folder paths. Local embedding keeps document content local; external embedding
+uses the destination disclosed when enabling maintenance.

@@ -1,6 +1,5 @@
+import { dependencyStamp, verificationPaths } from './verification-inputs.js';
 import { Teams } from './team-space.js';
-import { createHash } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
 import type { FileScope } from './paths.js';
 import type { Run } from '../../shared/types.js';
 import { Store } from '../storage/store.js';
@@ -10,23 +9,11 @@ export interface ArtifactStamp {
   scope: string;
   files: Record<string, string>;
   complete: boolean;
+  directories?: string[];
+  manifests?: string[];
 }
 export async function stamp(files: FileScope, paths: string[]): Promise<ArtifactStamp> {
-  const result: ArtifactStamp = { scope: JSON.stringify(files.roots), files: {}, complete: true };
-  let total = 0;
-  for (const path of [...new Set(paths)].sort()) {
-    try {
-      const resolved = await files.resolve(path),
-        size = (await stat(resolved)).size;
-      if (size > 4_000_000 || (total += size) > 16_000_000) throw Error('size limit');
-      result.files[path] = createHash('sha256')
-        .update(await readFile(resolved))
-        .digest('hex');
-    } catch {
-      result.complete = false;
-    }
-  }
-  return result;
+  return dependencyStamp(files, paths);
 }
 export function sameStamp(a: ArtifactStamp, b: ArtifactStamp) {
   return (
@@ -89,17 +76,44 @@ export class Verification {
       'VERIFICATION_EVIDENCE',
       'Add the evidence to this task first.',
     );
-    const current = await stamp(files, task.artifacts);
+    const current = await stamp(files, verificationPaths(task));
     assert(
       evidence.before?.scope === current.scope && evidence.after?.scope === current.scope,
       'VERIFICATION_SCOPE',
       'Evidence came from a different workspace copy.',
     );
-    for (const path of task.artifacts)
+    assert(
+      current.complete,
+      'VERIFICATION_INCOMPLETE',
+      'Current dependency snapshot is incomplete.',
+    );
+    assert(
+      evidence.before?.complete && evidence.after?.complete,
+      'VERIFICATION_INCOMPLETE',
+      'Dependency snapshot is incomplete.',
+    );
+    assert(
+      sameStamp(evidence.before, evidence.after),
+      'VERIFICATION_STALE',
+      'Inputs changed during the check.',
+    );
+    assert(
+      JSON.stringify(evidence.after.manifests || []) === JSON.stringify(current.manifests || []),
+      'VERIFICATION_STALE',
+      'Dependency manifests changed after checking.',
+    );
+    for (const key of Object.keys(evidence.after.files))
+      if (current.directories?.some((dir) => key.startsWith(dir)))
+        assert(
+          key in current.files,
+          'VERIFICATION_STALE',
+          'Declared directory inputs changed after checking.',
+        );
+    for (const path of Object.keys(current.files))
       assert(
         current.complete &&
           current.files[path] &&
-          evidence.checkedPaths?.includes(path) &&
+          (!task.artifacts.includes(path) || evidence.checkedPaths?.includes(path)) &&
           evidence.before.files[path] === current.files[path] &&
           evidence.after.files[path] === current.files[path],
         'VERIFICATION_STALE',
@@ -134,7 +148,7 @@ export class Verification {
     for (const task of board.tasks) {
       if (task.verification?.status !== 'checked') continue;
       if (run.id !== board.id && task.owner !== run.id) continue;
-      const current = await stamp(files, task.artifacts || []);
+      const current = await stamp(files, verificationPaths(task));
       if (!sameStamp(task.verification.stamp, current)) {
         task.verification.status = 'stale';
         changed = true;

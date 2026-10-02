@@ -63,7 +63,7 @@ The parent cannot become terminal with live direct children. Model concurrency i
 
 Use the provider interface for additional protocols, the tool registry for capabilities, and dedicated services for infrastructure. Do not add provider-specific branches to the tool loop.
 
-AppContainer adapters, isolated writable copies and worker-based HNSW are described in MIGRATION.md. Remaining work includes persistent/calibrated ANN artifacts, stronger migration/versioning, cross-platform credential vault integration and comparative unseen-task evaluation.
+AppContainer adapters, isolated writable copies and worker-based HNSW are described in MIGRATION.md. ANN now persists content-keyed, checksum-validated native indexes and calibrates sampled neighbor recall against exact search. Remaining work includes broader retrieval-quality evaluation, stronger migration/versioning, cross-platform credential vault integration and comparative unseen-task evaluation.
 
 ## Runtime service boundaries
 
@@ -83,7 +83,7 @@ Protocol repair permits one additional model request per run for rejected malfor
 
 Plans may declare artifact paths. For read_file and run_command, the host hashes declared files before and after execution (4 MB per file, 16 MB per observation). record_verification accepts only an existing successful observation with matching workspace identity and unchanged declared files; a file read must address the declared path. Command success is an observed zero exit code, not a proof of the acceptance criterion. Missing, oversized or inaccessible files cannot be certified.
 
-Verification has three user-facing meanings: author-reported (no binding), checked (observed result bound to a version), and stale. inspect_plan and run finalization recheck bound versions; stale records block completion. This is point-in-time validation, not a filesystem lock, adversarial TOCTOU protection, full dependency discovery or independent semantic review. Undeclared dependencies are not covered. Isolated-copy evidence cannot certify the parent copy after merge; recheck in the destination.
+Verification has three user-facing meanings: author-reported (no binding), checked (observed result bound to a version), and stale. inspect_plan and run finalization recheck bound versions; stale records block completion. This is point-in-time validation, not a filesystem lock, adversarial TOCTOU protection, full dependency discovery or independent semantic review. Snapshots now expand declared read paths, recognized local JS/TS imports and root dependency manifests. Dynamic imports, build-system resolution, excluded dependency/build directories and other undeclared inputs are not fully covered. Isolated-copy evidence cannot certify the parent copy after merge; recheck in the destination.
 
 inspect_team exposes same-root members, statuses, task ownership and handoff history. Lead-only handoff_task reassigns an unfinished task using an optimistic board revision. The old owner and descendants must be terminal and free of unknown effects; the target must be an active same-team member. It clears old evidence, records the transfer and attempts a steering notification, reporting whether delivery was queued. It does not start workers, grant permissions, copy files or replay operations. Scheduling and selection remain model-directed. Boards are scoped to a run tree, not automatically inherited by a new top-level run.
 
@@ -94,7 +94,7 @@ inspect_team exposes same-root members, statuses, task ownership and handoff his
 - Worker skills/path ownership and word overlap supplement capacity. Only checked completion evidence contributes positively to team-local history; blocked relevant work reduces the score. This is bounded heuristic adaptation, not trained scheduling or code-semantic analysis.
 - Existing task weight remains an explicit effort/capacity estimate. No hidden token budget is introduced.
 - Dependent writable tasks still require lead-managed refreshed copies; automatic assignment refuses stale-copy risks.
-- TeamCoordinator owns dispatch and event waits through a narrow port. finalizeRun owns host completion checks. ToolExecutor, ContextManager and DelegationManager retain separate responsibilities. Runtime remains the composition root and model-loop coordinator; recovery/pump decomposition is not complete.
+- TeamCoordinator owns dispatch and event waits through a narrow port. finalizeRun owns host completion checks. ToolExecutor, ContextManager and DelegationManager retain separate responsibilities. Runtime remains the composition root and model-loop coordinator; RunPump now owns execution queue, per-conversation capacity, cancellation and shutdown draining through a narrow port. Recovery policy and lifecycle coordination still remain partly in Runtime.
 - Still unproven: optimal delegation, cross-project learning, unseen-task quality/cost superiority. One live planning probe cannot establish these.
 
 The public planning comparison lives in evals/planning. It grades real model proposals against authored DAG expectations without executing generated work. This is planning-protocol evidence, not end-to-end task success or proof that heuristic worker ranking improves throughput.
