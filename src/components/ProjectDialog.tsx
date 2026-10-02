@@ -50,7 +50,8 @@ export function ProjectDialog({
       setPickerError('');
       try {
         const result = await api('/pick-folder', {}, 'POST', {}, controller.signal);
-        if (!controller.signal.aborted && result.path)
+        const picked: string[] = result.paths || (result.path ? [result.path] : []);
+        if (!controller.signal.aborted && picked.length)
           setProjectFolders((old) =>
             [
               ...new Set([
@@ -58,7 +59,7 @@ export function ProjectDialog({
                   .split('\n')
                   .map((p) => p.trim())
                   .filter(Boolean),
-                result.path,
+                ...picked,
               ]),
             ].join('\n'),
           );
@@ -138,8 +139,8 @@ export function ProjectDialog({
               ? '等待系统文件夹选择…'
               : 'Waiting for folder selection…'
             : zh
-              ? '选择并添加文件夹…'
-              : 'Browse and add folder…'}
+              ? '用 Windows Explorer 选择文件夹…'
+              : 'Browse folders in Windows Explorer…'}
         </button>
         {picking && (
           <div role="status">
@@ -156,8 +157,8 @@ export function ProjectDialog({
         {pickerError && <p role="alert">{pickerError}</p>}
         <p className="muted">
           {zh
-            ? '可以重复选择多个文件夹，也可以在下方每行粘贴一个绝对路径。非 Windows 平台请使用路径输入。'
-            : 'Choose repeatedly to add multiple folders, or paste one absolute path per line below. On non-Windows platforms, enter paths manually.'}
+            ? 'Windows Explorer 窗口支持 Ctrl / Shift 多选；不同位置的文件夹可分次添加。也可每行输入一个绝对路径。非 Windows 平台请使用路径输入。'
+            : 'Use Ctrl / Shift to select multiple folders in Windows Explorer. Add folders from other locations in another selection, or enter one absolute path per line. On non-Windows platforms, enter paths manually.'}
         </p>
         <label>
           {t('folders')} · {folders.length}/12

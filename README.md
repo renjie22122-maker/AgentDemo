@@ -55,7 +55,7 @@ Personal chats cannot execute project commands. Select a project when the task n
 
 ### Manage workspaces
 
-Use the **…** button beside a project in the sidebar to rename it or add/remove folders, including folders in different locations. On Windows, **Browse and add folder** opens the native folder picker; repeat to add more, or paste one absolute path per line. Up to 12 non-overlapping folders are supported.
+Use the **…** button beside a project in the sidebar to rename it or add/remove folders, including folders in different locations. On Windows, **Browse folders in Windows Explorer** opens the modern Windows folder picker with Ctrl/Shift multi-selection; repeat to add folders from other locations, or paste one absolute path per line. Up to 12 non-overlapping folders are supported.
 
 **Remove Project** disables the workspace without deleting disk files, conversations, knowledge or memories. Find removed projects in the sidebar archive view and save their settings to restore them. Their memory scope stays separate. Stop active project tasks before changing folders or removing a project.
 

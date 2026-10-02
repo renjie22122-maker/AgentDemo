@@ -454,7 +454,8 @@ export async function createApp(options: { directory: string; dist?: string; run
     const disconnected = () => controller.abort();
     reply.raw.once('close', disconnected);
     try {
-      return { path: await pickFolder(controller.signal) };
+      const paths = await pickFolder(controller.signal);
+      return { paths, path: paths[0] || null };
     } finally {
       reply.raw.off('close', disconnected);
     }

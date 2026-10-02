@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { assert } from '../core/errors.js';
 
@@ -43,7 +44,7 @@ export function waitForFolderPicker(
   });
 }
 let openPicker = false;
-export async function pickFolder(signal?: AbortSignal): Promise<string | null> {
+export async function pickFolder(signal?: AbortSignal): Promise<string[]> {
   assert(
     process.platform === 'win32',
     'PICKER_UNAVAILABLE',
@@ -53,15 +54,31 @@ export async function pickFolder(signal?: AbortSignal): Promise<string | null> {
   if (signal?.aborted) throw new Error('Folder selection cancelled.');
   openPicker = true;
   try {
+    const source = readFileSync(new URL('./explorer-picker.cs', import.meta.url), 'utf8');
+    const encoded = Buffer.from(source, 'utf8').toString('base64');
     const script =
-      "$OutputEncoding=[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new(); Add-Type -AssemblyName System.Windows.Forms; $owner=New-Object System.Windows.Forms.Form; $owner.TopMost=$true; $owner.ShowInTaskbar=$false; $owner.Width=1; $owner.Height=1; $owner.StartPosition='CenterScreen'; $dialog=New-Object System.Windows.Forms.FolderBrowserDialog; $dialog.Description='Choose a project folder'; $dialog.ShowNewFolderButton=$true; try {$owner.Show(); $owner.Activate(); if($dialog.ShowDialog($owner) -eq 'OK'){[Console]::Write($dialog.SelectedPath)}} finally {$dialog.Dispose();$owner.Dispose()}";
+      "$ErrorActionPreference='Stop'; $OutputEncoding=[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new(); Add-Type -AssemblyName System.Windows.Forms; Add-Type -TypeDefinition ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" +
+      encoded +
+      "'))); $owner=New-Object System.Windows.Forms.Form; $owner.TopMost=$true; $owner.ShowInTaskbar=$false; $owner.Width=1; $owner.Height=1; $owner.StartPosition='CenterScreen'; try {$owner.Show(); $owner.Activate(); $paths=@([ExplorerFolderPicker]::Select($owner.Handle)); [Console]::Write((ConvertTo-Json -InputObject $paths -Compress))} finally {$owner.Dispose()}";
     const child = spawn(
       'powershell.exe',
       ['-NoProfile', '-STA', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
       { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
     );
-    return await waitForFolderPicker(child, signal);
+    return parsePickedFolders(await waitForFolderPicker(child, signal));
   } finally {
     openPicker = false;
   }
+}
+
+export function parsePickedFolders(value: string | null): string[] {
+  const paths = JSON.parse(value || '[]');
+  assert(
+    Array.isArray(paths) &&
+      paths.length <= 12 &&
+      paths.every((p) => typeof p === 'string' && p.length > 0),
+    'INVALID_PICKER_RESULT',
+    'Invalid Explorer folder selection.',
+  );
+  return [...new Set<string>(paths)];
 }

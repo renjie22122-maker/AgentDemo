@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { waitForFolderPicker } from '../server/services/folder-picker.js';
+import { waitForFolderPicker, parsePickedFolders } from '../server/services/folder-picker.js';
 function fake() {
   return Object.assign(new EventEmitter(), {
     stdout: new EventEmitter(),
@@ -38,4 +38,15 @@ test('folder picker returns selected path or null on user cancel', async () => {
     assert.equal(await result, value || null);
     assert.equal(child.kills, 0);
   }
+});
+
+test('Explorer selection decodes multiple paths, deduplicates and validates results', () => {
+  assert.deepEqual(parsePickedFolders(JSON.stringify(['C:\\one', 'D:\\two', 'C:\\one'])), [
+    'C:\\one',
+    'D:\\two',
+  ]);
+  assert.deepEqual(parsePickedFolders('[]'), []);
+  assert.throws(() => parsePickedFolders('{}'));
+  assert.throws(() => parsePickedFolders('[1]'));
+  assert.throws(() => parsePickedFolders(JSON.stringify(Array(13).fill('C:\\one'))));
 });
