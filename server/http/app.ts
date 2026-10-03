@@ -1243,13 +1243,43 @@ export async function createApp(options: { directory: string; dist?: string; run
     });
     const send = (type: string, data: any) => {
       if (!reply.raw.destroyed)
-        reply.raw.write('event: ' + type + '\ndata: ' + JSON.stringify(data) + '\n\n');
+        reply.raw.write(
+          (type === 'agent' && Number.isSafeInteger(data.id) ? 'id: ' + data.id + '\n' : '') +
+            'event: ' +
+            type +
+            '\ndata: ' +
+            JSON.stringify(data) +
+            '\n\n',
+        );
     };
     const event = (e: any) => send('agent', e),
       delta = (e: any) => send('delta', e);
     runtime.bus.on('event', event);
     runtime.bus.on('delta', delta);
-    send('ready', {});
+    const rawCursor = req.headers['last-event-id'] || (req.query as any)?.after;
+    const cursor = Number(rawCursor);
+    let resync = false;
+    const latestEvent = Number(
+      (store.db.prepare('SELECT COALESCE(MAX(id),0) AS id FROM events').get() as any).id,
+    );
+    if (rawCursor != null && Number.isSafeInteger(cursor) && cursor >= 0) {
+      const rows = store.db
+        .prepare('SELECT * FROM events WHERE id>? ORDER BY id LIMIT 1001')
+        .all(cursor) as any[];
+      if (rows.length > 1000 || cursor > latestEvent) resync = true;
+      else
+        for (const r of rows)
+          send('agent', {
+            id: r.id,
+            conversationId: r.conversation_id,
+            runId: r.run_id,
+            type: r.type,
+            data: JSON.parse(r.data),
+            createdAt: r.created_at,
+          });
+    }
+    // The client reloads the authoritative snapshot on every ready (including replay gaps).
+    send('ready', { resync, cursor: latestEvent });
     const timer = setInterval(() => send('heartbeat', { at: Date.now() }), 15000);
     req.raw.on('close', () => {
       clearInterval(timer);

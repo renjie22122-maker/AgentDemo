@@ -33,6 +33,7 @@ export interface CognitiveState {
   };
 }
 export interface Observation {
+  outcomes?: import('../../shared/types.js').ToolOutcome[];
   calls: unknown;
   outputs: string[];
   tasks: {
@@ -109,7 +110,9 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
   if (
     calls.length &&
     calls.every((c) => Array.isArray(c) && waitTools.has(c[0])) &&
-    observation.outputs.every((o) => !o.startsWith('Tool error:') && !o.startsWith('DENIED'))
+    (observation.outcomes
+      ? observation.outcomes.every((o) => o.status === 'succeeded')
+      : observation.outputs.every((o) => !o.startsWith('Tool error:') && !o.startsWith('DENIED')))
   ) {
     state.window = [];
     state.errorStreak = 0;
@@ -130,6 +133,7 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
   state.window.push(hash([observation.calls, observation.outputs]));
   state.window = state.window.slice(-12);
   const errors = observation.outputs.filter((output, index) => {
+    if (observation.outcomes?.[index]) return observation.outcomes[index].status !== 'succeeded';
     if (output.startsWith('Tool error:') || output.startsWith('DENIED')) return true;
     const call = Array.isArray(observation.calls) ? observation.calls[index] : undefined;
     if (!Array.isArray(call) || call[0] !== 'run_command') return false;

@@ -1,3 +1,4 @@
+import { configuredLimit } from './limits.js';
 import { abortError } from './errors.js';
 export class ModelPool {
   private groups = new Map<string, { active: number; queue: Array<() => void> }>();
@@ -21,7 +22,7 @@ export class ModelPool {
         clean();
         reject(abortError());
       };
-      if (state.active < this.capacity()) enter();
+      if (state.active < configuredLimit(this.capacity())) enter();
       else {
         state.queue.push(enter);
         signal.addEventListener('abort', abort, { once: true });
@@ -32,7 +33,8 @@ export class ModelPool {
       return await fn();
     } finally {
       state.active--;
-      while (state.queue.length && state.active < this.capacity()) state.queue.shift()!();
+      while (state.queue.length && state.active < configuredLimit(this.capacity()))
+        state.queue.shift()!();
       clean();
     }
   }

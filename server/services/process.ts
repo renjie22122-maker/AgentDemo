@@ -1,5 +1,6 @@
+import { dockerMetadataMasks } from './protected-metadata.js';
 import { executeNative } from './native-process.js';
-import { spawn } from 'node:child_process';
+import { spawnProcess as spawn } from './spawn-process.js';
 import { randomUUID } from 'node:crypto';
 import type { Settings } from '../../shared/types.js';
 import { AppError, NotStartedError } from '../core/errors.js';
@@ -38,6 +39,8 @@ export function execute(
         '--name',
         container,
         '--network=none',
+        '--user',
+        settings.dockerUser || '1000:1000',
         '--cap-drop=ALL',
         '--security-opt=no-new-privileges',
         '--pids-limit=128',
@@ -48,6 +51,7 @@ export function execute(
         '/tmp:rw,noexec,nosuid,size=128m',
         '--mount',
         'type=bind,source=' + cwd + ',target=/workspace',
+        ...dockerMetadataMasks(cwd),
         '--workdir',
         '/workspace',
         settings.dockerImage,

@@ -1,16 +1,26 @@
+import { createHash } from 'node:crypto';
 import type { Store } from '../storage/store.js';
 import type { FileScope } from './paths.js';
 export async function inspectEffects(store: Store, files: FileScope, conversationId: string) {
   const resolved = store.reconcileKnownEffects(conversationId);
   for (const effect of store.unknownEffects(conversationId)) {
-    if (effect.tool !== 'write_file') continue;
+    if (!['write_file', 'edit_file'].includes(effect.tool)) continue;
     try {
       const args = JSON.parse(effect.args);
-      if (typeof args.path !== 'string' || typeof args.content !== 'string') continue;
-      if ((await files.read(args.path, 1000000)) === args.content) {
+      if (typeof args.path !== 'string') continue;
+      const current = await files.read(args.path, 1000000);
+      const expectation = store
+        .events(conversationId)
+        .find((e) => e.type === 'effect.expected' && e.data.effectId === effect.id)?.data;
+      const matches =
+        effect.tool === 'write_file'
+          ? typeof args.content === 'string' && current === args.content
+          : expectation?.path === args.path &&
+            expectation?.sha256 === createHash('sha256').update(current).digest('hex');
+      if (matches) {
         store.resolveEffect(
           effect.id,
-          'Automatic read-only check: current file exactly matches requested complete content. No replay performed.',
+          'Automatic read-only check: current file exactly matches the host-recorded expected complete content. No replay performed.',
         );
         resolved.push(effect.id);
       }

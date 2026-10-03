@@ -41,7 +41,9 @@ If Corepack is unavailable, install pnpm and use `pnpm` in place of `corepack pn
 
 Open **http://127.0.0.1:8810**. In **Settings**, add a model connection, enter its endpoint and API key, and test the connection.
 
-On Windows, after installing dependencies, you can also double-click **Start-AgentDemo.cmd**. It starts the local supervisor and opens the browser. The launcher uses a process-only PowerShell execution-policy override; it does not change system policy.
+On Windows, install Node.js 24+ (including npm), extract the complete repository, then double-click **First-Start-AgentDemo.cmd**. It installs locked dependencies and builds the UI before starting. You do not need to install Corepack or pnpm globally. Network access is required during setup; native build errors may require Python and Visual Studio C++ Build Tools. Rerunning First Start preserves your data.
+
+For later launches, double-click **Start-AgentDemo.cmd**; it also runs setup automatically when dependencies are missing. It starts the local supervisor and opens the browser. The launcher uses a process-only PowerShell execution-policy override; it does not change system policy.
 
 ## Using AgentDemo
 

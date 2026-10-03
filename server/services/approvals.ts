@@ -1,6 +1,6 @@
 import { approvalRisk } from '../../shared/approval-risk.js';
 import type { PendingInput, Run } from '../../shared/types.js';
-import { abortError, assert } from '../core/errors.js';
+import { abortError, assert, NotStartedError } from '../core/errors.js';
 import { Store, id } from '../storage/store.js';
 export class Inputs {
   private waiting = new Map<
@@ -29,7 +29,7 @@ export class Inputs {
       answer: null,
       createdAt: Date.now(),
     };
-    if (kind === 'approval' && this.review) {
+    if (kind === 'approval' && this.review && payload.action !== 'resolve-effect') {
       const review = await this.review(run, payload, signal);
       if (review) {
         item.payload = {
@@ -61,7 +61,11 @@ export class Inputs {
     return new Promise((resolve, reject) => {
       const abort = () => {
         this.waiting.delete(item.id);
-        this.store.put('input', { ...item, status: 'cancelled' });
+        this.store.put('input', {
+          ...item,
+          status: 'cancelled',
+          payload: { ...item.payload, interruptionReason: 'run_cancelled' },
+        });
         reject(abortError());
       };
       this.waiting.set(item.id, {
@@ -72,6 +76,7 @@ export class Inputs {
           resolve(value);
         },
         reject: (e) => {
+          if (!signal.aborted && !options.background) this.store.transition(run.id, 'running');
           signal.removeEventListener('abort', abort);
           this.waiting.delete(item.id);
           reject(e);
@@ -94,6 +99,8 @@ export class Inputs {
     this.store.put('input', { ...q, status: allow ? 'answered' : 'denied', answer });
     this.store.event(q.conversationId, q.runId, 'input.answered', { id: key, answer, allow });
     // A denial is a tool result, not an entire task failure.
-    waiter.resolve(allow ? answer : 'DENIED BY USER: ' + answer);
+    if (!allow && q.kind === 'approval')
+      waiter.reject(new NotStartedError('APPROVAL_DENIED', 'User denied this operation.'));
+    else waiter.resolve(answer);
   }
 }

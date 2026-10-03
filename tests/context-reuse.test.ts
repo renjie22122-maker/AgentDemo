@@ -3,7 +3,7 @@ import { restoreDetachedReferences } from '../server/core/context-reuse.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runtimeMessages, RUNTIME_FACTS, reuseToolText } from '../server/core/context-reuse.js';
-import { ProgressMonitor } from '../server/core/progress-monitor.js';
+import { ProgressMonitor } from './progress-policy-helper.js';
 import type { ModelMessage, ToolCall } from '../shared/types.js';
 test('volatile runtime facts preserve static prefix without losing current facts', () => {
   const a = runtimeMessages('policy' + RUNTIME_FACTS + '{"runId":"old","permission":"trusted"}');

@@ -7,6 +7,7 @@ import type { ModelRequest, ModelResult } from '../providers/protocol.js';
 import type { Store } from '../storage/store.js';
 import type { ModelPool } from './pool.js';
 import { assert } from './errors.js';
+import { createHash } from 'node:crypto';
 import { COMPACT } from './prompts.js';
 export class ContextManager {
   constructor(
@@ -121,36 +122,57 @@ export class ContextManager {
     let summaryUsd: number | null = 0;
     const cacheRatio = run.inputTokens > 0 ? run.cachedTokens / run.inputTokens : null;
     const started = Date.now();
-    for (const chunk of chunks) {
-      const result = await this.modelPool.run(
-        signal,
-        () =>
-          this.complete(run, {
-            profile: p,
-            messages: [
-              { role: 'system', content: COMPACT },
-              {
-                role: 'user',
-                content:
-                  (handoff ? 'Prior handoff to consolidate:\n' + handoff + '\n' : '') +
-                  'Historical context segment:\n' +
-                  chunk,
-              },
-            ],
-            tools: [],
-            signal,
-            onText: () => {},
-          }),
-        this.scope(run),
-      );
-      assert(
-        !result.message.calls?.length && result.message.content.trim(),
-        'COMPACTION_FAILED',
-        'Compaction returned no usable handoff. Original context retained.',
-      );
-      handoff = result.message.content;
-      const cost = usageCost(result.usage, p.prices);
-      summaryUsd = summaryUsd === null || cost === null ? null : summaryUsd + cost;
+    let degraded = false;
+    let summaryRequests = 0;
+    try {
+      for (const chunk of chunks) {
+        summaryRequests++;
+        const result = await this.modelPool.run(
+          signal,
+          () =>
+            this.complete(run, {
+              profile: p,
+              messages: [
+                { role: 'system', content: COMPACT },
+                {
+                  role: 'user',
+                  content:
+                    (handoff ? 'Prior handoff to consolidate:\n' + handoff + '\n' : '') +
+                    'Historical context segment:\n' +
+                    chunk,
+                },
+              ],
+              tools: [],
+              signal,
+              onText: () => {},
+            }),
+          this.scope(run),
+        );
+        assert(
+          !result.message.calls?.length && result.message.content.trim(),
+          'COMPACTION_FAILED',
+          'Compaction returned no usable handoff. Original context retained.',
+        );
+        handoff = result.message.content;
+        const cost = usageCost(result.usage, p.prices);
+        summaryUsd = summaryUsd === null || cost === null ? null : summaryUsd + cost;
+      }
+    } catch (error) {
+      signal.throwIfAborted();
+      degraded = true;
+      const original = JSON.stringify(old);
+      const key = createHash('sha256')
+        .update(run.id + '|' + original)
+        .digest('hex');
+      this.store.put('spill', { id: key, conversationId: run.conversationId, text: original });
+      handoff =
+        'Summary unavailable. Older messages were archived verbatim, not verified or declared complete. Read spill ' +
+        key +
+        ' before relying on omitted evidence. Original requests and current task state remain below.';
+      this.store.event(run.conversationId, run.id, 'context.degraded', {
+        spillId: key,
+        reason: String((error as any)?.message || error),
+      });
     }
     const snapshot = this.taskSnapshot(run);
     const next = restoreDetachedReferences(
@@ -184,7 +206,8 @@ export class ContextManager {
       beforeTokens: before.tokens,
       afterTokens: after.tokens,
       thresholdTokens: before.threshold,
-      summaryRequests: chunks.length,
+      summaryRequests,
+      degraded,
       durationMs: Date.now() - started,
       protectedSources: protectedMessages.length,
       economics: compactionEconomics(

@@ -4,7 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeBatch } from '../server/core/tool-batch.js';
-import { ProgressMonitor } from '../server/core/progress-monitor.js';
+import { ProgressMonitor } from './progress-policy-helper.js';
 import { recallMemories } from '../server/services/memory-retrieval.js';
 import { TaskBoard } from '../server/services/task-board.js';
 import { Store } from '../server/storage/store.js';

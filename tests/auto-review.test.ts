@@ -25,7 +25,7 @@ async function setup() {
   const store = new Store(join(dir, 'db.sqlite')),
     config = new Configuration(join(dir, 'settings.json'));
   config.save({
-    ...config.get(),
+    ...{ ...config.get(), commandBackend: 'approval-host' as const },
     profiles: [
       {
         id: 'test',
@@ -190,7 +190,7 @@ test('new instructions, configuration or changed action invalidate approval', as
       const result = await reviewer.review(f.run, payload, new AbortController().signal);
       assert.equal(result.decision, 'ask');
       assert.match(result.reason, /changed/);
-      assert.equal(result.policyVersion, '2026-10-02.1');
+      assert.equal(result.policyVersion, '2026-10-03.2');
     } finally {
       f.store.close();
     }
@@ -252,11 +252,71 @@ test('review clarification pauses exact action; alternative returns denial witho
     const item = f.store.list<any>('input')[0];
     assert.equal(item.payload.clarification, 'May I write only the specified report?');
     assert.equal(f.store.get<any>('run', 'run').status, 'waiting_approval');
+    const rejected = assert.rejects(waiting, (error: any) => error.code === 'APPROVAL_DENIED');
     inputs.answer(item.id, 'Use a read-only alternative instead', false);
-    assert.match(await waiting, /DENIED BY USER/);
+    await rejected;
     assert.equal(f.store.get<any>('run', 'run').status, 'running');
     assert.equal(f.store.get<any>('input', item.id).status, 'denied');
   } finally {
     f.store.close();
   }
+});
+
+test('review source reuse is bounded and never forwarded to a separate profile', async () => {
+  const { reviewEvidence } = await import('../server/services/review-evidence.js');
+  const run: any = {
+    checkpoints: Array.from({ length: 5 }, (_, i) => [
+      {
+        role: 'assistant',
+        calls: [{ id: String(i), name: 'read_file', arguments: { path: 'source' + i } }],
+      },
+      { role: 'tool', callId: String(i), content: 'x'.repeat(9000) },
+    ]).flat(),
+  };
+  const included: any = reviewEvidence(run, true);
+  assert.equal(included.reads.length, 3);
+  assert.equal(included.reads[0].content.length, 8000);
+  assert.equal(included.reads[0].truncated, true);
+  assert.equal((reviewEvidence(run, false) as any).reads, undefined);
+});
+
+test('waiting for approval has no expiry and consumes no execution deadline', async () => {
+  const f = await setup();
+  const inputs = new Inputs(f.store);
+  try {
+    const waiting = inputs.request(
+      f.run,
+      'approval',
+      { command: 'echo pending' },
+      new AbortController().signal,
+    );
+    await new Promise((r) => setTimeout(r, 60));
+    const input = f.store.list<any>('input')[0];
+    assert.equal(input.status, 'pending');
+    assert.equal(f.store.get<any>('run', 'run').status, 'waiting_approval');
+    inputs.answer(input.id, 'Approved', true);
+    assert.equal(await waiting, 'Approved');
+  } finally {
+    f.store.close();
+  }
+});
+
+test('reviewer reads literal scoped scripts, excludes escapes and notices changed bytes', async () => {
+  const { inspectReviewSources } = await import('../server/services/review-evidence.js');
+  const { FileScope } = await import('../server/services/paths.js');
+  const { writeFile, mkdir } = await import('node:fs/promises');
+  const root = await mkdtemp(join(tmpdir(), 'review-source-'));
+  const work = join(root, 'work');
+  await mkdir(work);
+  await writeFile(join(root, 'outside.py'), 'secret');
+  await writeFile(join(work, 'check.py'), 'print(1)');
+  const files = new FileScope([work]);
+  const payload = { cwd: work, command: 'python check.py && python ../outside.py' };
+  const first = await inspectReviewSources(files, payload);
+  assert.equal(first[0].content, 'print(1)');
+  assert.equal(first[1].status, 'unavailable');
+  assert.equal(JSON.stringify(first).includes('secret'), false);
+  await writeFile(join(work, 'check.py'), 'print(2)');
+  assert.notEqual((await inspectReviewSources(files, payload))[0].sha256, first[0].sha256);
+  assert.deepEqual(await inspectReviewSources(files, { ...payload, cwd: root }), []);
 });

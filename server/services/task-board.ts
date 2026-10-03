@@ -1,3 +1,4 @@
+import { resultSucceeded } from '../core/tool-outcome.js';
 import { compilePlan } from './plan-compiler.js';
 import { startTaskMeasurement, finishTaskMeasurement } from './routing-outcomes.js';
 import { Teams } from './team-space.js';
@@ -191,12 +192,16 @@ export class TaskBoard {
               'configure_team',
               'handoff_team_role',
               'end_team_participation',
-            ].includes(data.name) &&
-              !String(data.output).startsWith('Tool error:') &&
-              !String(data.output).startsWith('DENIED'),
+            ].includes(data.name) && resultSucceeded(data),
             'TASK_EVIDENCE',
             'A failed tool or plan update is not completion evidence.',
           );
+          if (task.kind === 'verify')
+            assert(
+              data.verification?.passed === true,
+              'TASK_CHECK_REQUIRED',
+              'Verification tasks need a successful observed check, not merely a tool result.',
+            );
           assert(
             rootRun(this.store, this.store.get<Run>('run', row.run_id)) === board.id,
             'TASK_EVIDENCE_SCOPE',

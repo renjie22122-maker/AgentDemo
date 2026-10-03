@@ -1,3 +1,4 @@
+import { configuredLimit } from './limits.js';
 export interface PumpPorts {
   scope(key: string): string;
   status(key: string): string;
@@ -48,7 +49,7 @@ export class RunPump {
     for (let i = 0; i < this.queue.length;) {
       const key = this.queue[i],
         scope = this.ports.scope(key);
-      if ((counts.get(scope) || 0) >= this.ports.limit()) {
+      if ((counts.get(scope) || 0) >= configuredLimit(this.ports.limit())) {
         i++;
         continue;
       }

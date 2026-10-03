@@ -169,3 +169,17 @@ corepack pnpm build
 - [安全说明](docs/SECURITY.md)
 - [详细功能参考](docs/FEATURES.md)
 - [测试与验证](docs/VERIFICATION.md)
+
+### 执行与恢复设置
+
+新安装默认选择 Windows AppContainer（其他平台为 Docker），已有配置不自动切换。宿主执行必须显式选择，它不提供 OS 文件隔离。Ask 默认审批命令；设置中的“文件写入也需要审批”可额外覆盖文件工具，Trusted 模式除外。
+
+当前 Windows 原生后端遇到 `.git` / `.agentdemo` 会在启动前拒绝命令：选择性元数据 ACL 未通过实测，请使用不含元数据的隔离副本。Docker 默认非 root 用户，并屏蔽元数据目录；本机尚未完成 Docker 集成验证。
+
+可恢复中断有明确原因；不确定操作可通过用户确认核实结果，不会自动重放。命令成功和文件覆盖分别记录，不能把退出码 0 当成全部产物正确。
+
+### Windows 首次启动
+
+先安装 **Node.js 24 或更新版本（包含 npm）**，完整解压仓库后双击 **First-Start-AgentDemo.cmd**。它会安装锁定版本的项目依赖、构建界面并启动浏览器，无需自己安装 Corepack 或全局 pnpm。首次安装需要联网；如果原生模块编译失败，按提示补齐 Python 和 Visual Studio C++ Build Tools 后重试。重复运行不会清空聊天或配置。
+
+以后双击 **Start-AgentDemo.cmd** 即可；它发现缺少依赖时也会自动进入初始化。尚未安装 Node.js 时，启动器会显示官方下载地址和安装命令，不会静默修改系统环境。

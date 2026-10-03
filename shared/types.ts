@@ -76,6 +76,8 @@ export interface Settings {
   maxChildren: number;
   compactionRatio: number;
   dockerImage: string;
+  dockerUser?: string;
+  approveFileWrites?: boolean;
   commandBackend: 'approval-host' | 'docker' | 'native-windows';
   nativePython?: string;
   nativeNetwork?: 'deny' | 'host';
@@ -124,6 +126,11 @@ export interface ContextSample {
   toolsDigest: string;
 }
 export interface Run {
+  termination?: {
+    code: string;
+    category: 'limit' | 'stagnation' | 'cancelled' | 'protocol' | 'execution';
+    recoverable: boolean;
+  };
   recoveredFrom?: string;
   controlTicket?: string;
   recoveryOnly?: boolean;
@@ -225,7 +232,14 @@ export interface ToolSpec {
   parameters: Record<string, any>;
   effect: 'read' | 'write' | 'execute' | 'network' | 'coordinate';
 }
+export interface ToolOutcome {
+  status: 'succeeded' | 'denied' | 'not_started' | 'failed' | 'unknown';
+  code: string;
+  executionStarted?: boolean;
+  effectId?: string;
+}
 export interface ToolResult {
+  outcome?: ToolOutcome;
   images?: string[];
   content: string;
   metadata?: Record<string, any>;

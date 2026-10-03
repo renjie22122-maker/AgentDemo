@@ -266,3 +266,19 @@ source-retention and actual advisory cases tied at 6/6 per variant. Aggregate
 implementation benefit. Added context increased graded-request input tokens.
 Price configuration was incomplete, so cost totals remain unknown. Raw responses
 and the versioned semantic grader are retained under evals.
+
+## Reliability contracts
+
+Tool results carry structured status/code/start information. Historic records without that field retain a compatibility decoder. New cognitive/error decisions consume typed outcomes. Parallel safety and coordination semantics live in tool definitions; the obsolete production progress monitor was removed in favor of the cognitive policy.
+
+A successful command proves its observed exit result, not coverage of every artifact. File coverage comes from actual successful, version-matching reads cited in the task. Verification tasks need a passed observation before `done`; ordinary implementation completion remains a delivery claim. Independent checks are recorded separately from owner self-checks. Neither is a proof of semantic correctness.
+
+Step limits, stagnation, cancellation and selected protocol errors have structured termination reasons and recoverable interruption states. Genuine execution failures remain failures. Termination classification is separate from the runtime loop; Runtime still coordinates the model loop and is not claimed to be fully decomposed.
+
+If a history summarizer fails, the old segment is archived verbatim as a conversation-scoped spill. The current request and protected source ledger stay in context; insufficient room still fails explicitly. Compaction events distinguish this degraded mode and count attempted summary calls.
+
+SSE events have persisted IDs. Reconnection replays up to 1,000 events; larger gaps request an authoritative snapshot refresh. Clients discard duplicates and reset their cursor on snapshot readiness. Token deltas remain ephemeral. Provider SSE has a 60-second byte-idle deadline in addition to the request deadline; an idle stream is cancelled without automatic request/tool replay.
+
+### Optional unlimited execution counts
+
+`maxParallelRuns: 0` disables the per-conversation model/pump concurrency limit; `maxChildren: 0` disables the cumulative child-execution limit for a run tree, including continued members. Defaults remain 3 and 8. Zero is preserved in settings and normalized to infinity only in comparisons, never serialized as infinity. Delegation depth, user-selected collaboration mode, explicit budgets, provider quotas and independent team autoscaling settings remain separate controls.

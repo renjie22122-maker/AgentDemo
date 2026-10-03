@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { commandOutcome } from '../core/tool-outcome.js';
 import { KnowledgeGraph } from '../services/knowledge-graph.js';
 import { recallMemories } from '../services/memory-retrieval.js';
 import { MemoryLifecycle } from '../services/memory-lifecycle.js';
@@ -43,7 +45,8 @@ export interface TeamPort {
   members?(parent: Run): unknown;
   continueMember?(parent: Run, key: string, message: string, ticket?: string): Promise<unknown>;
   closeMember?(parent: Run, key: string): unknown;
-  reviewChanges?(parent: Run, key: string, version?: string): Promise<any>;
+  inspectChanges?(parent: Run, key: string): Promise<any>;
+  mergeChanges?(parent: Run, key: string, version: string): Promise<any>;
   wait(parent: Run, keys: string[], signal: AbortSignal): Promise<unknown>;
   message(parent: Run, key: string, message: string): void;
 }
@@ -52,7 +55,7 @@ export interface ToolContext {
   background: BackgroundCommands;
   callId?: string;
   commitCoordination?: (result: ToolResult) => void;
-  beforeExecution?: () => void;
+  beforeExecution?: (expectation?: { path: string; sha256: string }) => void;
   auxiliary?: (fn: () => Promise<unknown>) => Promise<unknown>;
   accountWeb?: (usage: Usage, profile: Profile) => void;
   run: Run;
@@ -69,6 +72,8 @@ export interface ToolContext {
 }
 interface Definition {
   atomic?: boolean;
+  parallelSafe?: boolean;
+  coordination?: 'atomic' | 'spawn';
   name: string;
   description: string;
   effect: ToolSpec['effect'];
@@ -114,7 +119,7 @@ export class ToolRegistry {
           !(
             ctx.run.recoveryOnly &&
             !['read', 'network'].includes(d.effect) &&
-            d.name !== 'ask_user'
+            !['ask_user', 'resolve_effect'].includes(d.name)
           ) &&
           !(
             ['spawn_agent', 'continue_agent'].includes(d.name) &&
@@ -173,6 +178,30 @@ export class ToolRegistry {
         'ISOLATION_CLOSED',
         'This isolated copy is merged or uncertain. Create a new isolated worker or reconcile the interrupted merge before modifying it.',
       );
+    if (
+      def.effect === 'write' &&
+      ctx.config.get().approveFileWrites &&
+      ctx.conversation.permission !== 'trusted'
+    ) {
+      await ctx.inputs.request(
+        ctx.run,
+        'approval',
+        {
+          action: 'file-write',
+          tool: name,
+          path: parsed.path,
+          reason: 'Approve this scoped file mutation.',
+        },
+        ctx.signal,
+      );
+      if (
+        !this.specs({
+          ...ctx,
+          conversation: ctx.store.get<Conversation>('conversation', ctx.conversation.id),
+        }).some((d) => d.name === name)
+      )
+        throw new NotStartedError('PERMISSION_CHANGED', 'Permissions changed while waiting.');
+    }
     const observe = ['write', 'execute'].includes(def.effect);
     const before = observe
       ? await snapshot(
@@ -181,19 +210,14 @@ export class ToolRegistry {
         )
       : null;
     try {
-      if (
-        ctx.callId &&
-        (def.atomic ||
-          ['spawn_agent', 'continue_agent'].includes(name) ||
-          name === 'record_verification')
-      ) {
+      if (ctx.callId && (def.atomic || def.coordination)) {
         const receipt = prepareCoordination(
           ctx.store,
           ctx.run,
           ctx.callId,
           name,
           args,
-          !!def.atomic || name === 'record_verification',
+          !!def.atomic || def.coordination === 'atomic',
         );
         if (receipt.state === 'completed') return { content: receipt.result || '' };
         if (def.atomic)
@@ -215,6 +239,7 @@ export class ToolRegistry {
         });
         return result;
       }
+      if (def.effect === 'write') ctx.beforeExecution?.();
       return await def.run(parsed, ctx);
     } finally {
       if (before) {
@@ -233,14 +258,13 @@ export class ToolRegistry {
   }
   parallelSafe(name: string) {
     return (
-      ['list_files', 'read_file', 'read_skill', 'read_skill_file', 'read_spill'].includes(name) &&
+      this.definitions.get(name)?.parallelSafe === true &&
       this.definitions.get(name)?.effect === 'read'
     );
   }
   coordinationMode(name: string): 'atomic' | 'spawn' | undefined {
-    if (this.definitions.get(name)?.atomic || name === 'record_verification') return 'atomic';
-    if (['spawn_agent', 'continue_agent'].includes(name)) return 'spawn';
-    return undefined;
+    const def = this.definitions.get(name);
+    return def?.coordination || (def?.atomic ? 'atomic' : undefined);
   }
   effect(name: string) {
     return this.definitions.get(name)?.effect;
@@ -248,6 +272,41 @@ export class ToolRegistry {
 }
 export function tools() {
   const registry = new ToolRegistry();
+  registry.add({
+    name: 'resolve_effect',
+    description:
+      'Ask the user to confirm a known outcome for an interrupted operation in this conversation. Supply concrete inspection evidence. Does not replay or authorize retry.',
+    effect: 'coordinate',
+    schema: z.object({ effectId: z.string(), evidence: z.string().min(10).max(4000) }),
+    run: async (a, c) => {
+      const effect = c.store.db
+        .prepare('SELECT run_id,state FROM effects WHERE id=?')
+        .get(a.effectId) as any;
+      assert(
+        effect &&
+          effect.state === 'started' &&
+          c.store.get<Run>('run', effect.run_id).conversationId === c.conversation.id,
+        'EFFECT_SCOPE',
+        'Choose an unresolved effect in this conversation.',
+      );
+      const inspection = await inspectEffects(c.store, c.files, c.conversation.id);
+      if (inspection.resolved.includes(a.effectId))
+        return text({ resolved: true, automatic: true, retryAuthorized: false });
+      await c.inputs.request(
+        c.run,
+        'approval',
+        {
+          action: 'resolve-effect',
+          effectId: a.effectId,
+          evidence: a.evidence,
+          reason: 'Confirm the inspected outcome; this does not retry execution.',
+        },
+        c.signal,
+      );
+      c.store.resolveEffect(a.effectId, a.evidence);
+      return text({ resolved: true, retryAuthorized: false });
+    },
+  });
   registry.add({
     name: 'read_image',
     effect: 'read',
@@ -284,6 +343,7 @@ export function tools() {
 
   registry.add({
     name: 'list_files',
+    parallelSafe: true,
     description: 'List one authorized directory. Paths may use @0/, @1/ for project folders.',
     effect: 'read',
     schema: z.object({ path: path.default('.') }),
@@ -291,6 +351,7 @@ export function tools() {
   });
   registry.add({
     name: 'read_file',
+    parallelSafe: true,
     description: 'Read a UTF-8 file with a bounded line range.',
     effect: 'read',
     schema: z.object({
@@ -337,7 +398,12 @@ export function tools() {
           'EDIT_CONFLICT',
           'Expected exactly one match. Read the current file and retry.',
         );
-      await c.files.write(a.path, old.replace(a.oldText, a.newText));
+      const updated = old.replace(a.oldText, a.newText);
+      c.beforeExecution?.({
+        path: a.path,
+        sha256: createHash('sha256').update(updated).digest('hex'),
+      });
+      await c.files.write(a.path, updated);
       return text('Updated ' + a.path);
     },
   });
@@ -375,7 +441,7 @@ export function tools() {
             {
               id: approvalId,
               authorize: async (signal) => {
-                const answer = await c.inputs.request(
+                await c.inputs.request(
                   c.run,
                   'approval',
                   {
@@ -389,11 +455,6 @@ export function tools() {
                   signal,
                   { id: approvalId, background: true },
                 );
-                if (answer.startsWith('DENIED'))
-                  throw new NotStartedError(
-                    'APPROVAL_DENIED',
-                    'Command was denied; nothing was executed.',
-                  );
                 signal.throwIfAborted();
                 if (executionSignature(c) !== approvedEnvironment)
                   throw new NotStartedError(
@@ -407,7 +468,7 @@ export function tools() {
         );
       }
       if (requiresApproval) {
-        const answer = await c.inputs.request(
+        await c.inputs.request(
           c.run,
           'approval',
           {
@@ -420,7 +481,6 @@ export function tools() {
           },
           c.signal,
         );
-        if (answer.startsWith('DENIED')) return text(answer);
       }
       c.signal.throwIfAborted();
       if (executionSignature(c) !== approvedEnvironment)
@@ -458,19 +518,18 @@ export function tools() {
       progress();
       const heartbeat = setInterval(progress, 5000);
       try {
-        return text(
-          await execute(
-            a.command,
-            c.files.roots[a.folder],
-            c.signal,
-            a.timeoutSeconds * 1000,
-            effectiveSettings(c),
-            (_stream, chunk) => {
-              pendingOutput = (pendingOutput + chunk).slice(-2000);
-              lastOutputAt = Date.now();
-            },
-          ),
+        const result = await execute(
+          a.command,
+          c.files.roots[a.folder],
+          c.signal,
+          a.timeoutSeconds * 1000,
+          effectiveSettings(c),
+          (_stream, chunk) => {
+            pendingOutput = (pendingOutput + chunk).slice(-2000);
+            lastOutputAt = Date.now();
+          },
         );
+        return { ...text(result), outcome: commandOutcome(result) };
       } catch (error) {
         if (error instanceof NotStartedError) {
           c.run.executionBlock = { signature: executionSignature(c), reason: errorMessage(error) };
@@ -721,13 +780,12 @@ export function tools() {
           'SCOPE',
           'Trigger must belong to this conversation.',
         );
-      const answer = await c.inputs.request(
+      await c.inputs.request(
         c.run,
         'approval',
         { reason: 'Schedule future model work (uses quota)', ...a },
         c.signal,
       );
-      if (answer.startsWith('DENIED')) return text(answer);
       const profile = c.config.profile(c.conversation.profileId);
       const task = c.store.put('scheduled-work', {
         id: id(),
@@ -789,6 +847,7 @@ export function tools() {
   });
   registry.add({
     name: 'spawn_agent',
+    coordination: 'spawn',
     description:
       'Delegate a bounded independent task. Default read-only; isolated mode writes a separate project copy, reviewed and explicitly merged by the parent. Specify a concrete deliverable. Avoid delegation for simple searches or counting.',
     effect: 'coordinate',
@@ -818,6 +877,7 @@ export function tools() {
   });
   registry.add({
     name: 'continue_agent',
+    coordination: 'spawn',
     effect: 'coordinate',
     description:
       'Continue an idle direct member in its original private conversation with retained context, across user turns. Pass its stable agentId (a previous runId also works). Returns a NEW runId for wait_agents/configure_team. No automatic replay of old tools. Continue before configuring a fixed team roster; active members use message_agent.',
@@ -847,7 +907,7 @@ export function tools() {
       'Review a completed direct child copy. Returns diffs, conflicts and a version required for merge.',
     effect: 'read',
     schema: z.object({ runId: z.string() }),
-    run: async (a, c) => text(await c.team.reviewChanges!(c.run, a.runId)),
+    run: async (a, c) => text(await c.team.inspectChanges!(c.run, a.runId)),
   });
   registry.add({
     name: 'merge_agent_changes',
@@ -856,9 +916,9 @@ export function tools() {
     effect: 'write',
     schema: z.object({ runId: z.string(), version: z.string() }),
     run: async (a, c) => {
-      const review = await c.team.reviewChanges!(c.run, a.runId);
+      const review = await c.team.inspectChanges!(c.run, a.runId);
       assert(review.version === a.version, 'MERGE_CHANGED', 'Review changed; inspect again.');
-      const answer = await c.inputs.request(
+      await c.inputs.request(
         c.run,
         'approval',
         {
@@ -868,8 +928,7 @@ export function tools() {
         },
         c.signal,
       );
-      if (answer.startsWith('DENIED')) return text(answer);
-      return text(await c.team.reviewChanges!(c.run, a.runId, a.version));
+      return text(await c.team.mergeChanges!(c.run, a.runId, a.version));
     },
   });
   registry.add({
@@ -893,6 +952,7 @@ export function tools() {
   });
   registry.add({
     name: 'read_spill',
+    parallelSafe: true,
     description: 'Read a bounded range of an oversized tool result from this conversation.',
     effect: 'read',
     schema: z.object({
@@ -947,7 +1007,7 @@ export function tools() {
       );
       const server = c.config.get().mcp.find((s) => s.id === a.serverId && s.enabled);
       assert(server, 'MCP_DISABLED', 'Server not enabled.');
-      const decision = await c.inputs.request(
+      await c.inputs.request(
         c.run,
         'approval',
         {
@@ -959,7 +1019,6 @@ export function tools() {
         },
         c.signal,
       );
-      if (decision.startsWith('DENIED')) return text(decision);
       const effect = c.store.beginEffect(c.run.id, 'mcp_call', a);
       const result = await c.mcp.call(server, a.tool, a.arguments, c.signal);
       const output = JSON.stringify(result);

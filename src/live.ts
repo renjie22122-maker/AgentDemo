@@ -10,6 +10,7 @@ export function connectLive(
     failures = 0,
     last = Date.now(),
     generation = 0;
+  let cursor = 0;
   const close = () => {
     source?.close();
     source = undefined;
@@ -31,20 +32,34 @@ export function connectLive(
     try {
       await prepare();
       if (stopped || version !== generation) return;
-      source = new EventSource(url);
+      source = new EventSource(
+        cursor ? url + (url.includes('?') ? '&' : '?') + 'after=' + cursor : url,
+      );
       last = Date.now();
       source.onerror = failed;
       for (const [name, handler] of Object.entries(handlers))
         source.addEventListener(name, (e) => {
+          const event = e as MessageEvent;
+          if (name === 'agent' && event.lastEventId) {
+            const id = Number(event.lastEventId);
+            if (Number.isSafeInteger(id)) {
+              if (id <= cursor) return;
+              cursor = id;
+            }
+          }
           last = Date.now();
-          handler(e as MessageEvent);
+          handler(event);
         });
       source.addEventListener('heartbeat', () => {
         last = Date.now();
         failures = 0;
         status('Connected');
       });
-      source.addEventListener('ready', () => {
+      source.addEventListener('ready', (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data);
+          if (Number.isSafeInteger(data.cursor)) cursor = data.cursor;
+        } catch {}
         last = Date.now();
         status('Connected');
       });

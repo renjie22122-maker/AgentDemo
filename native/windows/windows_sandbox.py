@@ -129,12 +129,17 @@ class NativeProcess:
             if runtime.is_relative_to(workspace):
                 raise RuntimeError('工作区不能包含沙箱运行时；请选择项目的 workspace 子目录')
             # Reparse points can redirect an ACL grant; refuse before changing any ACL.
+            protected_metadata = []
             for root in (workspace, runtime):
                 for folder, dirs, files in os.walk(root, followlinks=False):
                     for name in dirs + files:
                         p = Path(folder) / name
+                        if root == workspace and name.lower() in {'.git', '.agentdemo'}:
+                            protected_metadata.append(p)
                         if p.is_symlink() or p.stat(follow_symlinks=False).st_file_attributes & 0x400 or (p.is_file() and p.stat().st_nlink > 1):
                             raise RuntimeError('原生沙箱暂不支持工作区或运行时中的重解析点或硬链接')
+            if protected_metadata:
+                raise RuntimeError('PROTECTED_METADATA: Native metadata denial is not verified on this backend. Use a clean isolated copy without .git or .agentdemo; requested command was not started.')
             hr = self.u.CreateAppContainerProfile(self.name, self.name, 'AgentDemo sandbox', None, 0, c.byref(self.sid))
             if hr < 0:
                 raise OSError(f'CreateAppContainerProfile failed: 0x{hr & 0xffffffff:08x}')

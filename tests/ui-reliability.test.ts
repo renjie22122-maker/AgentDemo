@@ -46,7 +46,7 @@ test('SSE makes exactly five retries, manual retry resets, close cancels', async
   class Source {
     onerror = () => {};
     listeners = new Map();
-    constructor() {
+    constructor(public url: string) {
       sources.push(this);
     }
     close() {}
@@ -63,9 +63,21 @@ test('SSE makes exactly five retries, manual retry resets, close cancels', async
     globalThis.clearTimeout = ((id: any) => tasks.delete(id)) as any;
     globalThis.setInterval = (() => 999) as any;
     globalThis.clearInterval = (() => {}) as any;
-    const link = connectLive('/fixture', {}, (s) => statuses.push(s));
+    let received = 0;
+    const link = connectLive(
+      '/fixture',
+      {
+        agent: () => {
+          received++;
+        },
+      },
+      (s) => statuses.push(s),
+    );
     await Promise.resolve();
     await Promise.resolve();
+    sources[0].listeners.get('agent')({ lastEventId: '12' });
+    sources[0].listeners.get('agent')({ lastEventId: '12' });
+    assert.equal(received, 1);
     for (let n = 0; n < 6; n++) {
       sources.at(-1).onerror();
       const task = tasks.values().next().value;
@@ -77,6 +89,7 @@ test('SSE makes exactly five retries, manual retry resets, close cancels', async
       }
     }
     assert.equal(sources.length, 6);
+    assert.equal(sources.at(-1).url, '/fixture?after=12');
     assert(statuses.at(-1)?.includes('exhausted'));
     assert.equal(tasks.size, 0);
     link.retry();

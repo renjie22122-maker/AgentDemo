@@ -223,12 +223,18 @@ export class Store {
       this.transition(
         run.id,
         'interrupted',
-        'The service restarted. Inspect unfinished operations before continuing.',
+        run.status === 'waiting_approval'
+          ? 'The service restarted while awaiting approval. Waiting itself has no timeout. Resume to reassess the unapproved action; it was not authorized by waiting.'
+          : 'The service restarted. Inspect unfinished operations before continuing.',
       );
       for (const q of this.list<PendingInput>('input').filter(
         (q) => q.runId === run.id && q.status === 'pending',
       ))
-        this.put('input', { ...q, status: 'cancelled' });
+        this.put('input', {
+          ...q,
+          status: 'cancelled',
+          payload: { ...q.payload, interruptionReason: 'service_restart' },
+        });
     }
   }
   beginEffect(runId: string, tool: string, args: Record<string, unknown>) {

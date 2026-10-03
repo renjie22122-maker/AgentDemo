@@ -1,3 +1,4 @@
+import { configuredLimit } from './limits.js';
 import { Isolations } from '../services/isolation.js';
 import type { Run, Conversation } from '../../shared/types.js';
 import type { ToolContext } from '../tools/registry.js';
@@ -45,7 +46,7 @@ export class DelegationManager {
     assert(
       this.store.runs().filter((r) => r.parentRunId && this.root(r) === root).length +
         (this.pendingSpawns.get(root) || 0) <
-        settings.maxChildren,
+        configuredLimit(settings.maxChildren),
       'CHILD_LIMIT',
       'Configured total child limit reached for this run tree.',
     );
@@ -69,7 +70,12 @@ export class DelegationManager {
         isolationId: isolation?.id || c.isolationId,
         id: id(),
         title: task.slice(0, 65),
-        permission: mode === 'isolated' ? c.permission : ('read-only' as const),
+        permission:
+          mode === 'isolated'
+            ? c.permission === 'trusted'
+              ? ('ask' as const)
+              : c.permission
+            : ('read-only' as const),
         parentId: c.id,
         forkEvent: null,
         createdAt: now,
@@ -228,7 +234,7 @@ export class DelegationManager {
     assert(
       this.store.runs().filter((r) => r.parentRunId && this.root(r) === root).length +
         (this.pendingSpawns.get(root) || 0) <
-        settings.maxChildren,
+        configuredLimit(settings.maxChildren),
       'CHILD_LIMIT',
       'Configured child execution limit reached.',
     );
@@ -319,7 +325,7 @@ export class DelegationManager {
       this.pendingSpawns.set(root, Math.max(0, (this.pendingSpawns.get(root) || 1) - 1));
     }
   }
-  async reviewChanges(parent: Run, key: string, version?: string) {
+  private integrationCopy(parent: Run, key: string) {
     const child = this.store.get<Run>('run', key);
     assert(
       child.parentRunId === parent.id && child.status === 'completed',
@@ -339,9 +345,15 @@ export class DelegationManager {
       'MERGE_SCOPE',
       'Not owned by this parent.',
     );
-    return version
-      ? service.merge(conversation.isolationId, version)
-      : service.inspect(conversation.isolationId);
+    return { service, id: conversation.isolationId };
+  }
+  async inspectChanges(parent: Run, key: string) {
+    const copy = this.integrationCopy(parent, key);
+    return copy.service.inspect(copy.id);
+  }
+  async mergeChanges(parent: Run, key: string, version: string) {
+    const copy = this.integrationCopy(parent, key);
+    return copy.service.merge(copy.id, version);
   }
   private root(run: Run): string {
     let r = run;

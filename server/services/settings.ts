@@ -86,12 +86,19 @@ const schema = z.object({
 
   profiles: z.array(profileSchema),
   defaultProfileId: z.string(),
-  maxParallelRuns: z.number().int().min(1).max(12).default(3),
+  maxParallelRuns: z.number().int().min(0).max(12).default(3),
   maxAgentDepth: z.number().int().min(0).max(5).default(2),
-  maxChildren: z.number().int().min(1).max(32).default(8),
+  maxChildren: z.number().int().min(0).max(32).default(8),
   compactionRatio: z.number().min(0.3).max(0.9).default(0.75),
   dockerImage: z.string().default('node:24-bookworm-slim'),
-  commandBackend: z.enum(['approval-host', 'docker', 'native-windows']).default('approval-host'),
+  commandBackend: z
+    .enum(['approval-host', 'docker', 'native-windows'])
+    .default(process.platform === 'win32' ? 'native-windows' : 'docker'),
+  dockerUser: z
+    .string()
+    .regex(/^\d+(?::\d+)?$/)
+    .default('1000:1000'),
+  approveFileWrites: z.boolean().default(false),
   nativePython: z.string().default(''),
   nativeNetwork: z.enum(['deny', 'host']).default('deny'),
   embedding: z
@@ -121,7 +128,10 @@ export class Configuration {
     private options: { persistSecrets?: boolean; secretCodec?: SecretCodec } = {},
   ) {
     this.value = existsSync(path)
-      ? schema.parse(restoreSettings(JSON.parse(readFileSync(path, 'utf8')), this.codec()))
+      ? schema.parse({
+          commandBackend: 'approval-host',
+          ...restoreSettings(JSON.parse(readFileSync(path, 'utf8')), this.codec()),
+        })
       : schema.parse({ profiles: [], defaultProfileId: '' });
   }
   private codec() {
@@ -201,6 +211,7 @@ export class Configuration {
     }
     assert(
       next.commandBackend !== 'native-windows' ||
+        !next.nativePython ||
         (isAbsolute(next.nativePython || '') && existsSync(next.nativePython!)),
       'NATIVE_CONFIGURATION',
       'AppContainer requires an existing absolute Python interpreter path. Configure Native Python interpreter before saving.',

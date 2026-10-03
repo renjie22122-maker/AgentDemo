@@ -35,7 +35,7 @@ export function installMedia(registry: ToolRegistry) {
         'Use microphone input for transcription.',
       );
       const limit = c.config.get().media?.autoApproveMaxUsd;
-      const answer = await c.inputs.request(
+      await c.inputs.request(
         c.run,
         'approval',
         {
@@ -54,7 +54,6 @@ export function installMedia(registry: ToolRegistry) {
         },
         c.signal,
       );
-      if (answer.startsWith('DENIED')) return { content: answer };
       c.signal.throwIfAborted();
       return {
         content: JSON.stringify(

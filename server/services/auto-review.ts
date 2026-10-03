@@ -1,3 +1,5 @@
+import type { FileScope } from './paths.js';
+import { inspectReviewSources, reviewEvidence } from './review-evidence.js';
 import { approvalRisk } from '../../shared/approval-risk.js';
 import { executionSettings } from '../../shared/execution.js';
 import { ModelPool } from '../core/pool.js';
@@ -18,6 +20,7 @@ export class AutoReview {
     private store: Store,
     private config: Configuration,
     private provider: (p: any) => ModelProvider,
+    private filesForRun?: (run: Run) => Promise<FileScope>,
   ) {}
   async review(run: Run, payload: Record<string, any>, signal: AbortSignal) {
     const c = this.store.get<Conversation>('conversation', run.conversationId);
@@ -77,6 +80,10 @@ export class AutoReview {
     });
     try {
       const original = this.config.profile(settings.autoReview?.profileId || run.profileId);
+      const files =
+        original.id === run.profileId && this.filesForRun ? await this.filesForRun(run) : undefined;
+      const inspectedSource = files ? await inspectReviewSources(files, payload) : [];
+      record.sourceEvidence = inspectedSource.map(({ content, ...metadata }: any) => metadata);
       const profile = {
         ...original,
         reasoning: 'auto' as const,
@@ -130,6 +137,8 @@ export class AutoReview {
                       sandbox: settings.commandBackend,
                       network: settings.nativeNetwork,
                       risk,
+                      observedSource: reviewEvidence(run, original.id === run.profileId),
+                      inspectedSource,
                     }),
                   },
                 ],
@@ -155,6 +164,14 @@ export class AutoReview {
           messages.map((message) => message.id),
         );
         Object.assign(record, parsed);
+        if (
+          files &&
+          JSON.stringify(await inspectReviewSources(files, payload)) !==
+            JSON.stringify(inspectedSource)
+        ) {
+          record.decision = 'ask';
+          record.reason = 'Reviewed source changed during assessment; request a fresh review.';
+        }
       }
     } catch {
       record.reason = 'Automatic review failed or timed out; manual approval is required.';

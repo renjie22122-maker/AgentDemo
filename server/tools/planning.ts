@@ -184,6 +184,7 @@ export function installPlanning(registry: ToolRegistry) {
   });
   registry.add({
     name: 'record_verification',
+    coordination: 'atomic',
     effect: 'coordinate',
     description:
       'Bind a done task to a successful command/read event and unchanged declared artifacts. This confirms observation and version, not semantic correctness or independent review.',

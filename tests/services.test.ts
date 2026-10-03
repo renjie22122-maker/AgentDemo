@@ -41,13 +41,10 @@ test('real stdio MCP handshake, discovery, call and close', async () => {
 test('host backend reports actual exit code and output', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'agentdemo-command-')),
     config = new Configuration(join(dir, 'settings.json'));
-  const result = await execute(
-    'echo approved-fixture',
-    dir,
-    new AbortController().signal,
-    5000,
-    config.get(),
-  );
+  const result = await execute('echo approved-fixture', dir, new AbortController().signal, 5000, {
+    ...config.get(),
+    commandBackend: 'approval-host' as const,
+  });
   assert.equal(result.code, 0);
   assert.match(result.stdout, /approved-fixture/);
   assert.equal(result.timedOut, false);
@@ -57,7 +54,10 @@ test('command timeout terminates the owned process', async () => {
     config = new Configuration(join(dir, 'settings.json'));
   const command = '"' + process.execPath + '" -e "setInterval(function(){},1000)"';
   const start = Date.now();
-  const result = await execute(command, dir, new AbortController().signal, 300, config.get());
+  const result = await execute(command, dir, new AbortController().signal, 300, {
+    ...config.get(),
+    commandBackend: 'approval-host' as const,
+  });
   assert.equal(result.timedOut, true);
   assert(Date.now() - start < 10000);
 });
@@ -108,7 +108,7 @@ test('public configuration exposes key presence but never the key value', async 
   const dir = await mkdtemp(join(tmpdir(), 'agentdemo-config-'));
   const config = new Configuration(join(dir, 'settings.json'));
   config.save({
-    ...config.get(),
+    ...{ ...config.get(), commandBackend: 'approval-host' as const },
     profiles: [
       {
         id: 'p',
@@ -140,7 +140,10 @@ test('host command chains preserve their tail and large output declares truncati
     process.platform === 'win32'
       ? 'echo FIRST & echo SECOND & echo FINAL'
       : 'echo FIRST; echo SECOND; echo FINAL';
-  const result = await execute(chain, dir, new AbortController().signal, 5000, config.get());
+  const result = await execute(chain, dir, new AbortController().signal, 5000, {
+    ...config.get(),
+    commandBackend: 'approval-host' as const,
+  });
   assert.equal(result.code, 0);
   assert.match(result.stdout, /FIRST[\s\S]*SECOND[\s\S]*FINAL/);
   assert.equal(result.truncated, false);
@@ -150,7 +153,7 @@ test('host command chains preserve their tail and large output declares truncati
     dir,
     new AbortController().signal,
     10000,
-    config.get(),
+    { ...config.get(), commandBackend: 'approval-host' as const },
   );
   assert.equal(large.code, 0);
   assert.equal(large.truncated, true);
@@ -169,14 +172,24 @@ test('credential reuse is origin-bound and diagnostic configuration omits persis
     apiKey: 'fixture-secret',
     model: 'm',
   };
-  config.save({ ...config.get(), profiles: [p], defaultProfileId: 'p' });
-  assert.equal(config.get().profiles[0].apiKey, 'fixture-secret');
+  config.save({
+    ...{ ...config.get(), commandBackend: 'approval-host' as const },
+    profiles: [p],
+    defaultProfileId: 'p',
+  });
+  assert.equal(
+    { ...config.get(), commandBackend: 'approval-host' as const }.profiles[0].apiKey,
+    'fixture-secret',
+  );
   assert.ok(!(await readFile(path, 'utf8')).includes('fixture-secret'));
   config.save({
-    ...config.get(),
+    ...{ ...config.get(), commandBackend: 'approval-host' as const },
     profiles: [{ ...p, apiKey: undefined, baseUrl: 'https://other.example' }],
   });
-  assert.equal(config.get().profiles[0].apiKey, '');
+  assert.equal(
+    { ...config.get(), commandBackend: 'approval-host' as const }.profiles[0].apiKey,
+    '',
+  );
 });
 
 test(
@@ -207,7 +220,7 @@ test(
           dir,
           new AbortController().signal,
           700,
-          config.get(),
+          { ...config.get(), commandBackend: 'approval-host' as const },
           (_stream, chunk) => {
             observed += chunk;
           },
@@ -242,7 +255,7 @@ test(
       dir,
       controller.signal,
       30000,
-      config.get(),
+      { ...config.get(), commandBackend: 'approval-host' as const },
       () => {
         received = true;
         controller.abort();
@@ -273,7 +286,10 @@ test(
     syncBuiltinESMExports();
     const started = Date.now();
     try {
-      const pending = execute('fixture', dir, new AbortController().signal, 20, config.get());
+      const pending = execute('fixture', dir, new AbortController().signal, 20, {
+        ...config.get(),
+        commandBackend: 'approval-host' as const,
+      });
       fake.stdout.write('already changed external state');
       await assert.rejects(
         pending,

@@ -14,7 +14,7 @@ async function setup(provider: ModelProvider) {
   const store = new Store(join(dir, 'db.sqlite')),
     config = new Configuration(join(dir, 'config.json'));
   config.save({
-    ...config.get(),
+    ...{ ...config.get(), commandBackend: 'approval-host' as const },
     profiles: [
       {
         id: 'test',
@@ -126,7 +126,7 @@ test('approval denial does not execute command and model sees denial', async () 
   assert(
     f.store
       .get<any>('run', r.id)
-      .checkpoints.some((m: any) => m.role === 'tool' && m.content.startsWith('DENIED')),
+      .checkpoints.some((m: any) => m.role === 'tool' && m.content.includes('APPROVAL_DENIED')),
   );
   assert.equal(f.store.unknownEffects('chat').length, 0);
   await f.runtime.shutdown();
@@ -366,7 +366,7 @@ test('isolated worker tools, project preservation and delegation off are enforce
   const child = f.store.runs().find((r) => r.parentRunId === run.id)!;
   assert.equal(child.status, 'completed');
   await assert.rejects(readFile(join(project, 'child.txt')));
-  const review: any = await f.runtime.reviewChanges(run, child.id);
+  const review: any = await f.runtime.inspectChanges(run, child.id);
   assert.equal(review.changes[0].path, '@0/child.txt');
   f.store.put('conversation', { ...f.store.get<any>('conversation', 'chat'), teamStrategy: 'off' });
   const context = await f.runtime.context(run);
@@ -589,11 +589,14 @@ test('compaction retains current request and complete tool groups; failed summar
   run.checkpoints = structuredClone(messages);
   const before = JSON.stringify(run.checkpoints);
   fail = true;
-  await assert.rejects(
-    (f.runtime as any).contextManager.compact(run, profile, new AbortController().signal, []),
-    /no usable handoff/,
+  await (f.runtime as any).contextManager.compact(run, profile, new AbortController().signal, []);
+  assert.notEqual(JSON.stringify(run.checkpoints), before);
+  assert.ok(run.checkpoints.some((m: any) => m.content.includes('archived verbatim')));
+  assert.ok(
+    f.store
+      .list<any>('spill')
+      .some((s: any) => s.conversationId === 'chat' && s.text.includes('data data')),
   );
-  assert.equal(JSON.stringify(run.checkpoints), before);
   f.store.close();
 });
 
@@ -684,7 +687,11 @@ test('recovery reconciles exact file contents but leaves arbitrary commands unce
   const f = await setup({
     complete: async (req) => {
       assert.ok(
-        req.tools.every((t) => ['read', 'network'].includes(t.effect) || t.name === 'ask_user'),
+        req.tools.every(
+          (t) =>
+            ['read', 'network'].includes(t.effect) ||
+            ['ask_user', 'resolve_effect'].includes(t.name),
+        ),
       );
       return result('Inspection only.');
     },
@@ -961,7 +968,7 @@ test('repeated length failures stop after one recovery, missing finish never ret
     });
     try {
       const run = f.runtime.start('chat', 'Hello');
-      await until(() => f.store.get<any>('run', run.id).status === 'failed');
+      await until(() => f.store.get<any>('run', run.id).status === 'interrupted');
       assert.equal(n, finishReason === 'length' ? 2 : 1);
     } finally {
       await f.runtime.shutdown();
@@ -1047,7 +1054,10 @@ test('a saturated conversation tree cannot block another conversation or leak it
       return result('done');
     },
   });
-  f.config.save({ ...f.config.get(), maxParallelRuns: 1 });
+  f.config.save({
+    ...{ ...f.config.get(), commandBackend: 'approval-host' as const },
+    maxParallelRuns: 1,
+  });
   for (const id of ['child', 'grandchild', 'other'])
     f.store.put('conversation', { ...f.store.get<any>('conversation', 'chat'), id });
   try {
@@ -1189,7 +1199,7 @@ test('background jobs are scoped, cancelled and recovered as unknown without rep
       '"' + process.execPath + '" -e "console.log(123);setInterval(()=>{},1000)"',
       f.dir,
       10,
-      f.config.get(),
+      { ...f.config.get(), commandBackend: 'approval-host' as const },
       new AbortController().signal,
       '123',
     );
@@ -1298,7 +1308,10 @@ for (const decision of ['approve', 'deny', 'cancel', 'changed'] as const)
           );
         } else {
           if (decision === 'changed')
-            f.config.save({ ...f.config.get(), commandBackend: 'docker' });
+            f.config.save({
+              ...{ ...f.config.get(), commandBackend: 'approval-host' as const },
+              commandBackend: 'docker',
+            });
           f.runtime.inputs.answer(
             input.id,
             decision,
@@ -1584,10 +1597,10 @@ test('writable continuation retains unmerged copy then renews merged copy, concu
       f.store.get<any>('conversation', child.conversationId).isolationId,
       ctx.conversation.isolationId,
     );
-    await assert.rejects(f.runtime.reviewChanges!(p1, key), /Not owned/);
-    const review = await f.runtime.reviewChanges!(p2, next.runId);
+    await assert.rejects(f.runtime.inspectChanges!(p1, key), /Not owned/);
+    const review = await f.runtime.inspectChanges!(p2, next.runId);
     assert('version' in review);
-    await f.runtime.reviewChanges!(p2, next.runId, review.version);
+    await f.runtime.mergeChanges!(p2, next.runId, review.version);
     assert.equal(await readFile(join(project, 'a.txt'), 'utf8'), 'changed');
     const again: any = await f.runtime.continueMember(
       p2,
@@ -1631,6 +1644,89 @@ test('cognitive control warns in the real loop and allows a changed approach to 
     assert.equal(interventions[0].data.action, 'change-strategy');
     assert.equal(f.store.get<any>('cognitive-state', run.id).signals.repeated, true);
     assert.equal(f.store.unknownEffects('chat').length, 0);
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});
+
+test('optional file-write approval prevents a denied mutation without unresolved effects', async () => {
+  let n = 0;
+  const f = await setup({
+    complete: async () =>
+      ++n === 1
+        ? result('', [
+            {
+              id: 'write',
+              name: 'write_file',
+              arguments: { path: 'approval.txt', content: 'must not exist' },
+            },
+          ])
+        : result('Write denied.'),
+  });
+  try {
+    f.config.save({ ...f.config.get(), approveFileWrites: true });
+    const run = f.runtime.start('chat', 'Create a file');
+    await until(() => f.store.get<any>('run', run.id).status === 'waiting_approval');
+    const ctx = await f.runtime.context(run);
+    await assert.rejects(ctx.files.read('approval.txt'));
+    assert.equal(f.store.unknownEffects('chat').length, 0);
+    f.runtime.inputs.answer(f.store.list<any>('input')[0].id, 'No', false);
+    await until(() => f.store.get<any>('run', run.id).status === 'completed');
+    await assert.rejects(ctx.files.read('approval.txt'));
+    assert.equal(f.store.unknownEffects('chat').length, 0);
+    assert.ok(
+      f.store
+        .events('chat')
+        .some((e: any) => e.type === 'tool.completed' && e.data.outcome.status === 'denied'),
+    );
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});
+
+test('unresolved effect resolution asks the user and never retries the command', async () => {
+  let effect = '';
+  let n = 0;
+  const f = await setup({
+    complete: async () =>
+      ++n === 1
+        ? result('', [
+            {
+              id: 'resolve',
+              name: 'resolve_effect',
+              arguments: {
+                effectId: effect,
+                evidence: 'Inspected current output and confirmed the exact saved result.',
+              },
+            },
+          ])
+        : result('Inspection recorded.'),
+  });
+  try {
+    f.store.put('run', {
+      id: 'old-effect',
+      conversationId: 'chat',
+      status: 'interrupted',
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    effect = f.store.beginEffect('old-effect', 'run_command', { command: 'never replay this' });
+    const run = f.runtime.start('chat', 'Record verified outcome');
+    await until(() => f.store.get<any>('run', run.id).status === 'waiting_approval');
+    assert.equal(f.store.unknownEffects('chat').length, 1);
+    f.runtime.inputs.answer(f.store.list<any>('input')[0].id, 'Confirmed from inspection', true);
+    await until(() =>
+      ['completed', 'interrupted'].includes(f.store.get<any>('run', run.id).status),
+    );
+    assert.equal(f.store.unknownEffects('chat').length, 0);
+    assert.equal(
+      f.store
+        .events('chat')
+        .filter((e: any) => e.type === 'tool.started' && e.data.name === 'run_command').length,
+      0,
+    );
   } finally {
     await f.runtime.shutdown();
     f.store.close();

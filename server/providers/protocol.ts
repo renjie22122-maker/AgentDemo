@@ -130,7 +130,7 @@ export async function request(
         const value = await reader.read();
         detail = new TextDecoder().decode(value.value?.subarray(0, 4096));
       } finally {
-        await reader.cancel().catch(() => {});
+        void reader.cancel().catch(() => {});
       }
     try {
       const parsed = JSON.parse(detail);
@@ -149,7 +149,7 @@ export async function request(
     );
   }
 }
-export async function* sse(response: Response): AsyncGenerator<any> {
+export async function* sse(response: Response, idleTimeoutMs = 60000): AsyncGenerator<any> {
   assert(response.body, 'EMPTY_RESPONSE', 'Model returned no response body.', 502);
   const reader = response.body.getReader(),
     decoder = new TextDecoder();
@@ -157,7 +157,22 @@ export async function* sse(response: Response): AsyncGenerator<any> {
     bytes = 0;
   try {
     while (true) {
-      const { value, done } = await reader.read();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const { value, done } = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(
+              new AppError(
+                'MODEL_STREAM_IDLE',
+                'Model stream stopped delivering bytes; no request was replayed.',
+                504,
+              ),
+            );
+            void reader.cancel().catch(() => {});
+          }, idleTimeoutMs);
+        }),
+      ]).finally(() => clearTimeout(timer));
       if (done) {
         buffer += decoder.decode();
         if (buffer.trim())
@@ -201,7 +216,7 @@ export async function* sse(response: Response): AsyncGenerator<any> {
       );
     throw error;
   } finally {
-    await reader.cancel().catch(() => {});
+    void reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }

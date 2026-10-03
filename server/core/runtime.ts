@@ -1,3 +1,4 @@
+import { inspectEffects } from '../services/recovery.js';
 import {
   prefixObservation,
   comparePrefix,
@@ -16,6 +17,7 @@ import { normalizeImage } from '../services/images.js';
 import { TeamAutomation } from '../services/team-automation.js';
 import { Teams } from '../services/team-space.js';
 import { DelegationManager } from './delegation-manager.js';
+import { termination } from './termination.js';
 import { sampleContext } from './context-budget.js';
 import { ContextManager } from './context-manager.js';
 import { ToolExecutor } from './tool-executor.js';
@@ -151,7 +153,9 @@ export class Runtime implements TeamPort {
       });
     });
     this.media = new MediaService(store, config, directory);
-    const reviewer = new AutoReview(store, config, this.resolveProvider);
+    const reviewer = new AutoReview(store, config, this.resolveProvider, (run) =>
+      this.filesForConversation(store.get<Conversation>('conversation', run.conversationId)),
+    );
     this.inputs = new Inputs(store, (r, p, s) => reviewer.review(r, p, s));
     this.knowledge = new Knowledge(store, new Embeddings(() => config.get().embedding));
     this.memories = new MemoryIndex(store, new Embeddings(() => config.get().embedding));
@@ -495,6 +499,12 @@ export class Runtime implements TeamPort {
     try {
       run = this.store.transition(key, 'running');
       const ctx = await this.context(run);
+      if (run.recoveryOnly) {
+        const inspection = await inspectEffects(this.store, ctx.files, run.conversationId);
+        run.recoveryOnly = inspection.unresolved.length > 0;
+        this.store.put('run', run);
+        this.store.event(run.conversationId, run.id, 'recovery.inspected', inspection);
+      }
       ctx.signal = signal;
       const profile = { ...this.config.profile(run.profileId), reasoning: run.reasoning };
       const system = await this.system(run, ctx, profile);
@@ -567,7 +577,10 @@ export class Runtime implements TeamPort {
             });
           });
         if (run.maxSteps && steps >= run.maxSteps)
-          throw new Error('The explicitly configured model-step limit was reached.');
+          throw new AppError(
+            'STEP_LIMIT',
+            'The explicitly configured model-step limit was reached.',
+          );
         const contextBudget = await this.contextManager.compact(
           run,
           profile,
@@ -736,8 +749,9 @@ export class Runtime implements TeamPort {
           run,
           result.message.calls.map((c) => [c.name, c.arguments]),
           outputs,
+          this.toolExecutor.takeOutcomes(run.id),
         );
-        if (decision.action === 'stop') throw new Error(decision.reason);
+        if (decision.action === 'stop') throw new AppError('STAGNATION', decision.reason);
         if (decision.message) {
           run.checkpoints.push({
             role: 'user',
@@ -759,8 +773,16 @@ export class Runtime implements TeamPort {
         });
       await this.background.stopRun(key);
       const current = this.store.get<Run>('run', key);
-      if (!terminal(current.status))
-        this.store.transition(key, signal.aborted ? 'interrupted' : 'failed', errorMessage(error));
+      if (!terminal(current.status)) {
+        const reason = termination(error, signal.aborted);
+        this.store.put('run', { ...current, termination: reason });
+        this.store.transition(
+          key,
+          reason.recoverable ? 'interrupted' : 'failed',
+          errorMessage(error),
+        );
+        this.store.event(run.conversationId, key, 'run.termination', reason);
+      }
       if (!new Teams(this.store).get(current))
         for (const child of this.store
           .runs()
@@ -808,8 +830,9 @@ export class Runtime implements TeamPort {
   closeMember: NonNullable<TeamPort['closeMember']> = (...args) =>
     this.delegation.closeMember(...args);
   spawn: TeamPort['spawn'] = (...args) => this.delegation.spawn(...args);
-  reviewChanges = (parent: Run, key: string, version?: string) =>
-    this.delegation.reviewChanges(parent, key, version);
+  inspectChanges = (parent: Run, key: string) => this.delegation.inspectChanges(parent, key);
+  mergeChanges = (parent: Run, key: string, version: string) =>
+    this.delegation.mergeChanges(parent, key, version);
   wait: TeamPort['wait'] = (...args) => this.delegation.wait(...args);
   message: TeamPort['message'] = (...args) => this.delegation.message(...args);
   async shutdown() {

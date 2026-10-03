@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawnProcess as spawn } from './spawn-process.js';
 import { fileURLToPath } from 'node:url';
 import { isAbsolute } from 'node:path';
 import type { Settings } from '../../shared/types.js';

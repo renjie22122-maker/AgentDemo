@@ -1,3 +1,5 @@
+import { commandOutcome } from './tool-outcome.js';
+import type { ToolOutcome } from '../../shared/types.js';
 import { compressToolText } from './context-reuse.js';
 import { verificationPaths } from '../services/verification-inputs.js';
 import { prepareCoordination } from '../services/coordination-journal.js';
@@ -11,6 +13,12 @@ import { Store, id } from '../storage/store.js';
 import { abortError, errorMessage, NotStartedError } from './errors.js';
 import { executeBatch } from './tool-batch.js';
 export class ToolExecutor {
+  private latest = new Map<string, ToolOutcome[]>();
+  takeOutcomes(runId: string) {
+    const values = this.latest.get(runId);
+    this.latest.delete(runId);
+    return values;
+  }
   constructor(
     private store: Store,
     private registry: ToolRegistry,
@@ -18,17 +26,18 @@ export class ToolExecutor {
   ) {}
   async batch(run: Run, calls: ToolCall[], ctx: ToolContext): Promise<string[]> {
     const observations = new Map<string, unknown>();
+    const outcomes = new Map<string, ToolOutcome>();
     const images = new Map<string, string[]>();
-    return executeBatch(
+    const results = await executeBatch(
       calls,
       (name) => this.registry.parallelSafe(name),
       async (call) => {
         const paths = new TaskBoard(this.store).get(run).tasks.flatMap(verificationPaths);
         const observe = paths.length && ['read_file', 'run_command'].includes(call.name);
         const before = observe ? await stamp(ctx.files, paths) : undefined;
-        const output = await this.invoke(run, call, ctx, images);
+        const output = await this.invoke(run, call, ctx, images, outcomes);
         const after = observe ? await stamp(ctx.files, paths) : undefined;
-        let passed = call.name === 'read_file' && !output.startsWith('Tool error:');
+        let passed = call.name === 'read_file' && outcomes.get(call.id)?.status === 'succeeded';
         if (call.name === 'run_command')
           try {
             const parsed = JSON.parse(output);
@@ -39,8 +48,7 @@ export class ToolExecutor {
         const checkedPaths: string[] = [];
         if (observe)
           for (const path of paths) {
-            if (call.name === 'run_command') checkedPaths.push(path);
-            else
+            if (call.name === 'read_file')
               try {
                 if (
                   (await ctx.files.resolve(path)) ===
@@ -81,17 +89,24 @@ export class ToolExecutor {
           callId: call.id,
           name: call.name,
           output,
+          outcome: outcomes.get(call.id),
           verification: observations.get(call.id),
         });
       },
       ctx.signal,
     );
+    this.latest.set(
+      run.id,
+      calls.map((c) => outcomes.get(c.id)!),
+    );
+    return results;
   }
   private async invoke(
     run: Run,
     call: ToolCall,
     ctx: ToolContext,
     images: Map<string, string[]>,
+    outcomes: Map<string, ToolOutcome>,
   ): Promise<string> {
     const signal = ctx.signal;
     if (signal.aborted) throw abortError();
@@ -105,24 +120,58 @@ export class ToolExecutor {
         arguments: call.arguments,
       });
     });
-    const effect = this.registry.effect(call.name);
     let effectId: string | undefined;
     // Persist intent before side effects. Unknown outcomes remain visible after crashes.
-    if (effect === 'write') effectId = this.store.beginEffect(run.id, call.name, call.arguments);
     let output: string;
     try {
       const result = await this.registry.invoke(call.name, call.arguments, {
         ...ctx,
         callId: call.id,
-        beforeExecution: () => {
+        beforeExecution: (expectation) => {
           if (!effectId) effectId = this.store.beginEffect(run.id, call.name, call.arguments);
+          if (expectation)
+            this.store.event(run.conversationId, run.id, 'effect.expected', {
+              effectId,
+              ...expectation,
+            });
         },
       });
       output = result.content;
+      let outcome: ToolOutcome = result.outcome || { status: 'succeeded', code: 'OK' };
+      if (call.name === 'run_command' && !result.outcome) {
+        try {
+          const parsed = JSON.parse(output);
+          if ('code' in parsed) outcome = commandOutcome(parsed);
+        } catch {}
+      }
+      outcomes.set(call.id, { ...outcome, effectId });
       if (result.images?.length) images.set(call.id, result.images);
-      if (effectId) this.store.endEffect(effectId, output.slice(0, 20000));
+      if (effectId && outcome.status !== 'unknown')
+        this.store.endEffect(effectId, output.slice(0, 20000));
+      else if (effectId)
+        this.store.event(run.conversationId, run.id, 'effect.unknown', {
+          effectId,
+          tool: call.name,
+          reason: outcome.code,
+        });
     } catch (error) {
-      output = 'Tool error: ' + errorMessage(error);
+      output =
+        'Tool error: ' +
+        ((error as any)?.code ? '[' + (error as any).code + '] ' : '') +
+        errorMessage(error);
+      outcomes.set(call.id, {
+        status:
+          error instanceof NotStartedError
+            ? error.code === 'APPROVAL_DENIED'
+              ? 'denied'
+              : 'not_started'
+            : effectId
+              ? 'unknown'
+              : 'failed',
+        code: String((error as any)?.code || 'TOOL_FAILED'),
+        effectId,
+        executionStarted: error instanceof NotStartedError ? false : undefined,
+      });
       if (effectId && error instanceof NotStartedError)
         this.store.endEffect(effectId, output, 'not_started');
       else if (effectId && !signal.aborted)

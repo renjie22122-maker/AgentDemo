@@ -62,7 +62,7 @@ export class FileScope {
     );
     const relative = path.relative(root, absolute).split(path.sep);
     assert(
-      !relative.some((p) => ['.git', '.agentdemo'].includes(p)),
+      !relative.some((p) => ['.git', '.agentdemo'].includes(p.toLowerCase())),
       'PROTECTED_PATH',
       'Repository metadata and private runtime state are protected.',
       403,
@@ -95,8 +95,18 @@ export class FileScope {
           'Linked or hard-linked entries are not accessible.',
           403,
         );
+        const canonical = await realpath(current);
         assert(
-          inside(rootReal, await realpath(current)),
+          !path
+            .relative(rootReal, canonical)
+            .split(path.sep)
+            .some((p) => ['.git', '.agentdemo'].includes(p.toLowerCase())),
+          'PROTECTED_PATH',
+          'Canonical path reaches protected metadata.',
+          403,
+        );
+        assert(
+          inside(rootReal, canonical),
           'OUTSIDE_PROJECT',
           'Resolved path leaves the project.',
           403,

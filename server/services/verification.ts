@@ -109,11 +109,31 @@ export class Verification {
           'VERIFICATION_STALE',
           'Declared directory inputs changed after checking.',
         );
+    // Aggregate only real, successful, version-matching reads/checks cited by this task.
+    const checked = new Set<string>();
+    const contributors: string[] = [];
+    for (const id of task.evidence) {
+      const r = this.store.db
+        .prepare('SELECT run_id,type,data FROM events WHERE id=?')
+        .get(id) as any;
+      if (!r || r.type !== 'tool.completed') continue;
+      const d = JSON.parse(r.data),
+        v = d.verification;
+      if (
+        !v?.passed ||
+        rootRun(this.store, this.store.get<Run>('run', r.run_id)) !== board.id ||
+        !sameStamp(v.before, current) ||
+        !sameStamp(v.after, current)
+      )
+        continue;
+      for (const path of v.checkedPaths || []) checked.add(path);
+      contributors.push(r.run_id);
+    }
     for (const path of Object.keys(current.files))
       assert(
         current.complete &&
           current.files[path] &&
-          (!task.artifacts.includes(path) || evidence.checkedPaths?.includes(path)) &&
+          (!task.artifacts.includes(path) || checked.has(path)) &&
           evidence.before.files[path] === current.files[path] &&
           evidence.after.files[path] === current.files[path],
         'VERIFICATION_STALE',
@@ -128,7 +148,10 @@ export class Verification {
         eventId,
         checkedBy: row.run_id,
         stamp: current,
-        independent: !!target.owner && row.run_id !== target.owner,
+        independent:
+          !!target.owner &&
+          row.run_id !== target.owner &&
+          contributors.every((id) => id !== target.owner),
         checkKind: data.name === 'read_file' ? 'file-observation' : 'command-check',
       };
       if (target.attemptId) {

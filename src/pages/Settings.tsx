@@ -487,6 +487,23 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
         </fieldset>
         <ApprovalSettings value={value} setValue={setValue} zh={t('settings') !== 'Settings'} />
         <p className="execution-boundary" role="note">
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={!!value.approveFileWrites}
+              onChange={(e) => setValue({ ...value, approveFileWrites: e.target.checked })}
+            />
+            {t('settings') !== 'Settings'
+              ? '文件写入也需审批（完全访问模式除外）；关闭时仅命令需审批'
+              : 'Also approve file writes (except Full access); otherwise approval applies to commands'}
+          </label>
+          <label>
+            {t('settings') !== 'Settings' ? 'Docker 执行用户 UID:GID' : 'Docker execution UID:GID'}
+            <input
+              value={value.dockerUser || '1000:1000'}
+              onChange={(e) => setValue({ ...value, dockerUser: e.target.value })}
+            />
+          </label>
           {value.commandBackend === 'approval-host'
             ? t('settings') !== 'Settings'
               ? '宿主执行 · 无 OS 文件隔离。批准后命令可访问当前 Windows 账号可访问的文件与网络；工作目录不是安全边界。可信模式可跳过审批。'
@@ -531,11 +548,12 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
               : '每个对话的模型并发（含子 Agent）'}
             <input
               type="number"
-              min="1"
+              min="0"
               max="12"
               value={value.maxParallelRuns}
               onChange={(e) => setValue({ ...value, maxParallelRuns: Number(e.target.value) })}
             />
+            <small>{t('settings') === 'Settings' ? '0 = unlimited' : '0 = 不设上限'}</small>
           </label>
           <label>
             {t('Maximum delegation depth')}
@@ -551,11 +569,16 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
             {t('Maximum children per run tree')}
             <input
               type="number"
-              min="1"
+              min="0"
               max="32"
               value={value.maxChildren}
               onChange={(e) => setValue({ ...value, maxChildren: Number(e.target.value) })}
             />
+            <small>
+              {t('settings') === 'Settings'
+                ? '0 = unlimited; delegation depth still applies'
+                : '0 = 不设上限；委派深度仍独立生效'}
+            </small>
           </label>
           <label>
             {t('Context compaction threshold')}

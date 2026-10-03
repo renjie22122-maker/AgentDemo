@@ -41,7 +41,7 @@ test('skill resources copy exact bytes, preserve layout, execute and reject over
       work,
       new AbortController().signal,
       5000,
-      new Configuration(join(root, 'settings.json')).get(),
+      { ...new Configuration(join(root, 'settings.json')).get(), commandBackend: 'approval-host' },
     );
     assert.equal(result.code, 0);
     assert.match(result.stdout, /00ff800102/);

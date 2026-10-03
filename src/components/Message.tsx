@@ -277,6 +277,44 @@ export function InputCard({ input, t, refresh, notify }: any) {
         <span className="pill">{input.status}</span>
       </summary>
       <div className="input-content">
+        {input.status === 'cancelled' && (
+          <div className="review-question">
+            <p>
+              {zh
+                ? '等待已因任务停止或服务重启而中断，并非审批超时。继续会重新核对请求，不会把旧请求直接当作已批准。'
+                : 'Waiting was interrupted by a stopped run or service restart, not approval expiry. Continue to reassess; the old request is not approved.'}
+            </p>
+            <button
+              disabled={sending}
+              onClick={async () => {
+                setSending(true);
+                try {
+                  await api('/conversations/' + input.conversationId + '/message', {
+                    text:
+                      'Continue the unfinished task. First inspect existing results and interrupted approval ' +
+                      input.id +
+                      '. Reassess any unapproved action using current scope. Do not replay completed or unknown side effects.',
+                  });
+                  await refresh();
+                } catch (e: any) {
+                  notify(e.message);
+                } finally {
+                  setSending(false);
+                }
+              }}
+            >
+              {zh ? '核对并继续任务' : 'Inspect and continue task'}
+            </button>
+          </div>
+        )}
+        {pending && (
+          <p className="muted">
+            {zh
+              ? '等待你的决定；等待不计入命令执行时限，可稍后返回处理。'
+              : 'Waiting for your decision. Approval waiting does not consume the command execution timeout.'}
+          </p>
+        )}
+
         {input.kind === 'approval' ? (
           <>
             {pending && input.payload.autoReview?.decision === 'ask' && (

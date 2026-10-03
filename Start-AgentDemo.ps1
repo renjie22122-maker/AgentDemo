@@ -10,19 +10,13 @@ try {
         exit 0
     }
 } catch {}
-$taskCandidates = @()
-$taskNodeCommand = Get-Command node -ErrorAction SilentlyContinue
-if ($taskNodeCommand) { $taskCandidates += $taskNodeCommand.Source }
-$taskCandidates += Join-Path $env:USERPROFILE '.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe'
-$taskNode = $null
-foreach ($taskCandidate in $taskCandidates) {
-    if (Test-Path -LiteralPath $taskCandidate) {
-        $taskVersion = & $taskCandidate -p 'Number(process.versions.node.split(String.fromCharCode(46))[0])'
-        if ([int]$taskVersion -ge 24) { $taskNode = $taskCandidate; break }
-    }
+. (Join-Path $taskRoot 'Launcher.Common.ps1')
+$taskNode = Get-AgentDemoNode
+$env:PATH = (Split-Path $taskNode) + ';' + $env:PATH
+if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'node_modules\tsx'))) {
+    Write-Host 'First launch detected. Preparing dependencies and frontend...'
+    & (Join-Path $taskRoot 'First-Start-AgentDemo.ps1') -SetupOnly -NoBrowser
 }
-if (-not $taskNode) { throw 'Install Node.js 24 or newer, then run this launcher again.' }
-if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'node_modules\tsx'))) { throw 'Dependencies are missing. Run: corepack pnpm install' }
 if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'dist\index.html'))) {
     Push-Location $taskRoot
     try {

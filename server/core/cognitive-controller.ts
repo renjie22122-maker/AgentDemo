@@ -24,27 +24,31 @@ export class CognitiveController {
           omittedTasks: Math.max(0, tasks.length - 24),
           unresolvedEffects: uncertain.map((e) => ({ id: e.id, tool: e.tool })).slice(0, 20),
           unresolvedEffectCount: uncertain.length,
-          tasks: tasks
-            .slice(0, 24)
-            .map((t) => ({
-              id: t.id,
-              status: t.status,
-              kind: t.kind,
-              owner: t.owner,
-              dependsOn: t.dependsOn,
-              verification: t.verification?.status || 'not-recorded',
-            })),
+          tasks: tasks.slice(0, 24).map((t) => ({
+            id: t.id,
+            status: t.status,
+            kind: t.kind,
+            owner: t.owner,
+            dependsOn: t.dependsOn,
+            verification: t.verification?.status || 'not-recorded',
+          })),
         }),
     };
   }
   reset(run: Run) {
     this.store.put('cognitive-state', { id: run.id, ...initialCognitiveState() });
   }
-  observe(run: Run, calls: unknown, outputs: string[]) {
+  observe(
+    run: Run,
+    calls: unknown,
+    outputs: string[],
+    outcomes?: import('../../shared/types.js').ToolOutcome[],
+  ) {
     const saved = this.store.maybe<CognitiveState>('cognitive-state', run.id);
     const decision = cognitivePolicy(saved?.version === 1 ? saved : initialCognitiveState(), {
       calls,
       outputs,
+      outcomes,
       tasks: new TaskBoard(this.store).get(run).tasks,
     });
     this.store.transaction(() => {
