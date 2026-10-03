@@ -913,14 +913,27 @@ export async function createApp(options: { directory: string; dist?: string; run
   }
   app.get<{ Querystring: { scope: string } }>('/api/knowledge/maintenance', async (req) => {
     checkScope(req.query.scope);
-    return (
-      store.maybe('knowledge-watch', req.query.scope) || {
-        id: req.query.scope,
-        enabled: false,
-        paths: [],
-        status: 'off',
-      }
-    );
+    const watch = store.maybe<any>('knowledge-watch', req.query.scope) || {
+      id: req.query.scope,
+      enabled: false,
+      paths: [],
+      status: 'off',
+    };
+    return {
+      ...watch,
+      batch: store.maybe('knowledge-batch', req.query.scope),
+      indexStatuses: Object.fromEntries(
+        store
+          .list<any>('document')
+          .filter((d) => d.scope === req.query.scope && d.validUntil == null)
+          .map((d) => [d.id, runtime.knowledge.indexStatus(d.id)]),
+      ),
+    };
+  });
+  app.post('/api/knowledge/batch-index', async (req) => {
+    const { scope } = z.object({ scope: z.string() }).parse(req.body);
+    checkScope(scope);
+    return maintenance.queueIndex(scope);
   });
   app.post('/api/knowledge/maintenance', async (req) => {
     const data = z

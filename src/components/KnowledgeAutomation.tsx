@@ -1,6 +1,15 @@
 import { useEffect, useState, useRef } from 'react';
 import { api } from '../api';
-export function KnowledgeAutomation({ scope, zh, embedding, notify, profile, project }: any) {
+import { KnowledgeProgress } from './KnowledgeProgress';
+export function KnowledgeAutomation({
+  scope,
+  zh,
+  embedding,
+  notify,
+  profile,
+  project,
+  onStatus,
+}: any) {
   const [value, setValue] = useState<any>(null),
     [paths, setPaths] = useState(''),
     [busy, setBusy] = useState(false);
@@ -38,15 +47,25 @@ export function KnowledgeAutomation({ scope, zh, embedding, notify, profile, pro
   const [graph, setGraph] = useState(false);
   useEffect(() => {
     let alive = true;
-    const load = () =>
-      scope &&
+    let loading = false;
+    const load = () => {
+      if (!scope || loading) return;
+      loading = true;
+      return;
       api('/knowledge/maintenance?scope=' + encodeURIComponent(scope))
         .then((v) => {
-          if (alive) setValue(v);
+          if (alive) {
+            setValue(v);
+            onStatus?.(v.indexStatuses || {});
+          }
         })
         .catch((e: any) => {
           if (alive) notify(e.message);
+        })
+        .finally(() => {
+          loading = false;
         });
+    };
     setPicking(false);
     setValue(null);
     setPaths('');
@@ -55,6 +74,7 @@ export function KnowledgeAutomation({ scope, zh, embedding, notify, profile, pro
         .then((v: any) => {
           if (alive) {
             setValue(v);
+            onStatus?.(v.indexStatuses || {});
             setPaths(v.paths.join('\n'));
             setGraph(!!v.graphProfileId);
           }
@@ -62,7 +82,7 @@ export function KnowledgeAutomation({ scope, zh, embedding, notify, profile, pro
         .catch((e: any) => {
           if (alive) notify(e.message);
         });
-    const timer = setInterval(load, 5000);
+    const timer = setInterval(load, 2000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -191,6 +211,42 @@ export function KnowledgeAutomation({ scope, zh, embedding, notify, profile, pro
         {zh ? '状态：' : 'Status: '}
         {value.status === 'partial' ? (zh ? '部分完成' : 'Partially completed') : value.status}
         {value.updatedAt ? ' · ' + new Date(value.updatedAt).toLocaleString() : ''}
+      </p>
+      <KnowledgeProgress value={value} zh={zh} />
+      <button
+        disabled={busy || ['pending', 'running'].includes(value.batch?.status)}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            const batch = await api('/knowledge/batch-index', { scope });
+            setValue({ ...value, batch });
+          } catch (e: any) {
+            notify(e.message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {zh ? '批量补齐本范围向量索引' : 'Index missing vectors in this scope'}
+      </button>
+      <small style={{ display: 'block' }}>
+        {zh
+          ? '使用上方已配置的 embedding 服务；仅处理当前范围，复用已有向量。外部 API 会接收待索引正文分块。'
+          : 'Uses the configured embedding service for this scope only; existing vectors are reused. External APIs receive unindexed text chunks.'}
+      </small>
+      {value.batch && (
+        <p role="status">
+          {zh ? '批量索引：' : 'Batch indexing: '}
+          {value.batch.status} · {value.batch.completed}/{value.batch.documents.length}
+          {value.batch.currentFile && ' · ' + value.batch.currentFile}
+          {value.batch.failed > 0 && ' · ' + value.batch.failed + (zh ? ' 项失败' : ' failed')}
+          {value.batch.error && ' · ' + value.batch.error}
+        </p>
+      )}
+      <p className="muted">
+        {zh
+          ? '新增文件夹仅解析新增或变化的文件；已有文件仍会校验内容哈希，同一模型的已完成索引会复用。'
+          : 'Adding folders parses only new or changed files. Existing sources are hash-checked and completed indexes for the same model are reused.'}
       </p>
       {value.scan && (
         <p className="muted">

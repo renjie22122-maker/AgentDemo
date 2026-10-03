@@ -30,6 +30,7 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
     setResults([]);
   }, [scope]);
   const [knowledgeDate, setKnowledgeDate] = useState('');
+  const [indexStatuses, setIndexStatuses] = useState<any>({});
   const file = useRef<HTMLInputElement>(null);
   const go = async (fn: () => Promise<any>) => {
     setBusy(true);
@@ -122,6 +123,7 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
             </div>
             <KnowledgeAutomation
               key={scope}
+              onStatus={setIndexStatuses}
               scope={scope}
               project={state.projects.find((p: any) => scope === 'project:' + p.id)}
               embedding={state.settings.embedding}
@@ -226,6 +228,7 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
                 {(state.settings.embedding.backend === 'local' ||
                   state.settings.embedding.model) && (
                   <button
+                    disabled={busy || indexStatuses[d.id]?.status === 'indexed'}
                     onClick={() =>
                       go(async () => {
                         const r = await api('/knowledge/' + d.id + '/index', {});
@@ -233,7 +236,15 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
                       })
                     }
                   >
-                    {t('Index vectors')}
+                    {indexStatuses[d.id]?.status === 'indexed'
+                      ? t('settings') === 'Settings'
+                        ? 'Vectors ready'
+                        : '已建立向量索引'
+                      : t('settings') === 'Settings'
+                        ? 'Index pending vectors'
+                        : '补齐待处理向量'}
+                    {indexStatuses[d.id] &&
+                      ` · ${indexStatuses[d.id].completed}/${indexStatuses[d.id].total}`}
                   </button>
                 )}
                 <button onClick={() => go(() => api('/knowledge/' + d.id, undefined, 'DELETE'))}>

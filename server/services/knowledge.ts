@@ -31,6 +31,20 @@ export class Knowledge {
     CREATE TRIGGER IF NOT EXISTS vectors_update AFTER UPDATE OF vector ON chunks BEGIN UPDATE vector_revision SET version=version+1 WHERE id=1; END;
     CREATE TRIGGER IF NOT EXISTS vectors_delete AFTER DELETE ON chunks BEGIN UPDATE vector_revision SET version=version+1 WHERE id=1; END;`);
   }
+  indexStatus(key: string) {
+    const rows = this.store.db
+      .prepare(
+        `SELECT count(*) total, sum(CASE WHEN json_valid(vector) AND json_extract(vector,'$.model')=? THEN 1 ELSE 0 END) completed FROM chunks WHERE document_id=?`,
+      )
+      .get(this.embeddings?.fingerprint() || '', key) as any;
+    const completed = Number(rows.completed || 0),
+      total = Number(rows.total || 0);
+    return {
+      completed,
+      total,
+      status: total && completed === total ? 'indexed' : completed ? 'partial' : 'pending',
+    };
+  }
   diagnostics(scopes: string[]) {
     const documents = this.store
       .list<any>('document')
@@ -174,13 +188,18 @@ export class Knowledge {
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
   }
-  async index(key: string, allowed: () => boolean = () => true) {
+  async index(
+    key: string,
+    allowed: () => boolean = () => true,
+    onProgress?: (value: { completed: number; total: number }) => void,
+  ) {
     assert(this.embeddings?.enabled(), 'EMBEDDING_DISABLED', 'Configure embeddings first.');
     const fingerprint = this.embeddings!.fingerprint();
     const rows = this.store.db
       .prepare('SELECT id,text,vector FROM chunks WHERE document_id=? ORDER BY ordinal')
       .all(key) as any[];
     assert(rows.length, 'NOT_FOUND', 'Document not found');
+    onProgress?.({ completed: 0, total: rows.length });
     for (let i = 0; i < rows.length; i += 16) {
       const batch = rows.slice(i, i + 16).filter((r) => {
         try {
@@ -189,7 +208,10 @@ export class Knowledge {
           return true;
         }
       });
-      if (!batch.length) continue;
+      if (!batch.length) {
+        onProgress?.({ completed: Math.min(i + 16, rows.length), total: rows.length });
+        continue;
+      }
       const vectors: number[][] = [];
       for (const row of batch) {
         assert(
@@ -227,7 +249,9 @@ export class Knowledge {
               batch[n].id,
             );
       });
+      onProgress?.({ completed: Math.min(i + 16, rows.length), total: rows.length });
     }
+    onProgress?.({ completed: rows.length, total: rows.length });
     return { chunks: rows.length, model: this.embeddings!.fingerprint() };
   }
   async hybrid(

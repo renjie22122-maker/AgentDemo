@@ -12,3 +12,11 @@ Parse failures are recorded per file and do not block siblings. Unchanged failed
 The UI shows partial completion, individual errors and excluded-entry counts. Empty tool searches include scope-limited diagnostics distinguishing disabled knowledge, no imported documents, import failure and no matches. Chat history is not automatically a knowledge document.
 
 Regression coverage includes corrupt-file isolation, retry/reuse, more than 1,000 sources, and a real PDF larger than 25 MB with 501 pages whose final-page text must be recovered.
+
+## Visible progress and incremental updates
+
+Maintenance publishes its current stage, file, elapsed time and processed counts. Scanning and retrieval evaluation have indeterminate progress; parsing and indexing use separate denominators, not an invented overall time estimate. Vector status counts persisted chunks for the currently selected model. Progress polling does not replace an edited folder draft.
+
+Adding a folder within the same scope preserves source identities and content hashes. Unchanged successful documents are not reparsed and completed vector jobs for the same model are reused. Moving a file or changing scope creates a different source identity; changing embedding models requires new vectors.
+
+The scope-level batch indexing button queues a durable background job for current document versions without enabling folder watching or graph extraction. Jobs reuse existing vectors, remain scope-bound, and refuse to continue after an embedding destination change. The ordinary automatic-maintenance mode already indexes imported documents; manual batch indexing is a repair/one-shot alternative.

@@ -24,6 +24,19 @@ export interface SourceIssue {
   attempts: number;
   revision: number;
 }
+export interface KnowledgeProgress {
+  phase: 'scanning' | 'checking' | 'parsing' | 'graph' | 'indexing' | 'evaluating' | 'done';
+  startedAt: number;
+  updatedAt: number;
+  currentFile?: string;
+  completed: number;
+  total?: number;
+  discovered: number;
+  imported: number;
+  reused: number;
+  failed: number;
+  chunks?: { completed: number; total: number };
+}
 export interface KnowledgeWatch {
   id: string;
   enabled: boolean;
@@ -31,6 +44,7 @@ export interface KnowledgeWatch {
   target: string;
   revision: number;
   status?: string;
+  progress?: KnowledgeProgress;
   scan?: { files: number; updated: number; unchanged: number };
   issues?: SourceIssue[];
   skipped?: { excluded: number; links: number; unsupported: number };
@@ -87,6 +101,70 @@ export class KnowledgeMaintenance {
       this.task = undefined;
     }));
   }
+  queueIndex(scope: string) {
+    if (!this.embeddings.enabled()) throw Error('Configure embeddings first.');
+    const old = this.store.maybe<any>('knowledge-batch', scope);
+    const target = this.embeddings.fingerprint();
+    if (old?.target === target && ['pending', 'running'].includes(old.status)) return old;
+    const documents = this.store
+      .list<any>('document')
+      .filter((d) => d.scope === scope && d.validUntil == null)
+      .map((d) => d.id);
+    return this.store.put('knowledge-batch', {
+      id: scope,
+      target,
+      documents,
+      status: 'pending',
+      completed: 0,
+      failed: 0,
+      createdAt: Date.now(),
+    });
+  }
+  private async batches() {
+    for (const job of this.store.list<any>('knowledge-batch')) {
+      if (!['pending', 'running'].includes(job.status) || this.stopped) continue;
+      const allowed = () =>
+        !this.stopped &&
+        this.embeddings.enabled() &&
+        this.embeddings.fingerprint() === job.target &&
+        (!job.id.startsWith('project:') ||
+          (!!this.store.maybe<any>('project', job.id.slice(8)) &&
+            !this.store.maybe<any>('project', job.id.slice(8))?.removedAt));
+      if (!allowed()) {
+        this.store.put('knowledge-batch', {
+          ...job,
+          status: 'needs_attention',
+          error: 'Scope or embedding destination changed; submit again after review.',
+        });
+        continue;
+      }
+      for (let n = job.completed; n < job.documents.length; n++) {
+        if (!allowed()) break;
+        const doc = this.store.maybe<any>('document', job.documents[n]);
+        try {
+          this.store.put('knowledge-batch', { ...job, status: 'running', currentFile: doc?.name });
+          if (doc?.scope === job.id && doc.validUntil == null)
+            await this.knowledge.index(doc.id, allowed);
+        } catch (e: any) {
+          job.failed++;
+          job.error = String(e.message || e).slice(0, 500);
+        }
+        if (!allowed()) break;
+        job.completed = n + 1;
+        this.store.put('knowledge-batch', {
+          ...job,
+          status:
+            job.completed === job.documents.length
+              ? job.failed
+                ? 'partial'
+                : 'completed'
+              : 'running',
+          currentFile: undefined,
+        });
+      }
+      if (!job.documents.length) this.store.put('knowledge-batch', { ...job, status: 'completed' });
+    }
+  }
   recheck(scope: string) {
     const w = this.store.get<KnowledgeWatch>('knowledge-watch', scope);
     if (!w.enabled || !this.current(w))
@@ -103,6 +181,7 @@ export class KnowledgeMaintenance {
       nextRetryAt: undefined,
       failedRevision: undefined,
       status: 'pending',
+      progress: undefined,
       error: undefined,
       diagnosis: undefined,
     });
@@ -127,6 +206,7 @@ export class KnowledgeMaintenance {
     );
   }
   private async scan() {
+    await this.batches();
     for (let w of this.store.list<KnowledgeWatch>('knowledge-watch')) {
       if (!w.enabled || this.stopped) continue;
       const connectionRevision = this.embeddings.recoveryRevision?.();
@@ -137,6 +217,29 @@ export class KnowledgeMaintenance {
       if (w.error?.startsWith('Source exceeds 25 MB:')) w = this.recheck(w.id);
       if ((w.failures || 0) >= 3 && w.failureKind !== 'transient') continue;
       if ((w.nextRetryAt || 0) > Date.now()) continue;
+      const progress: KnowledgeProgress = {
+        phase: 'scanning',
+        startedAt: Date.now(),
+        updatedAt: Date.now(),
+        completed: 0,
+        discovered: 0,
+        imported: 0,
+        reused: 0,
+        failed: 0,
+      };
+      let lastPublished = 0;
+      const publish = (patch: Partial<KnowledgeProgress>, force = false) => {
+        Object.assign(progress, patch);
+        if (!this.current(w) || (!force && Date.now() - lastPublished < 400)) return;
+        lastPublished = Date.now();
+        progress.updatedAt = lastPublished;
+        const current = this.store.get<KnowledgeWatch>('knowledge-watch', w.id);
+        this.store.put('knowledge-watch', {
+          ...current,
+          status: 'processing',
+          progress: { ...progress },
+        });
+      };
       try {
         if (w.target !== this.embeddings.fingerprint() || !this.embeddings.enabled())
           throw Error(
@@ -172,6 +275,7 @@ export class KnowledgeMaintenance {
         const scope = project && new FileScope(project.folders, this.directory);
         const walk = async (path: string): Promise<void> => {
           if (!this.current(w)) throw Error('Configuration changed');
+          publish({ currentFile: path, discovered: files.length });
           if (++visited % 128 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
           if (!scope) throw Error('Folder watching requires a project scope');
           // Resolve against the matching declared project root.
@@ -213,7 +317,12 @@ export class KnowledgeMaintenance {
             skipped.unsupported++;
           }
         };
-        this.store.put('knowledge-watch', { ...w, status: 'processing', error: undefined });
+        this.store.put('knowledge-watch', {
+          ...w,
+          status: 'processing',
+          error: undefined,
+          progress,
+        });
         for (const path of w.paths) {
           try {
             await walk(path);
@@ -226,11 +335,22 @@ export class KnowledgeMaintenance {
         }
         let updated = 0,
           unchanged = 0;
-        for (const path of [...new Set(files)]) {
+        const uniqueFiles = [...new Set(files)];
+        publish(
+          {
+            phase: 'checking',
+            total: uniqueFiles.length,
+            completed: 0,
+            discovered: uniqueFiles.length,
+          },
+          true,
+        );
+        for (const path of uniqueFiles) {
           if (!this.current(w)) return;
           const key = createHash('sha256')
             .update(w.id + '|' + path)
             .digest('hex');
+          publish({ phase: 'checking', currentFile: path }, true);
           const old = this.store.maybe<any>('knowledge-source', key);
           let hash: string | undefined;
           try {
@@ -250,6 +370,7 @@ export class KnowledgeMaintenance {
               unchanged++;
               continue;
             }
+            publish({ phase: 'parsing', currentFile: path }, true);
             const text = await this.parse(path);
             if ((await fileHash(path)) !== hash)
               throw Error('Source changed during parsing; retry on the next scan.');
@@ -275,6 +396,16 @@ export class KnowledgeMaintenance {
               if (doc) this.store.put('document', { ...doc, validUntil: Date.now() });
               this.store.put('knowledge-source', { ...old, removed: true });
             }
+          } finally {
+            publish(
+              {
+                completed: progress.completed + 1,
+                imported: updated,
+                reused: unchanged,
+                failed: issues.length,
+              },
+              true,
+            );
           }
         }
         if (!this.current(w)) return;
@@ -287,11 +418,24 @@ export class KnowledgeMaintenance {
           if (doc) this.store.put('document', { ...doc, validUntil: Date.now() });
           this.store.put('knowledge-source', { ...old, removed: true });
         }
-        for (const doc of this.store
+        const documents = this.store
           .list<any>('document')
-          .filter((d) => d.scope === w.id && d.validUntil == null)) {
+          .filter((d) => d.scope === w.id && d.validUntil == null);
+        publish(
+          { phase: 'indexing', completed: 0, total: documents.length, currentFile: undefined },
+          true,
+        );
+        for (const doc of documents) {
           if (!this.current(w)) return;
           try {
+            publish(
+              {
+                phase: this.config && w.graphProfileId && w.graphTarget ? 'graph' : 'indexing',
+                currentFile: doc.name,
+                chunks: undefined,
+              },
+              true,
+            );
             if (this.config && w.graphProfileId && w.graphTarget)
               await new GraphLearning(this.store, this.config).document(
                 doc,
@@ -312,7 +456,12 @@ export class KnowledgeMaintenance {
               attempts: (attempt?.attempts || 0) + 1,
               status: 'running',
             });
-            await this.knowledge.index(doc.id, () => !!this.current(w));
+            publish({ phase: 'indexing' }, true);
+            await this.knowledge.index(
+              doc.id,
+              () => !!this.current(w),
+              (chunks) => publish({ chunks }),
+            );
             if (!this.current(w)) return;
             this.store.put('knowledge-index-job', {
               id: key,
@@ -322,13 +471,29 @@ export class KnowledgeMaintenance {
           } catch (e) {
             issue(doc.name, 'index', e);
             indexError = e;
+          } finally {
+            publish(
+              { completed: progress.completed + 1, failed: issues.length, chunks: undefined },
+              true,
+            );
           }
         }
+        publish(
+          { phase: 'evaluating', currentFile: undefined, total: undefined, completed: 0 },
+          true,
+        );
         if (this.current(w)) await evaluateRetrieval(this.store, this.knowledge, w.id);
         if (this.current(w))
           this.store.put('knowledge-watch', {
             ...w,
             status: issues.length ? 'partial' : 'synced',
+            progress: {
+              ...progress,
+              phase: 'done',
+              updatedAt: Date.now(),
+              completed: uniqueFiles.length,
+              total: uniqueFiles.length,
+            },
             issues,
             skipped,
             scan: { files: new Set(files).size, updated, unchanged },
@@ -352,6 +517,7 @@ export class KnowledgeMaintenance {
           this.store.put('knowledge-watch', {
             ...w,
             status: 'needs_attention',
+            progress: { ...progress, updatedAt: Date.now() },
             failures: (w.failures || 0) + 1,
             failureKind: transient ? 'transient' : 'configuration',
             diagnosis,
