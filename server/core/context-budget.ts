@@ -16,7 +16,16 @@ export function messageUnits(messages: ModelMessage[]) {
     (n, m) =>
       n +
       8 +
-      textUnits(JSON.stringify({ ...m, images: undefined })) +
+      textUnits(
+        JSON.stringify({
+          role: m.role,
+          content: m.content,
+          calls: m.calls,
+          callId: m.callId,
+          reasoning: m.reasoning,
+          native: m.native,
+        }),
+      ) +
       2048 * (m.images?.length || 0),
     0,
   );

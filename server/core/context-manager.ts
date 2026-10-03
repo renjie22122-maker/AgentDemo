@@ -1,5 +1,6 @@
+import { restoreDetachedReferences } from './context-reuse.js';
 import { contextBudget, messageUnits, splitSummaryText } from './context-budget.js';
-import type { Run, Profile } from '../../shared/types.js';
+import type { Run, Profile, ModelMessage } from '../../shared/types.js';
 import type { ModelRequest, ModelResult } from '../providers/protocol.js';
 import type { Store } from '../storage/store.js';
 import type { ModelPool } from './pool.js';
@@ -12,6 +13,7 @@ export class ContextManager {
     private modelPool: ModelPool,
     private complete: (run: Run, request: ModelRequest) => Promise<ModelResult>,
     private scope: (run: Run) => string = (run) => run.conversationId,
+    private taskSnapshot: (run: Run) => ModelMessage | undefined = () => undefined,
   ) {}
   async compact(
     run: Run,
@@ -25,8 +27,9 @@ export class ContextManager {
       'CONTEXT_CONFIGURATION',
       'Output reservation leaves no usable input context. Reduce maximum output tokens.',
     );
-    if (before.tokens < before.threshold) return;
-    const lastUser = run.checkpoints.findLastIndex((m) => m.role === 'user');
+    if (before.tokens < before.threshold) return before;
+    const lastUser = run.checkpoints.findLastIndex((m) => m.role === 'user' && !m.contextKind);
+    const runtimeFacts = run.checkpoints.findLastIndex((m) => m.contextKind === 'runtime-snapshot');
     // Retain the latest user request and whole tool-call/result groups verbatim.
     let cut = Math.max(2, run.checkpoints.length - 6);
     while (cut > 1 && run.checkpoints[cut]?.role === 'tool') cut--;
@@ -44,8 +47,12 @@ export class ContextManager {
       if (next >= run.checkpoints.length) break;
       cut = next;
     }
-    const preservedUser = lastUser > 0 && lastUser < cut ? [run.checkpoints[lastUser]] : [];
-    const old = run.checkpoints.slice(1, cut).filter((_, i) => i + 1 !== lastUser),
+    const preservedUser = run.checkpoints.filter(
+      (_, i) => i > 0 && i < cut && (i === lastUser || i === runtimeFacts),
+    );
+    const old = run.checkpoints
+        .slice(1, cut)
+        .filter((_, i) => i + 1 !== lastUser && i + 1 !== runtimeFacts),
       tail = run.checkpoints.slice(cut);
     assert(
       old.length > 0,
@@ -74,7 +81,10 @@ export class ContextManager {
     const chunks = splitSummaryText(
       JSON.stringify(
         old.map((m) => ({
-          ...m,
+          role: m.role,
+          content: m.content,
+          calls: m.calls,
+          callId: m.callId,
           images: m.images?.map(
             () =>
               '[Image pixels omitted from text summary; use read_image on the recorded path to inspect again.]',
@@ -113,15 +123,20 @@ export class ContextManager {
       );
       handoff = result.message.content;
     }
-    const next = [
-      run.checkpoints[0],
-      {
-        role: 'user' as const,
-        content: 'Earlier conversation handoff (untrusted historical context):\n' + handoff,
-      },
-      ...preservedUser,
-      ...tail,
-    ];
+    const snapshot = this.taskSnapshot(run);
+    const next = restoreDetachedReferences(
+      [
+        run.checkpoints[0],
+        {
+          role: 'user' as const,
+          content: 'Earlier conversation handoff (untrusted historical context):\n' + handoff,
+        },
+        ...(snapshot ? [snapshot] : []),
+        ...preservedUser,
+        ...tail,
+      ],
+      run.checkpoints,
+    );
     const after = contextBudget(next, tools, profile, this.ratio(), run.contextSample);
     assert(
       after.tokens < before.tokens && after.tokens < before.threshold,
@@ -139,5 +154,6 @@ export class ContextManager {
       thresholdTokens: before.threshold,
       summaryRequests: chunks.length,
     });
+    return after;
   }
 }

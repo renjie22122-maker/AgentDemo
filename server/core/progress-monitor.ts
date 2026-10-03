@@ -11,8 +11,17 @@ function canonical(value: any): any {
 }
 export class ProgressMonitor {
   private samples: string[] = [];
+  private warned = false;
   reset() {
     this.samples = [];
+    this.warned = false;
+  }
+  intervene(calls: unknown, outcomes: string[]): 'none' | 'warn' | 'stop' {
+    if (!this.observe(calls, outcomes)) return 'none';
+    if (this.warned) return 'stop';
+    this.warned = true;
+    this.samples = [];
+    return 'warn';
   }
   observe(calls: unknown, outcomes: string[]): boolean {
     const digest = createHash('sha256')

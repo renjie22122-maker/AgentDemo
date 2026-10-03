@@ -121,3 +121,112 @@ Team rosters and boards remain run-scoped: continue members first, then configur
 the new team with the returned current run IDs and current coordinator run ID.
 This preserves member continuity, not a cross-run migration of old task-board
 ownership or completed approvals.
+
+### Context reuse and trajectory intervention
+
+The fixed instruction prefix is separated from a per-activation runtime snapshot.
+The snapshot is contextual data, not an authorization grant; access enforcement
+continues in host tools. Compaction preserves the latest snapshot and latest real
+user request verbatim. Tool schemas are not pruned by an opaque relevance score.
+
+Successful text-only read_file/read_skill_file/list_files results of at least
+1,024 characters may use an exact-result reference when the full result of the
+same operation remains in the recent context. Reads still execute and audit events
+retain the returned output. Changed file reads may use a verified unified diff against a retained full base,
+only when it is substantially smaller. Images, errors, commands and spilled
+outputs are not deduplicated. When compaction removes the reference target, the
+retained result is expanded before committing the compacted checkpoint.
+context.result_reused records saved characters, not estimated billing savings.
+
+Four repeated identical trajectories first emit a corrective observation. A second
+repeated cycle stops the run; new user input resets this monitor. This is a bounded
+repetition detector, not a general measure of confidence, semantic progress or plan
+drift. Host permissions, effects and finalization are not controlled by it.
+
+A two-request synthetic deepseek-flash check on 2026-10-03 returned the correct
+target in both variants: full input 2,918 tokens (0 cached), short-reference input
+1,584 tokens (1,408 cached), output 4 tokens each. This demonstrates this fixture,
+not a general savings rate or a guaranteed provider cache hit. Client code neither
+stores provider KV tensors nor reuses model answers for stateful tasks.
+
+Further work includes richer semantic decision snapshots, optional per-component
+context allocation policies and held-out end-to-end evaluations.
+Tianshu-harness's convergence detector is a useful comparison for observation-led
+interventions, but its composite scores and reported cache rates are not evidence
+of AgentDemo performance. No Tianshu code was copied into this implementation.
+
+### Cognitive control plane (bounded first version)
+
+CognitiveController adapts runtime observations to the pure cognitivePolicy
+reducer. Per-run persisted state contains a bounded trajectory fingerprint window,
+tool-error streak, task-board completion changes, blocked task IDs and pending or
+stale verification. Context pressure records the existing context estimator and
+threshold; ContextManager remains the only compaction authority.
+
+The policy proposes change-strategy, diagnose-blocker, review-plan or verify
+advice. Repeating the same unchanged cycle after warning can stop the current run.
+Advice has a four-batch cooldown and bounded condition deduplication. New user
+input resets observations, and observed task-board advancement clears a repetition
+warning. Signals are observations, not proof of semantic progress: confidence and
+semantic drift remain unknown rather than fabricated scores.
+
+The policy has no filesystem, command, permission or approval ports. Advice cannot
+change authorization, replay an operation or satisfy final verification. Durable
+cognitive.observed and cognitive.intervention events record decisions; the latter
+appears in the collapsible execution activity in English or Chinese. Human/approval
+waits do not count as failed tool batches. Commands with observed nonzero exit,
+timeout or cancellation count as failures; JSON read from files does not.
+
+This does not implement autonomous semantic replanning, learned intervention
+selection, counterfactual evaluation or a general confidence estimator. Those
+require separate task-level evaluation; adding more intervention prompts is not
+evidence of improved autonomous success.
+
+### Cache integrity and control feedback
+
+Fresh changed file reads can use an exact unified patch against a full source still
+in the checkpoint. Argument keys are canonicalized; folder/path/range differences
+remain distinct. Deltas never chain, must reproduce the current read exactly and
+must be less than 65% of the full result. On compaction, detached references are
+restored with patch and result-hash verification. Local restoration metadata is
+excluded from model-context estimates and provider payloads.
+
+Compaction also receives an independently constructed host task snapshot through
+an injected port: current board revision, states, dependencies, verification status
+and unknown-effect identifiers. It prioritizes unfinished tasks and explicitly
+counts omitted entries. It is not a substitute for the full acceptance contract.
+
+The context inspector shows provider-reported cache usage, model/system/tool
+prefix changes and component character counts. Observations persist hashes rather
+than raw prompts in the prefix index. Prefix diagnostics are conversation-scoped;
+a changed prefix is not proof of a cache miss, and an unchanged prefix is not a
+promise of a hit. No model responses or command outcomes are replayed from cache.
+
+Event-driven waits are excluded from stagnation detection. Error advice can recur
+after an observed recovery; obsolete cycle warnings expire. Each advice records
+bounded follow-up observations: task advancement, error clearance, trajectory
+change or no observed change. These are correlated observations, not a causal
+measurement that the advice improved quality.
+
+An additional synthetic deepseek-flash changed-file check on 2026-10-03 correctly
+read the updated target from a 445-character diff instead of a 5,307-character
+full repeat (1,687 API input tokens, 4 output tokens). This is one smoke check.
+
+### Optimization rollout status
+
+| Proposal                    | Implemented boundary                                                    |
+| --------------------------- | ----------------------------------------------------------------------- |
+| Tool-result reuse           | Fresh read, exact reference; execution never skipped                    |
+| Tool-output delta           | Verified file-read diff; full fallback when not beneficial              |
+| Context snapshot            | Model handoff plus authoritative bounded task-state snapshot            |
+| Context budget              | Total calibrated limit plus per-component character diagnostics         |
+| Dynamic tool schema         | Capability/permission filtering; no opaque relevance pruning            |
+| Incremental file context    | Retained-base file-read diffs, not a global filesystem cache            |
+| Task context compiler       | Existing scoped delegation and task snapshot, not a universal compiler  |
+| Prompt cache                | Stable instruction prefix, provider usage and prefix-change diagnostics |
+| Semantic/model-answer cache | Intentionally absent for stateful work                                  |
+
+Hard truncation of requirements, TTL-based reuse of test success, dynamic removal
+of needed tools, and cached answers used as execution evidence are not optimization
+goals. Component measurements inform future allocation; they do not silently
+discard task constraints.

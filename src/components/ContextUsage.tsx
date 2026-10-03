@@ -45,6 +45,91 @@ export function ContextUsage({ data, zh }: { data: any; zh: boolean }) {
           ? '新增内容、工具定义和图片计入估算。达到红线后在下一次请求前尝试压缩；估算不是精确 tokenizer 计数。'
           : 'New content, tool definitions and images are estimated. Compression is attempted before the next request at the red marker. Estimates are not exact tokenizer counts.'}
       </small>
+
+      {(data.cache || data.cognitive) && (
+        <details>
+          <summary>{zh ? '缓存与运行观察' : 'Cache and runtime observations'}</summary>
+          {data.cache && (
+            <>
+              <p>
+                {zh ? '最近请求缓存输入' : 'Cached input in latest request'}:{' '}
+                {data.cache.cachedTokens?.toLocaleString() ?? '—'} /{' '}
+                {data.cache.inputTokens?.toLocaleString() ?? '—'} tokens
+                {data.cache.cacheRatio != null
+                  ? ' · ' + (data.cache.cacheRatio * 100).toFixed(1) + '%'
+                  : ''}
+              </p>
+              <p>
+                {zh ? '与上次请求比较' : 'Compared with previous request'}:{' '}
+                {!data.cache.baseline
+                  ? zh
+                    ? '尚无基线'
+                    : 'No baseline yet'
+                  : [
+                      data.cache.routeChanged
+                        ? zh
+                          ? '模型路由变化'
+                          : 'Model route changed'
+                        : null,
+                      data.cache.systemChanged
+                        ? zh
+                          ? '固定提示词变化'
+                          : 'System prefix changed'
+                        : null,
+                      data.cache.toolsChanged
+                        ? zh
+                          ? '工具定义变化'
+                          : 'Tool schemas changed'
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' / ') ||
+                    (zh
+                      ? '模型、固定提示词及工具定义未变'
+                      : 'Model, system prefix and tool schemas unchanged')}
+              </p>
+              <small>
+                {zh
+                  ? '这里只记录变化和 API 用量，不保证缓存命中，也不能据此确定未命中的原因。'
+                  : 'These are changes and API usage, not a cache guarantee or proof of why a request missed the cache.'}
+              </small>
+              <ul>
+                {Object.entries(data.cache.characters || {}).map(([key, value]) => (
+                  <li key={key}>
+                    {
+                      (
+                        {
+                          instructions: zh ? '固定指令' : 'Instructions',
+                          runtime: zh ? '运行信息' : 'Runtime context',
+                          toolResults: zh ? '工具结果' : 'Tool results',
+                          conversation: zh ? '对话' : 'Conversation',
+                          toolSchemas: zh ? '工具定义' : 'Tool schemas',
+                        } as Record<string, string>
+                      )[key]
+                    }
+                    : {Number(value).toLocaleString()} {zh ? '字符' : 'characters'}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {data.cognitive && (
+            <p>
+              {zh ? '运行观察' : 'Runtime observations'}: {zh ? '受阻任务' : 'Blocked tasks'}{' '}
+              {data.cognitive.signals.blockedTasks} · {zh ? '待验证' : 'Pending verification'}{' '}
+              {data.cognitive.signals.pendingVerification} ·{' '}
+              {zh ? '本批工具错误' : 'Tool errors in latest batch'}{' '}
+              {data.cognitive.signals.toolErrors}
+              <br />
+              <small>
+                {zh
+                  ? '这是记录状态，不是模型信心或正确性评分。'
+                  : 'These are recorded states, not confidence or correctness scores.'}
+              </small>
+            </p>
+          )}
+        </details>
+      )}
     </section>
   );
 }

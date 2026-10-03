@@ -656,6 +656,7 @@ export function App() {
           'model.started',
           'context.compacting',
           'context.compacted',
+          'cognitive.intervention',
           'model.protocol-repair',
           'child.started',
         ].includes(e.type)

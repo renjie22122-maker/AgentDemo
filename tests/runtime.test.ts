@@ -157,7 +157,7 @@ test('child receives parent session knowledge, minimal context and no write tool
   let parentCalls = 0;
   const f = await setup({
     complete: async (r) => {
-      const facts = r.messages[0].content;
+      const facts = r.messages.findLast((m) => m.contextKind === 'runtime-snapshot')!.content;
       const isChild = facts.includes('"depth":1');
       if (isChild) {
         assert(!r.tools.some((t) => t.name === 'write_file' || t.name === 'run_command'));
@@ -290,7 +290,7 @@ test('missing provider usage is marked incomplete, not known zero', async () => 
 test('recursive children finish under one shared model pool', async () => {
   const f = await setup({
     complete: async (request) => {
-      const facts = request.messages[0].content;
+      const facts = request.messages.findLast((m) => m.contextKind === 'runtime-snapshot')!.content;
       if (facts.includes('"depth":2')) return result('Grandchild result');
       const spawned = request.messages.some(
         (m) => m.role === 'tool' && m.content.includes('runId'),
@@ -323,7 +323,9 @@ test('isolated worker tools, project preservation and delegation off are enforce
   const { writeFile, readFile } = await import('node:fs/promises');
   const f = await setup({
     complete: async (r) => {
-      const child = r.messages[0].content.includes('"depth":1');
+      const child = r.messages
+        .findLast((m) => m.contextKind === 'runtime-snapshot')!
+        .content.includes('"depth":1');
       if (child) {
         assert.ok(r.tools.some((t) => t.name === 'write_file'));
         assert.ok(
@@ -518,6 +520,11 @@ test('compaction retains current request and complete tool groups; failed summar
   const messages: any[] = [
     { role: 'system', content: 'System' },
     { role: 'user', content: 'Current requirement must remain verbatim.' },
+    {
+      role: 'user',
+      contextKind: 'runtime-snapshot',
+      content: 'Current scope must remain verbatim.',
+    },
   ];
   for (let i = 0; i < 12; i++)
     messages.push(
@@ -539,10 +546,25 @@ test('compaction retains current request and complete tool groups; failed summar
     modelCalls: 0,
     estimatedUsd: null,
   };
+  f.store.put('task-board', {
+    id: run.id,
+    revision: 7,
+    tasks: [{ id: 'remaining', status: 'blocked', kind: 'verify', dependsOn: [], owner: null }],
+  });
   await (f.runtime as any).contextManager.compact(run, profile, new AbortController().signal, []);
+  assert.ok(
+    run.checkpoints.some(
+      (m: any) =>
+        m.contextKind === 'task-snapshot' &&
+        m.content.includes('"revision":7') &&
+        m.content.includes('"status":"blocked"'),
+    ),
+  );
+
   assert.ok(
     run.checkpoints.some((m: any) => m.content === 'Current requirement must remain verbatim.'),
   );
+  assert.ok(run.checkpoints.some((m: any) => m.content === 'Current scope must remain verbatim.'));
   const calls = new Set(run.checkpoints.flatMap((m: any) => (m.calls || []).map((c: any) => c.id)));
   for (const m of run.checkpoints) if (m.role === 'tool') assert.ok(calls.has(m.callId));
   run.checkpoints = structuredClone(messages);
@@ -1558,6 +1580,38 @@ test('writable continuation retains unmerged copy then renews merged copy, concu
       f.store.get<any>('conversation', child.conversationId).isolationId,
       ctx.conversation.isolationId,
     );
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});
+
+test('cognitive control warns in the real loop and allows a changed approach to finish', async () => {
+  let calls = 0;
+  const f = await setup({
+    complete: async (req) => {
+      calls++;
+      if (calls <= 4)
+        return result('', [
+          { id: 'read-cycle-' + calls, name: 'list_files', arguments: { path: '.' } },
+        ]);
+      assert.ok(
+        req.messages.some(
+          (m) => m.contextKind === 'runtime-advice' && m.content.includes('Repeated calls'),
+        ),
+      );
+      return result('The repeated reads gave no new evidence; report the empty directory.');
+    },
+  });
+  try {
+    const run = f.runtime.start('chat', 'Inspect the directory without modifying files.');
+    await until(() => ['completed', 'failed'].includes(f.store.get<any>('run', run.id).status));
+    assert.equal(f.store.get<any>('run', run.id).status, 'completed');
+    const interventions = f.store.events('chat').filter((e) => e.type === 'cognitive.intervention');
+    assert.equal(interventions.length, 1);
+    assert.equal(interventions[0].data.action, 'change-strategy');
+    assert.equal(f.store.get<any>('cognitive-state', run.id).signals.repeated, true);
+    assert.equal(f.store.unknownEffects('chat').length, 0);
   } finally {
     await f.runtime.shutdown();
     f.store.close();

@@ -1,3 +1,10 @@
+import {
+  prefixObservation,
+  comparePrefix,
+  contextComponents,
+  type PrefixObservation,
+} from './cache-observation.js';
+import { runtimeMessages } from './context-reuse.js';
 import { RunPump } from './run-pump.js';
 import { RunEnvironment } from './run-environment.js';
 import { BackgroundCommands } from '../services/background-commands.js';
@@ -12,7 +19,7 @@ import { DelegationManager } from './delegation-manager.js';
 import { sampleContext } from './context-budget.js';
 import { ContextManager } from './context-manager.js';
 import { ToolExecutor } from './tool-executor.js';
-import { ProgressMonitor } from './progress-monitor.js';
+import { CognitiveController } from './cognitive-controller.js';
 import { MemoryIndex } from '../services/memory-index.js';
 import { EventEmitter } from 'node:events';
 import { readFile } from 'node:fs/promises';
@@ -94,6 +101,7 @@ export class Runtime implements TeamPort {
       this.modelPool,
       (run, req) => this.complete(run, req),
       (run) => this.executionScope(run),
+      (run) => new CognitiveController(store).snapshot(run),
     );
     this.toolExecutor = new ToolExecutor(store, this.registry, directory);
     this.delegation = new DelegationManager(store, config, directory, this.bus, {
@@ -406,6 +414,17 @@ export class Runtime implements TeamPort {
         run.lastContextInputTokens = result.usage.input;
         run.lastContextMeasuredAt = Date.now();
       }
+      if (input.messages[0]?.content !== COMPACT) {
+        const current = prefixObservation(input.messages, input.tools, input.profile);
+        const previous = this.store.maybe<PrefixObservation>('prompt-prefix', run.conversationId);
+        this.store.put('prompt-prefix', { ...current, id: run.conversationId });
+        const diagnostics = {
+          ...comparePrefix(previous || undefined, current, result.usage),
+          ...contextComponents(input.messages, input.tools),
+        };
+        this.store.put('context-diagnostics', { id: run.id, ...diagnostics });
+        this.store.event(run.conversationId, run.id, 'context.cache_observed', diagnostics);
+      }
       this.account(run, result.usage, input.profile, id());
       return result;
     } catch (error) {
@@ -489,13 +508,14 @@ export class Runtime implements TeamPort {
               content:
                 'Interrupted before a durable result. Do not assume success or repeat an unknown effect.',
             });
-      if (run.checkpoints[0]?.role === 'system')
-        run.checkpoints[0] = { role: 'system', content: system };
-      else run.checkpoints.unshift({ role: 'system', content: system });
+      const [stableSystem, ...facts] = runtimeMessages(system);
+      if (run.checkpoints[0]?.role === 'system') run.checkpoints[0] = stableSystem;
+      else run.checkpoints.unshift(stableSystem);
+      run.checkpoints.push(...facts);
       let steps = 0,
         protocolRepairs = 0,
         lengthRepairs = 0;
-      const progress = new ProgressMonitor();
+      const cognitive = new CognitiveController(this.store);
       while (!signal.aborted) {
         await this.dispatchTeam(run);
         const feedback = this.store
@@ -515,7 +535,7 @@ export class Runtime implements TeamPort {
           .sort((a, b) => Number(a.id) - Number(b.id));
         const messages = pending;
         this.steering.set(key, []);
-        if (messages.length) progress.reset();
+        if (messages.length) cognitive.reset(run);
         for (const message of messages) {
           const last: Run['checkpoints'][number] = { role: 'user', content: message.content };
           run.checkpoints.push(last);
@@ -548,7 +568,13 @@ export class Runtime implements TeamPort {
           });
         if (run.maxSteps && steps >= run.maxSteps)
           throw new Error('The explicitly configured model-step limit was reached.');
-        await this.contextManager.compact(run, profile, signal, this.registry.specs(ctx));
+        const contextBudget = await this.contextManager.compact(
+          run,
+          profile,
+          signal,
+          this.registry.specs(ctx),
+        );
+        cognitive.context(run, contextBudget);
         this.store.put('run', run);
         steps++;
         const messageId = id();
@@ -706,15 +732,20 @@ export class Runtime implements TeamPort {
           return;
         }
         const outputs = await this.toolExecutor.batch(run, result.message.calls, ctx);
-        if (
-          progress.observe(
-            result.message.calls.map((c) => [c.name, c.arguments]),
-            outputs,
-          )
-        )
-          throw new Error(
-            'Repeated tool trajectories with unchanged results. Change the approach before continuing.',
-          );
+        const decision = cognitive.observe(
+          run,
+          result.message.calls.map((c) => [c.name, c.arguments]),
+          outputs,
+        );
+        if (decision.action === 'stop') throw new Error(decision.reason);
+        if (decision.message) {
+          run.checkpoints.push({
+            role: 'user',
+            contextKind: 'runtime-advice',
+            content: '[Runtime observation; not a new user request] ' + decision.message,
+          });
+          this.store.put('run', run);
+        }
       }
       throw abortError();
     } catch (error) {

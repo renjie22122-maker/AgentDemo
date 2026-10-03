@@ -43,7 +43,7 @@ export class RunEnvironment {
       .map((s) => ({ id: s.id, name: s.name, description: s.description }));
     const query = [
       ...run.checkpoints
-        .filter((m) => m.role === 'user')
+        .filter((m) => m.role === 'user' && !m.contextKind)
         .slice(-2)
         .map((m) => m.content),
       ...pending,

@@ -129,39 +129,58 @@ export function Message({
 export function Activity({ events, t }: { events: AgentEvent[]; t: (s: string) => string }) {
   const [expanded, setExpanded] = useState(false);
   const label = (e: AgentEvent) =>
-    e.type === 'command.background'
-      ? (t('settings') === 'Settings' ? 'Background command' : '后台命令') +
+    e.type === 'cognitive.intervention'
+      ? (t('settings') === 'Settings' ? 'Runtime guidance' : '运行建议') +
         ' · ' +
-        e.data.status +
-        ' · ' +
-        e.data.id +
-        ' · ' +
-        (e.data.stdout || e.data.error || '').slice(-160)
-      : e.type === 'command.progress'
-        ? (t('settings') === 'Settings' ? 'Command running' : '命令执行中') +
+        ((t('settings') === 'Settings'
+          ? {
+              'change-strategy': 'Change approach',
+              'diagnose-blocker': 'Inspect tool failures',
+              'review-plan': 'Review blocked tasks',
+              verify: 'Check pending verification',
+              stop: 'Repeated loop stopped',
+            }
+          : ({
+              'change-strategy': '调整重复操作',
+              'diagnose-blocker': '检查工具失败原因',
+              'review-plan': '检查受阻任务',
+              verify: '补充待完成验证',
+              stop: '重复循环已停止',
+            } as Record<string, string>))[e.data.action as string] || e.data.action)
+      : e.type === 'command.background'
+        ? (t('settings') === 'Settings' ? 'Background command' : '后台命令') +
           ' · ' +
-          e.data.elapsedSeconds +
-          's / ' +
-          e.data.timeoutSeconds +
-          's · ' +
-          (e.data.outputTail || (t('settings') === 'Settings' ? 'Waiting for output' : '等待输出'))
-        : e.type === 'model.protocol-repair'
-          ? t(
-              e.data.code === 'OUTPUT_LIMIT'
-                ? 'Output truncated; retrying one smaller step'
-                : 'Correcting model tool arguments',
-            )
-          : e.type === 'model.started'
-            ? 'Thinking · ' + e.data.model
-            : e.type === 'tool.started'
-              ? e.data.name + ' · ' + JSON.stringify(e.data.arguments)
-              : e.type === 'tool.completed'
-                ? e.data.name + ' · ' + String(e.data.output).slice(0, 100)
-                : e.type === 'context.compacted'
-                  ? 'Context compacted'
-                  : e.type === 'child.started'
-                    ? 'Delegated · ' + e.data.task
-                    : e.type;
+          e.data.status +
+          ' · ' +
+          e.data.id +
+          ' · ' +
+          (e.data.stdout || e.data.error || '').slice(-160)
+        : e.type === 'command.progress'
+          ? (t('settings') === 'Settings' ? 'Command running' : '命令执行中') +
+            ' · ' +
+            e.data.elapsedSeconds +
+            's / ' +
+            e.data.timeoutSeconds +
+            's · ' +
+            (e.data.outputTail ||
+              (t('settings') === 'Settings' ? 'Waiting for output' : '等待输出'))
+          : e.type === 'model.protocol-repair'
+            ? t(
+                e.data.code === 'OUTPUT_LIMIT'
+                  ? 'Output truncated; retrying one smaller step'
+                  : 'Correcting model tool arguments',
+              )
+            : e.type === 'model.started'
+              ? 'Thinking · ' + e.data.model
+              : e.type === 'tool.started'
+                ? e.data.name + ' · ' + JSON.stringify(e.data.arguments)
+                : e.type === 'tool.completed'
+                  ? e.data.name + ' · ' + String(e.data.output).slice(0, 100)
+                  : e.type === 'context.compacted'
+                    ? 'Context compacted'
+                    : e.type === 'child.started'
+                      ? 'Delegated · ' + e.data.task
+                      : e.type;
   return (
     <details
       className="activity"

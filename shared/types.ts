@@ -24,6 +24,10 @@ export interface ToolCall {
   arguments: Record<string, unknown>;
 }
 export interface ModelMessage {
+  contextKind?: 'runtime-snapshot' | 'runtime-advice' | 'task-snapshot';
+  contextSourceCallId?: string;
+  contextPatch?: string;
+  contextResultHash?: string;
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
   calls?: ToolCall[];

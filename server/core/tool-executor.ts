@@ -1,3 +1,4 @@
+import { compressToolText } from './context-reuse.js';
 import { verificationPaths } from '../services/verification-inputs.js';
 import { prepareCoordination } from '../services/coordination-journal.js';
 import { stamp } from '../services/verification.js';
@@ -53,10 +54,26 @@ export class ToolExecutor {
       },
       (call, output) => {
         run.status = 'running';
+        const reused = compressToolText(run.checkpoints, call, output, images.has(call.id));
+        const contextOutput = reused.content;
+        if (contextOutput !== output)
+          this.store.event(run.conversationId, run.id, 'context.result_reused', {
+            callId: call.id,
+            mode: reused.mode,
+            sourceCallId: reused.sourceCallId,
+            savedCharacters: output.length - contextOutput.length,
+          });
         run.checkpoints.push({
           role: 'tool',
           callId: call.id,
-          content: output,
+          content: contextOutput,
+          ...(reused.sourceCallId
+            ? {
+                contextSourceCallId: reused.sourceCallId,
+                contextPatch: reused.patch,
+                contextResultHash: reused.resultHash,
+              }
+            : {}),
           ...(images.has(call.id) ? { images: images.get(call.id) } : {}),
         });
         this.store.put('run', run);

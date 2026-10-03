@@ -65,6 +65,15 @@ export function inspectionRoutes(app: FastifyInstance, runtime: Runtime) {
       model: profile?.model || '',
       capacity: profile?.contextWindow || null,
       total: messages.length,
+      cache: run ? store.maybe<any>('context-diagnostics', run.id) : null,
+      cognitive: run
+        ? (() => {
+            const state = store.maybe<any>('cognitive-state', run.id);
+            return state
+              ? { step: state.step, signals: state.signals, adviceOutcome: state.lastAdviceOutcome }
+              : null;
+          })()
+        : null,
       measuredInput: run?.lastContextInputTokens ?? null,
       measuredAt: run?.lastContextMeasuredAt ?? null,
       compressionThresholdTokens: budget?.threshold ?? null,
