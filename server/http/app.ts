@@ -922,13 +922,11 @@ export async function createApp(options: { directory: string; dist?: string; run
     return {
       ...watch,
       batch: store.maybe('knowledge-batch', req.query.scope),
-      indexStatuses: Object.fromEntries(
-        store
-          .list<any>('document')
-          .filter((d) => d.scope === req.query.scope && d.validUntil == null)
-          .map((d) => [d.id, runtime.knowledge.indexStatus(d.id)]),
-      ),
     };
+  });
+  app.get<{ Querystring: { scope: string } }>('/api/knowledge/index-status', async (req) => {
+    checkScope(req.query.scope);
+    return runtime.knowledge.indexStatuses(req.query.scope);
   });
   app.post('/api/knowledge/batch-index', async (req) => {
     const { scope } = z.object({ scope: z.string() }).parse(req.body);

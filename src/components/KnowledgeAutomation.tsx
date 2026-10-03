@@ -45,50 +45,75 @@ export function KnowledgeAutomation({
     }
   };
   const [graph, setGraph] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const statusCallback = useRef(onStatus);
+  statusCallback.current = onStatus;
+  const mutation = useRef(0);
   useEffect(() => {
-    let alive = true;
-    let loading = false;
-    const load = () => {
-      if (!scope || loading) return;
-      loading = true;
-      return;
-      api('/knowledge/maintenance?scope=' + encodeURIComponent(scope))
-        .then((v) => {
-          if (alive) {
-            setValue(v);
-            onStatus?.(v.indexStatuses || {});
-          }
-        })
-        .catch((e: any) => {
-          if (alive) notify(e.message);
-        })
-        .finally(() => {
-          loading = false;
-        });
-    };
+    const controller = new AbortController();
+    let loading = false,
+      statsLoading = false,
+      initialized = false;
     setPicking(false);
     setValue(null);
     setPaths('');
-    if (scope)
-      api('/knowledge/maintenance?scope=' + encodeURIComponent(scope))
-        .then((v: any) => {
-          if (alive) {
-            setValue(v);
-            onStatus?.(v.indexStatuses || {});
-            setPaths(v.paths.join('\n'));
-            setGraph(!!v.graphProfileId);
-          }
-        })
-        .catch((e: any) => {
-          if (alive) notify(e.message);
-        });
-    const timer = setInterval(load, 2000);
+    setLoadError('');
+    const load = async () => {
+      if (!scope || loading || controller.signal.aborted) return;
+      loading = true;
+      const revision = mutation.current;
+      try {
+        const v = await api(
+          '/knowledge/maintenance?scope=' + encodeURIComponent(scope),
+          undefined,
+          undefined,
+          {},
+          controller.signal,
+        );
+        if (controller.signal.aborted || revision !== mutation.current) return;
+        setValue(v);
+        setLoadError('');
+        if (!initialized) {
+          setPaths(v.paths.join('\n'));
+          setGraph(!!v.graphProfileId);
+          initialized = true;
+        }
+      } catch (e: any) {
+        if (!controller.signal.aborted) setLoadError(e.message);
+      } finally {
+        loading = false;
+      }
+    };
+    const stats = async () => {
+      if (!scope || statsLoading || controller.signal.aborted) return;
+      statsLoading = true;
+      try {
+        const v = await api(
+          '/knowledge/index-status?scope=' + encodeURIComponent(scope),
+          undefined,
+          undefined,
+          {},
+          controller.signal,
+        );
+        if (!controller.signal.aborted) statusCallback.current?.(v);
+      } catch {
+        /* Progress remains usable when optional vector statistics are unavailable. */
+      } finally {
+        statsLoading = false;
+      }
+    };
+    void load();
+    void stats();
+    const timer = setInterval(load, 1000),
+      statTimer = setInterval(stats, 10000);
     return () => {
-      alive = false;
+      controller.abort();
       clearInterval(timer);
+      clearInterval(statTimer);
     };
   }, [scope]);
   const save = async (enabled: boolean) => {
+    mutation.current++;
     const previous = value;
     setValue({ ...value, enabled });
     setBusy(true);
@@ -111,7 +136,16 @@ export function KnowledgeAutomation({
       setBusy(false);
     }
   };
-  if (!scope || !value) return null;
+  if (!scope) return null;
+  if (!value)
+    return (
+      <section className="panel" aria-busy="true">
+        <h3>{zh ? '文件夹导入与自动维护' : 'Folder import and automatic maintenance'}</h3>
+        <p role="status">
+          {loadError || (zh ? '正在读取维护状态…' : 'Loading maintenance status…')}
+        </p>
+      </section>
+    );
   return (
     <section className="panel">
       <h3>{zh ? '文件夹导入与自动维护' : 'Folder import and automatic maintenance'}</h3>
@@ -212,6 +246,7 @@ export function KnowledgeAutomation({
         {value.status === 'partial' ? (zh ? '部分完成' : 'Partially completed') : value.status}
         {value.updatedAt ? ' · ' + new Date(value.updatedAt).toLocaleString() : ''}
       </p>
+      {loadError && <p role="alert">{loadError}</p>}
       <KnowledgeProgress value={value} zh={zh} />
       <button
         disabled={busy || ['pending', 'running'].includes(value.batch?.status)}

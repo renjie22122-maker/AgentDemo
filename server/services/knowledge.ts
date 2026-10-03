@@ -31,6 +31,27 @@ export class Knowledge {
     CREATE TRIGGER IF NOT EXISTS vectors_update AFTER UPDATE OF vector ON chunks BEGIN UPDATE vector_revision SET version=version+1 WHERE id=1; END;
     CREATE TRIGGER IF NOT EXISTS vectors_delete AFTER DELETE ON chunks BEGIN UPDATE vector_revision SET version=version+1 WHERE id=1; END;`);
   }
+  indexStatuses(scope: string) {
+    const rows = this.store.db
+      .prepare(
+        `SELECT document_id id,count(*) total,sum(CASE WHEN json_valid(vector) AND json_extract(vector,'$.model')=? THEN 1 ELSE 0 END) completed FROM chunks WHERE scope=? GROUP BY document_id`,
+      )
+      .all(this.embeddings?.fingerprint() || '', scope) as any[];
+    return Object.fromEntries(
+      rows.map((r) => {
+        const completed = Number(r.completed || 0),
+          total = Number(r.total);
+        return [
+          r.id,
+          {
+            completed,
+            total,
+            status: total && completed === total ? 'indexed' : completed ? 'partial' : 'pending',
+          },
+        ];
+      }),
+    );
+  }
   indexStatus(key: string) {
     const rows = this.store.db
       .prepare(
