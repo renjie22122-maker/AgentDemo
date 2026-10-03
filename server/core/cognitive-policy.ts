@@ -9,10 +9,16 @@ export interface CognitiveState {
   lastAdvice: number;
   errorStreak: number;
   completedTasks: string[];
+  verifiedEvidence?: string[];
   noticed: string[];
   lastAdviceOutcome?: {
     action: Intervention;
-    result: 'task-advanced' | 'errors-cleared' | 'trajectory-changed' | 'no-observed-change';
+    result:
+      | 'verification-recorded'
+      | 'task-advanced'
+      | 'errors-cleared'
+      | 'trajectory-changed'
+      | 'no-observed-change';
     afterBatches: number;
   };
   pendingAdvice?: { action: Intervention; step: number; digest: string; errors: number };
@@ -29,7 +35,12 @@ export interface CognitiveState {
 export interface Observation {
   calls: unknown;
   outputs: string[];
-  tasks: { id: string; status: string; kind?: string; verification?: { status: string } }[];
+  tasks: {
+    id: string;
+    status: string;
+    kind?: string;
+    verification?: { status: string; eventId?: number };
+  }[];
 }
 export interface Decision {
   state: CognitiveState;
@@ -75,6 +86,13 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
   const completed = observation.tasks
     .filter((t) => t.status === 'done' && t.verification?.status !== 'stale')
     .map((t) => t.id);
+  const verified = observation.tasks
+    .filter((t) => t.verification?.status === 'checked' && Number.isFinite(t.verification.eventId))
+    .map((t) => t.id + ':' + t.verification!.eventId);
+  const newEvidence = verified.filter(
+    (key) => !(state.verifiedEvidence || []).includes(key),
+  ).length;
+  state.verifiedEvidence = verified;
   const advanced = completed.filter((id) => !state.completedTasks.includes(id)).length;
   state.completedTasks = completed;
   if (advanced) {
@@ -135,13 +153,15 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
     const pending = state.pendingAdvice;
     const afterBatches = state.step - pending.step;
     const failed = errors > 0;
-    const result = advanced
-      ? 'task-advanced'
-      : pending.errors && !failed
-        ? 'errors-cleared'
-        : trajectory !== pending.digest
-          ? 'trajectory-changed'
-          : 'no-observed-change';
+    const result = newEvidence
+      ? 'verification-recorded'
+      : advanced
+        ? 'task-advanced'
+        : pending.errors && !failed
+          ? 'errors-cleared'
+          : trajectory !== pending.digest
+            ? 'trajectory-changed'
+            : 'no-observed-change';
     state.lastAdviceOutcome = { action: pending.action, result, afterBatches };
     if (result !== 'no-observed-change' || afterBatches >= 4) state.pendingAdvice = undefined;
   }

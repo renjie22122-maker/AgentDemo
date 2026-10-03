@@ -1,0 +1,832 @@
+{
+  "schemaVersion": 1,
+  "kind": "paired-context-control",
+  "model": "deepseek-flash",
+  "config": {
+    "tasks": 6,
+    "runs": 3,
+    "variants": ["off", "on"],
+    "summaryPasses": 2
+  },
+  "scope": "Synthetic retention and action-choice probes. No code execution or general autonomous success claim. Shared summary costs reported separately; request order alternates by round.",
+  "summary": [
+    {
+      "enabled": false,
+      "samples": 18,
+      "passed": 13,
+      "inputTokens": 2958,
+      "cachedTokens": 128,
+      "meanLatencyMs": 1607.388888888889,
+      "totalCostUsd": null
+    },
+    {
+      "enabled": true,
+      "samples": 18,
+      "passed": 16,
+      "inputTokens": 3798,
+      "cachedTokens": 896,
+      "meanLatencyMs": 1634.5555555555557,
+      "totalCostUsd": null
+    }
+  ],
+  "summaries": [
+    {
+      "case": "bilingual",
+      "round": 0,
+      "pass": 0,
+      "usage": {
+        "input": 6145,
+        "output": 372,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 5460
+    },
+    {
+      "case": "bilingual",
+      "round": 0,
+      "pass": 1,
+      "usage": {
+        "input": 523,
+        "output": 372,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 2446
+    },
+    {
+      "case": "revision",
+      "round": 0,
+      "pass": 0,
+      "usage": {
+        "input": 6148,
+        "output": 438,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 3799
+    },
+    {
+      "case": "revision",
+      "round": 0,
+      "pass": 1,
+      "usage": {
+        "input": 595,
+        "output": 349,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 4693
+    },
+    {
+      "case": "bilingual",
+      "round": 1,
+      "pass": 0,
+      "usage": {
+        "input": 6145,
+        "output": 367,
+        "cached": 6011,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 3705
+    },
+    {
+      "case": "bilingual",
+      "round": 1,
+      "pass": 1,
+      "usage": {
+        "input": 531,
+        "output": 334,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 2607
+    },
+    {
+      "case": "revision",
+      "round": 1,
+      "pass": 0,
+      "usage": {
+        "input": 6148,
+        "output": 225,
+        "cached": 6014,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 3164
+    },
+    {
+      "case": "revision",
+      "round": 1,
+      "pass": 1,
+      "usage": {
+        "input": 371,
+        "output": 205,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 2074
+    },
+    {
+      "case": "bilingual",
+      "round": 2,
+      "pass": 0,
+      "usage": {
+        "input": 6145,
+        "output": 266,
+        "cached": 6011,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 3542
+    },
+    {
+      "case": "bilingual",
+      "round": 2,
+      "pass": 1,
+      "usage": {
+        "input": 420,
+        "output": 260,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 2410
+    },
+    {
+      "case": "revision",
+      "round": 2,
+      "pass": 0,
+      "usage": {
+        "input": 6148,
+        "output": 331,
+        "cached": 6014,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 3723
+    },
+    {
+      "case": "revision",
+      "round": 2,
+      "pass": 1,
+      "usage": {
+        "input": 493,
+        "output": 328,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 3523
+    }
+  ],
+  "records": [
+    {
+      "case": "bilingual",
+      "round": 0,
+      "enabled": false,
+      "passed": true,
+      "text": "{\n  \"version\": \"v1\",\n  \"retention\": 17,\n  \"comments\": \"Chinese\"\n}",
+      "usage": {
+        "input": 434,
+        "output": 25,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1763,
+      "treatment": "source-ledger"
+    },
+    {
+      "case": "bilingual",
+      "round": 0,
+      "enabled": true,
+      "passed": true,
+      "text": "{\"version\":\"v1\",\"retention\":17,\"comments\":\"Chinese\"}",
+      "usage": {
+        "input": 530,
+        "output": 15,
+        "cached": 384,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1582,
+      "treatment": "source-ledger"
+    },
+    {
+      "case": "revision",
+      "round": 0,
+      "enabled": false,
+      "passed": true,
+      "text": "{\n  \"version\": \"v2\",\n  \"retention\": 11,\n  \"comments\": \"Chinese\"\n}",
+      "usage": {
+        "input": 411,
+        "output": 25,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1312,
+      "treatment": "source-ledger"
+    },
+    {
+      "case": "revision",
+      "round": 0,
+      "enabled": true,
+      "passed": true,
+      "text": "{\"version\":\"v2\",\"retention\":11,\"comments\":\"Chinese\"}",
+      "usage": {
+        "input": 520,
+        "output": 15,
+        "cached": 128,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1737,
+      "treatment": "source-ledger"
+    },
+    {
+      "case": "repeat",
+      "round": 0,
+      "enabled": false,
+      "passed": true,
+      "text": "change_strategy",
+      "usage": {
+        "input": 59,
+        "output": 3,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1754,
+      "formatPassed": true,
+      "treatment": "advisory"
+    },
+    {
+      "case": "repeat",
+      "round": 0,
+      "enabled": true,
+      "passed": true,
+      "text": "{\"decision\": \"change_strategy\", \"reason\": \"Four identical reads returned identical data with no progress, so repeating the same evidence-gathering approach is futile; a different strategy is needed to make progress.\"}",
+      "usage": {
+        "input": 96,
+        "output": 43,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1746,
+      "formatPassed": false,
+      "treatment": "advisory"
+    },
+    {
+      "case": "wait",
+      "round": 0,
+      "enabled": false,
+      "passed": false,
+      "text": "continue",
+      "usage": {
+        "input": 63,
+        "output": 1,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1524,
+      "formatPassed": false,
+      "treatment": "identical-prompt"
+    },
+    {
+      "case": "wait",
+      "round": 0,
+      "enabled": true,
+      "passed": true,
+      "text": "{\"option\": \"wait\"}",
+      "usage": {
+        "input": 63,
+        "output": 6,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1894,
+      "formatPassed": false,
+      "treatment": "identical-prompt"
+    },
+    {
+      "case": "healthy",
+      "round": 0,
+      "enabled": false,
+      "passed": false,
+      "text": "{\n  \"decision\": \"verify\"\n}",
+      "usage": {
+        "input": 65,
+        "output": 9,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1854,
+      "formatPassed": false,
+      "treatment": "identical-prompt"
+    },
+    {
+      "case": "healthy",
+      "round": 0,
+      "enabled": true,
+      "passed": false,
+      "text": "{\"action\": \"verify\"}",
+      "usage": {
+        "input": 65,
+        "output": 6,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 2082,
+      "formatPassed": false,
+      "treatment": "identical-prompt"
+    },
+    {
+      "case": "verification",
+      "round": 0,
+      "enabled": false,
+      "passed": true,
+      "text": "{\"option\": \"verify\"}",
+      "usage": {
+        "input": 59,
+        "output": 6,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1385,
+      "formatPassed": false,
+      "treatment": "advisory"
+    },
+    {
+      "case": "verification",
+      "round": 0,
+      "enabled": true,
+      "passed": true,
+      "text": "{\n  \"decision\": \"verify\",\n  \"reason\": \"Implementation is marked done, but required independent verification is still pending. The correct next step is to verify the current artifact against the acceptance criteria before claiming delivery.\"\n}",
+      "usage": {
+        "input": 97,
+        "output": 45,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1460,
+      "formatPassed": false,
+      "treatment": "advisory"
+    },
+    {
+      "case": "bilingual",
+      "round": 1,
+      "enabled": true,
+      "passed": true,
+      "text": "{\"version\":\"v1\",\"retention\":17,\"comments\":\"Chinese\"}",
+      "usage": {
+        "input": 492,
+        "output": 15,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1967,
+      "treatment": "source-ledger"
+    },
+    {
+      "case": "bilingual",
+      "round": 1,
+      "enabled": false,
+      "passed": true,
+      "text": "{\n  \"version\": \"v1\",\n  \"retention\": 17,\n  \"comments\": \"Chinese\"\n}",
+      "usage": {
+        "input": 396,
+        "output": 25,
+        "cached": 128,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1577,
+      "treatment": "source-ledger"
+    },
+    {
+      "case": "revision",
+      "round": 1,
+      "enabled": true,
+      "passed": true,
+      "text": "{\"version\":\"v2\",\"retention\":11,\"comments\":\"Chinese\"}",
+      "usage": {
+        "input": 376,
+        "output": 15,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1532,
+      "treatment": "source-ledger"
+    },
+    {
+      "case": "revision",
+      "round": 1,
+      "enabled": false,
+      "passed": true,
+      "text": "{\"version\":\"v2\",\"retention\":11,\"comments\":\"Chinese\"}",
+      "usage": {
+        "input": 267,
+        "output": 15,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1681,
+      "treatment": "source-ledger"
+    },
+    {
+      "case": "repeat",
+      "round": 1,
+      "enabled": true,
+      "passed": true,
+      "text": "{\"decision\": \"change_strategy\", \"reason\": \"Four identical reads returned identical data with no progress; repeating the same approach is unproductive, so a different evidence-gathering strategy is needed.\"}",
+      "usage": {
+        "input": 96,
+        "output": 41,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1654,
+      "formatPassed": false,
+      "treatment": "advisory"
+    },
+    {
+      "case": "repeat",
+      "round": 1,
+      "enabled": false,
+      "passed": true,
+      "text": "change_strategy",
+      "usage": {
+        "input": 59,
+        "output": 3,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1289,
+      "formatPassed": true,
+      "treatment": "advisory"
+    },
+    {
+      "case": "wait",
+      "round": 1,
+      "enabled": true,
+      "passed": true,
+      "text": "{\n  \"decision\": \"wait\"\n}",
+      "usage": {
+        "input": 63,
+        "output": 9,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1491,
+      "formatPassed": false,
+      "treatment": "identical-prompt"
+    },
+    {
+      "case": "wait",
+      "round": 1,
+      "enabled": false,
+      "passed": true,
+      "text": "{\"option\": \"wait\"}",
+      "usage": {
+        "input": 63,
+        "output": 6,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1212,
+      "formatPassed": false,
+      "treatment": "identical-prompt"
+    },
+    {
+      "case": "healthy",
+      "round": 1,
+      "enabled": true,
+      "passed": false,
+      "text": "{\"action\": \"verify\"}",
+      "usage": {
+        "input": 65,
+        "output": 6,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1647,
+      "formatPassed": false,
+      "treatment": "identical-prompt"
+    },
+    {
+      "case": "healthy",
+      "round": 1,
+      "enabled": false,
+      "passed": false,
+      "text": "{\"action\": \"verify\"}",
+      "usage": {
+        "input": 65,
+        "output": 6,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1499,
+      "formatPassed": false,
+      "treatment": "identical-prompt"
+    },
+    {
+      "case": "verification",
+      "round": 1,
+      "enabled": true,
+      "passed": true,
+      "text": "{\n  \"choice\": \"verify\",\n  \"reason\": \"Implementation is marked done but independent verification is still pending, so the appropriate next step is to verify the current artifact against the acceptance criteria.\"\n}",
+      "usage": {
+        "input": 97,
+        "output": 41,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1496,
+      "formatPassed": false,
+      "treatment": "advisory"
+    },
+    {
+      "case": "verification",
+      "round": 1,
+      "enabled": false,
+      "passed": true,
+      "text": "{\"choice\": \"verify\"}",
+      "usage": {
+        "input": 59,
+        "output": 6,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1343,
+      "formatPassed": false,
+      "treatment": "advisory"
+    },
+    {
+      "case": "bilingual",
+      "round": 2,
+      "enabled": false,
+      "passed": true,
+      "text": "{\n  \"version\": \"v1\",\n  \"retention\": 17,\n  \"comments\": \"Chinese\"\n}",
+      "usage": {
+        "input": 322,
+        "output": 25,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1987,
+      "treatment": "source-ledger"
+    },
+    {
+      "case": "bilingual",
+      "round": 2,
+      "enabled": true,
+      "passed": true,
+      "text": "{\"version\":\"v1\",\"retention\":17,\"comments\":\"Chinese\"}",
+      "usage": {
+        "input": 418,
+        "output": 15,
+        "cached": 256,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1207,
+      "treatment": "source-ledger"
+    },
+    {
+      "case": "revision",
+      "round": 2,
+      "enabled": false,
+      "passed": true,
+      "text": "{\n  \"version\": \"v2\",\n  \"retention\": 11,\n  \"comments\": \"Chinese\"\n}",
+      "usage": {
+        "input": 390,
+        "output": 25,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1591,
+      "treatment": "source-ledger"
+    },
+    {
+      "case": "revision",
+      "round": 2,
+      "enabled": true,
+      "passed": true,
+      "text": "{\"version\":\"v2\",\"retention\":11,\"comments\":\"Chinese\"}",
+      "usage": {
+        "input": 499,
+        "output": 15,
+        "cached": 128,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1389,
+      "treatment": "source-ledger"
+    },
+    {
+      "case": "repeat",
+      "round": 2,
+      "enabled": false,
+      "passed": true,
+      "text": "change_strategy",
+      "usage": {
+        "input": 59,
+        "output": 3,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1471,
+      "formatPassed": true,
+      "treatment": "advisory"
+    },
+    {
+      "case": "repeat",
+      "round": 2,
+      "enabled": true,
+      "passed": true,
+      "text": "change_strategy",
+      "usage": {
+        "input": 96,
+        "output": 3,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1609,
+      "formatPassed": true,
+      "treatment": "advisory"
+    },
+    {
+      "case": "wait",
+      "round": 2,
+      "enabled": false,
+      "passed": false,
+      "text": "continue",
+      "usage": {
+        "input": 63,
+        "output": 1,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 2001,
+      "formatPassed": false,
+      "treatment": "identical-prompt"
+    },
+    {
+      "case": "wait",
+      "round": 2,
+      "enabled": true,
+      "passed": true,
+      "text": "{\"action\": \"wait\"}",
+      "usage": {
+        "input": 63,
+        "output": 6,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1401,
+      "formatPassed": false,
+      "treatment": "identical-prompt"
+    },
+    {
+      "case": "healthy",
+      "round": 2,
+      "enabled": false,
+      "passed": false,
+      "text": "{\"action\": \"verify\"}",
+      "usage": {
+        "input": 65,
+        "output": 6,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 2221,
+      "formatPassed": false,
+      "treatment": "identical-prompt"
+    },
+    {
+      "case": "healthy",
+      "round": 2,
+      "enabled": true,
+      "passed": true,
+      "text": "continue",
+      "usage": {
+        "input": 65,
+        "output": 1,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1253,
+      "formatPassed": true,
+      "treatment": "identical-prompt"
+    },
+    {
+      "case": "verification",
+      "round": 2,
+      "enabled": false,
+      "passed": true,
+      "text": "{\"option\": \"verify\"}",
+      "usage": {
+        "input": 59,
+        "output": 6,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 1469,
+      "formatPassed": false,
+      "treatment": "advisory"
+    },
+    {
+      "case": "verification",
+      "round": 2,
+      "enabled": true,
+      "passed": true,
+      "text": "{\"option\": \"verify\"}",
+      "usage": {
+        "input": 97,
+        "output": 6,
+        "cached": 0,
+        "measured": true
+      },
+      "costUsd": null,
+      "latencyMs": 2275,
+      "formatPassed": false,
+      "treatment": "advisory"
+    }
+  ],
+  "graderVersion": 2,
+  "gradingNote": "Raw responses preserved. Grade semantic action separately from response format; reject conflicting JSON choices. Wait/healthy variants have identical prompts, so differences are sampling variation, not an intervention effect.",
+  "byTreatment": [
+    {
+      "treatment": "source-ledger",
+      "enabled": false,
+      "samples": 6,
+      "passed": 6
+    },
+    {
+      "treatment": "source-ledger",
+      "enabled": true,
+      "samples": 6,
+      "passed": 6
+    },
+    {
+      "treatment": "advisory",
+      "enabled": false,
+      "samples": 6,
+      "passed": 6
+    },
+    {
+      "treatment": "advisory",
+      "enabled": true,
+      "samples": 6,
+      "passed": 6
+    },
+    {
+      "treatment": "identical-prompt",
+      "enabled": false,
+      "samples": 6,
+      "passed": 1
+    },
+    {
+      "treatment": "identical-prompt",
+      "enabled": true,
+      "samples": 6,
+      "passed": 4
+    }
+  ]
+}

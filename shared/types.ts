@@ -24,7 +24,8 @@ export interface ToolCall {
   arguments: Record<string, unknown>;
 }
 export interface ModelMessage {
-  contextKind?: 'runtime-snapshot' | 'runtime-advice' | 'task-snapshot';
+  contextKind?:
+    'runtime-snapshot' | 'runtime-advice' | 'task-snapshot' | 'source-ledger' | 'history-handoff';
   contextSourceCallId?: string;
   contextPatch?: string;
   contextResultHash?: string;

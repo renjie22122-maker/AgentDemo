@@ -131,3 +131,13 @@ test('a cleared failure condition can generate new advice if the problem recurs'
   }
   assert.equal(advice, 2);
 });
+
+test('new host verification is distinguished from a changed tool trajectory', () => {
+  let state = initialCognitiveState();
+  for (let i = 0; i < 4; i++) state = cognitivePolicy(state, observation).state;
+  const decision = cognitivePolicy(state, {
+    ...observation,
+    tasks: [{ id: 'verify', status: 'done', verification: { status: 'checked', eventId: 71 } }],
+  });
+  assert.equal(decision.state.lastAdviceOutcome?.result, 'verification-recorded');
+});

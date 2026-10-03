@@ -519,6 +519,10 @@ test('compaction retains current request and complete tool groups; failed summar
   const profile = { ...f.config.profile(), contextWindow: 32768, maxOutputTokens: 2048 };
   const messages: any[] = [
     { role: 'system', content: 'System' },
+    {
+      role: 'user',
+      content: 'Earlier constraint: do not delete the source dataset; preserve 17 days of logs.',
+    },
     { role: 'user', content: 'Current requirement must remain verbatim.' },
     {
       role: 'user',
@@ -567,6 +571,21 @@ test('compaction retains current request and complete tool groups; failed summar
   assert.ok(run.checkpoints.some((m: any) => m.content === 'Current scope must remain verbatim.'));
   const calls = new Set(run.checkpoints.flatMap((m: any) => (m.calls || []).map((c: any) => c.id)));
   for (const m of run.checkpoints) if (m.role === 'tool') assert.ok(calls.has(m.callId));
+  assert.ok(
+    run.checkpoints.some(
+      (m: any) =>
+        m.contextKind === 'source-ledger' && m.content.includes('do not delete the source dataset'),
+    ),
+  );
+  for (let i = 0; i < 12; i++)
+    run.checkpoints.push({ role: 'assistant', content: 'more investigation '.repeat(4000) });
+  await (f.runtime as any).contextManager.compact(run, profile, new AbortController().signal, []);
+  assert.ok(
+    run.checkpoints.some(
+      (m: any) =>
+        m.contextKind === 'source-ledger' && m.content.includes('do not delete the source dataset'),
+    ),
+  );
   run.checkpoints = structuredClone(messages);
   const before = JSON.stringify(run.checkpoints);
   fail = true;

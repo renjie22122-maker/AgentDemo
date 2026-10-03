@@ -230,3 +230,39 @@ Hard truncation of requirements, TTL-based reuse of test success, dynamic remova
 of needed tools, and cached answers used as execution evidence are not optimization
 goals. Component measurements inform future allocation; they do not silently
 discard task constraints.
+
+### Request-source retention and economic accounting
+
+Compaction now externalizes older user-role request text into a content-addressed,
+verbatim chronological source ledger. Existing ledgers are validated before use;
+after compaction, the complete ordered request-source sequence must match. Latest
+requests remain directly visible. Runtime advice and generated handoffs are marked
+separately and cannot masquerade as new user requests. Quoted source content remains
+quoted context, not permissions. Contradictory originals are retained rather than
+silently resolved by the summarizer.
+
+This deliberately preserves request text rather than claiming perfect semantic
+constraint extraction. If protected sources alone exceed the budget, compaction
+fails before a summary call and asks for a narrower active task or larger context.
+No requirement is silently discarded to achieve a token target. Older unmarked
+legacy user-role messages are conservatively retained.
+
+Compaction events record summary-call estimated USD from measured API usage and
+configured prices, elapsed time, saved-token estimates and break-even requests.
+The estimate includes cold-prefix rewarming against the pre-compaction observed
+cache ratio. Missing prices or measurements remain unknown. Context limits still
+take precedence: the runtime does not exceed model capacity merely to preserve
+cache warmth. Economic estimates are not provider invoices or guaranteed savings.
+
+Cognitive feedback distinguishes new host verification receipts from changed
+trajectories. A receipt is still evidence provenance, not semantic correctness.
+The paired synthetic evaluation in evals/context-control compares source-ledger
+and advisory behavior on/off, reports all samples and shared summarization costs,
+and does not equate a smoke test with end-to-end coding performance.
+
+The first paired run used six synthetic cases x three repetitions. Both
+source-retention and actual advisory cases tied at 6/6 per variant. Aggregate
+13/18 off versus 16/18 on was driven by identical-prompt controls and is not an
+implementation benefit. Added context increased graded-request input tokens.
+Price configuration was incomplete, so cost totals remain unknown. Raw responses
+and the versioned semantic grader are retained under evals.

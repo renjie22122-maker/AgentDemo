@@ -132,6 +132,26 @@ export function ContextPanel({ id, zh, live }: { id: string; zh: boolean; live: 
                 <p key={i} className="inspection-note">
                   {new Date(c.at).toLocaleTimeString()} · {c.beforeCharacters} → {c.afterCharacters}{' '}
                   {zh ? '字符' : 'characters'}
+                  {c.economics && (
+                    <>
+                      <br />
+                      {zh ? '摘要费用' : 'Summary cost'}:{' '}
+                      {c.economics.summaryUsd == null
+                        ? zh
+                          ? '未知'
+                          : 'unknown'
+                        : '$' + c.economics.summaryUsd.toFixed(6)}
+                      {' · '}
+                      {zh ? '估算回本请求数' : 'Estimated break-even requests'}:{' '}
+                      {c.economics.breakEvenRequests ?? (zh ? '未知' : 'unknown')}
+                      <br />
+                      <small>
+                        {zh
+                          ? '包含缓存重建估算；取决于后续上下文与缓存比例，不是账单保证。'
+                          : 'Includes estimated cache rewarm; depends on future context and cache ratio, not guaranteed billing savings.'}
+                      </small>
+                    </>
+                  )}
                 </p>
               ))}
             </details>

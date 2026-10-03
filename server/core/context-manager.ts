@@ -1,3 +1,5 @@
+import { sourceLedger, assertSourceRetention } from './source-ledger.js';
+import { usageCost, compactionEconomics } from './context-economics.js';
 import { restoreDetachedReferences } from './context-reuse.js';
 import { contextBudget, messageUnits, splitSummaryText } from './context-budget.js';
 import type { Run, Profile, ModelMessage } from '../../shared/types.js';
@@ -50,9 +52,31 @@ export class ContextManager {
     const preservedUser = run.checkpoints.filter(
       (_, i) => i > 0 && i < cut && (i === lastUser || i === runtimeFacts),
     );
+    const protectedMessages = run.checkpoints
+      .slice(1, cut)
+      .filter(
+        (m, i) =>
+          i + 1 !== lastUser &&
+          (m.contextKind === 'source-ledger' || (m.role === 'user' && !m.contextKind)),
+      );
+    const protectedLedger = sourceLedger(protectedMessages);
+    const protectedBudget = contextBudget(
+      [run.checkpoints[0], ...(protectedLedger ? [protectedLedger] : []), ...preservedUser],
+      tools,
+      profile,
+      this.ratio(),
+      run.contextSample,
+    );
+    assert(
+      protectedBudget.tokens < before.threshold,
+      'PROTECTED_CONTEXT_TOO_LARGE',
+      'Original requests alone exceed the available context. Narrow the active task or use a larger context; no protected sources were discarded.',
+    );
     const old = run.checkpoints
         .slice(1, cut)
-        .filter((_, i) => i + 1 !== lastUser && i + 1 !== runtimeFacts),
+        .filter(
+          (m, i) => i + 1 !== lastUser && i + 1 !== runtimeFacts && !protectedMessages.includes(m),
+        ),
       tail = run.checkpoints.slice(cut);
     assert(
       old.length > 0,
@@ -94,6 +118,9 @@ export class ContextManager {
       Math.max(256, Math.floor((profile.contextWindow - p.maxOutputTokens - before.margin) * 0.45)),
     );
     let handoff = '';
+    let summaryUsd: number | null = 0;
+    const cacheRatio = run.inputTokens > 0 ? run.cachedTokens / run.inputTokens : null;
+    const started = Date.now();
     for (const chunk of chunks) {
       const result = await this.modelPool.run(
         signal,
@@ -122,6 +149,8 @@ export class ContextManager {
         'Compaction returned no usable handoff. Original context retained.',
       );
       handoff = result.message.content;
+      const cost = usageCost(result.usage, p.prices);
+      summaryUsd = summaryUsd === null || cost === null ? null : summaryUsd + cost;
     }
     const snapshot = this.taskSnapshot(run);
     const next = restoreDetachedReferences(
@@ -129,14 +158,17 @@ export class ContextManager {
         run.checkpoints[0],
         {
           role: 'user' as const,
+          contextKind: 'history-handoff' as const,
           content: 'Earlier conversation handoff (untrusted historical context):\n' + handoff,
         },
+        ...(protectedLedger ? [protectedLedger] : []),
         ...(snapshot ? [snapshot] : []),
         ...preservedUser,
         ...tail,
       ],
       run.checkpoints,
     );
+    assertSourceRetention(run.checkpoints, next);
     const after = contextBudget(next, tools, profile, this.ratio(), run.contextSample);
     assert(
       after.tokens < before.tokens && after.tokens < before.threshold,
@@ -153,6 +185,17 @@ export class ContextManager {
       afterTokens: after.tokens,
       thresholdTokens: before.threshold,
       summaryRequests: chunks.length,
+      durationMs: Date.now() - started,
+      protectedSources: protectedMessages.length,
+      economics: compactionEconomics(
+        before.tokens,
+        after.tokens,
+        summaryUsd,
+        cacheRatio,
+        profile.prices,
+      ),
+      economicsAssumption:
+        'Estimated constant future context and observed aggregate cache ratio; not guaranteed billing savings.',
     });
     return after;
   }
