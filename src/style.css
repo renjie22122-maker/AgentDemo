@@ -3339,3 +3339,92 @@ input.team-switch:checked::after {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Rich conversation content stays bounded within each message. */
+.markdown .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5rem 0;
+}
+.markdown img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+.markdown blockquote.speaker-quote {
+  --speaker: #a78bfa;
+  border-color: var(--speaker);
+  background: color-mix(in srgb, var(--speaker) 8%, transparent);
+  border-radius: 0 12px 12px 0;
+  color: var(--text);
+}
+.markdown .speaker-color-1 {
+  --speaker: #38bdf8 !important;
+}
+.markdown .speaker-color-2 {
+  --speaker: #34d399 !important;
+}
+.markdown .speaker-color-3 {
+  --speaker: #fbbf24 !important;
+}
+.markdown .speaker-color-4 {
+  --speaker: #fb7185 !important;
+}
+.markdown .speaker-color-5 {
+  --speaker: #fb923c !important;
+}
+.speaker-label {
+  color: var(--speaker);
+  font-size: 0.85em;
+  font-weight: 650;
+  margin-bottom: 0.3rem;
+}
+.code-source > summary {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85em;
+  color: var(--muted);
+  cursor: pointer;
+}
+.inline-preview {
+  border-top: 1px solid var(--border);
+  padding: 0.65rem;
+}
+.inline-preview iframe {
+  display: block;
+  width: 100%;
+  height: 420px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+  margin-top: 0.6rem;
+  resize: vertical;
+}
+.inline-media {
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 100%;
+  gap: 0.4rem;
+}
+.inline-media video,
+.inline-media audio {
+  max-width: 100%;
+}
+.voice-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+.voice-control {
+  flex-wrap: wrap;
+}
+.voice-hint {
+  display: none;
+  color: var(--muted);
+  max-width: 240px;
+  font-size: 0.8rem;
+}
+.voice-control:focus-within .voice-hint,
+.voice-control:hover .voice-hint {
+  display: block;
+}

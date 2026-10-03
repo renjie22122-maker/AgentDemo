@@ -1,3 +1,5 @@
+import { richMarkdown, localMediaKind } from '../markdown-rich';
+import { CodePreview } from './CodePreview';
 import { mathDelimiters } from '../markdown-source';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
@@ -30,7 +32,13 @@ function Code({ children }: any) {
           {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <pre>{children}</pre>
+      <details className="code-source" open>
+        <summary>代码 / Code</summary>
+        <pre>{children}</pre>
+      </details>
+      {/language-(html|html-preview)$/.test(children?.props?.className || '') && (
+        <CodePreview source={plain(children)} />
+      )}
     </div>
   );
 }
@@ -39,14 +47,39 @@ function Code({ children }: any) {
 const parsed = new Map<string, React.ReactElement>();
 let cachedChars = 0;
 const options = {
-  remarkPlugins: [remarkGfm, remarkMath],
+  remarkPlugins: [remarkGfm, remarkMath, richMarkdown],
   rehypePlugins: [
     [rehypeKatex, { trust: false, strict: 'ignore', maxSize: 20, maxExpand: 200 }],
     rehypeHighlight,
   ],
   components: {
     pre: Code,
-    a: (props: any) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+    a: ({ node: _node, ...props }: any) => {
+      const kind = localMediaKind(props.href || '');
+      return kind ? (
+        <span className="inline-media">
+          {kind === 'video' ? (
+            <video controls preload="metadata" src={props.href} />
+          ) : (
+            <audio controls preload="metadata" src={props.href} />
+          )}
+          <a {...props} />
+        </span>
+      ) : (
+        <a {...props} target="_blank" rel="noopener noreferrer" />
+      );
+    },
+    img: ({ node: _node, ...props }: any) => <img {...props} loading="lazy" decoding="async" />,
+    blockquote: ({ node, children, ...props }: any) => (
+      <blockquote {...props}>
+        {(props['data-speaker'] || node?.properties?.dataSpeaker) && (
+          <div className="speaker-label">
+            {String(props['data-speaker'] || node?.properties?.dataSpeaker)}
+          </div>
+        )}
+        {children}
+      </blockquote>
+    ),
   },
 };
 export const Markdown = React.memo(function Markdown({

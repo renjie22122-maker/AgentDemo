@@ -27,6 +27,12 @@ export function VoiceInput({ conversationId, ensureConversation, onText, enabled
             ? '请先在设置中配置语音转文字服务。'
             : 'Configure a dictation service in Settings first.',
         );
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined')
+        throw Error(
+          zh
+            ? '此浏览器不支持录音；请使用 HTTPS 或 localhost 下的新版浏览器。'
+            : 'Recording requires a supported browser on HTTPS or localhost.',
+        );
       cancelled.current = false;
       stream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus'].find((t) =>

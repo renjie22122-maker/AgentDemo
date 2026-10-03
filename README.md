@@ -55,6 +55,12 @@ For later launches, double-click **Start-AgentDemo.cmd**; it also runs setup aut
 
 Personal chats cannot execute project commands. Select a project when the task needs local command execution.
 
+### Conversation formatting
+
+Replies support tables, highlighted and collapsible code, math, named quotations and opt-in interactive HTML previews. Generated media stays with its originating task. The dictation microphone sits beside Send. See [formatting and media](docs/CHAT-FORMATTING.md) for syntax and preview boundaries.
+
+A reproducible [coding evaluation pilot](evals/coding/README.md) runs the production Runtime with independent grading. Its first 20 synthetic runs passed; they did not trigger context reuse or compaction and do not establish an optimization benefit or a real-repository benchmark score.
+
 ### Manage workspaces
 
 Use the **…** button beside a project in the sidebar to rename it or add/remove folders, including folders in different locations. On Windows, **Browse folders in Windows Explorer** opens the modern Windows folder picker with Ctrl/Shift multi-selection; repeat to add folders from other locations, or paste one absolute path per line. Up to 12 non-overlapping folders are supported.

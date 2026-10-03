@@ -180,14 +180,7 @@ export function Composer({
                   e.target.value = '';
                 }}
               />
-              <VoiceInput
-                key={conversation?.id || 'new'}
-                conversationId={conversation?.id}
-                ensureConversation={ensureConversation}
-                enabled={!!state.settings.media?.transcriptionId}
-                zh={t('settings') !== 'Settings'}
-                onText={(text: string) => setDraft((d) => d + (d ? '\n' : '') + text)}
-              />
+
               <span className="composer-model">
                 {profile?.model ||
                   state.settings.profiles.find((p: any) => p.id === state.settings.defaultProfileId)
@@ -257,6 +250,14 @@ export function Composer({
                   <Square size={13} />
                 </button>
               )}
+              <VoiceInput
+                key={conversation?.id || 'new'}
+                conversationId={conversation?.id}
+                ensureConversation={ensureConversation}
+                enabled={!!state.settings.media?.transcriptionId}
+                zh={t('settings') !== 'Settings'}
+                onText={(text: string) => setDraft((d) => d + (d ? '\n' : '') + text)}
+              />
               <button
                 className="send-button"
                 aria-label={

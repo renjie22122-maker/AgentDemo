@@ -1,0 +1,1023 @@
+{
+  "schemaVersion": 1,
+  "manifest": {
+    "schemaVersion": 1,
+    "kind": "synthetic-coding-runtime-pilot",
+    "commit": "42e6cf0e7db3673aea424e83e0c20c1ad61ee384",
+    "runtimeDiffHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "harnessHash": "cbd48287f05ceab04faad948f9e284457483eb262c95ae233020840f2726713c",
+    "catalogHash": "1d4efe611a2ce2c7042a84a9a682e99fb5c49057896a3958b1c00b0bbe4c02b8",
+    "model": "deepseek-flash",
+    "transport": "openai-chat",
+    "endpoint": "https://api.deepseek.com",
+    "reasoning": "auto",
+    "contextWindow": 1048576,
+    "maxOutputTokens": 4096,
+    "prices": {
+      "input": null,
+      "output": null,
+      "cached": null
+    },
+    "taskIds": [
+      "stable-unique",
+      "merge-intervals",
+      "json-pointer",
+      "csv-record",
+      "topological-order",
+      "decimal-sum",
+      "unicode-reverse",
+      "range-complement",
+      "lru-cache",
+      "minimal-edit-distance"
+    ],
+    "taskCount": 10,
+    "repeats": 1,
+    "arms": ["optimized", "read-reuse-off"],
+    "expectedRuns": 20,
+    "limits": {
+      "seconds": 180,
+      "steps": 16
+    },
+    "environment": {
+      "platform": "win32",
+      "node": "v24.19.0"
+    },
+    "parallel": 1,
+    "caveats": [
+      "Synthetic public tasks, not real-repository or unseen benchmark.",
+      "Only read-result reuse ablated; provider caching cannot be cleared.",
+      "No team arm yet.",
+      "Small sample; no performance superiority claim."
+    ]
+  },
+  "completed": 20,
+  "summaries": [
+    {
+      "arm": "optimized",
+      "attempts": 10,
+      "passed": 10,
+      "failed": 0,
+      "successRate": 1,
+      "falseCompletions": 0,
+      "unknownMetrics": 0,
+      "observedInputTokens": 178570,
+      "observedCachedInputTokens": 159104,
+      "observedOutputTokens": 22465,
+      "estimatedUsd": null,
+      "costPerSuccess": null,
+      "restoredMessages": 0,
+      "reuseEvents": 0,
+      "medianElapsedMs": 19126
+    },
+    {
+      "arm": "read-reuse-off",
+      "attempts": 10,
+      "passed": 10,
+      "failed": 0,
+      "successRate": 1,
+      "falseCompletions": 0,
+      "unknownMetrics": 0,
+      "observedInputTokens": 168544,
+      "observedCachedInputTokens": 150272,
+      "observedOutputTokens": 19874,
+      "estimatedUsd": null,
+      "costPerSuccess": null,
+      "restoredMessages": 0,
+      "reuseEvents": 0,
+      "medianElapsedMs": 17727
+    }
+  ],
+  "results": [
+    {
+      "id": "stable-unique",
+      "repeat": 0,
+      "arm": "optimized",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 3
+      },
+      "metrics": {
+        "elapsedMs": 19126,
+        "inputTokens": 17776,
+        "outputTokens": 2344,
+        "cachedInputTokens": 15488,
+        "totalTokens": 20120,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.8712871287128713,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 3,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "stable-unique",
+      "repeat": 0,
+      "arm": "read-reuse-off",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 3
+      },
+      "metrics": {
+        "elapsedMs": 21375,
+        "inputTokens": 18608,
+        "outputTokens": 3151,
+        "cachedInputTokens": 16640,
+        "totalTokens": 21759,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.8942390369733448,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 4,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "merge-intervals",
+      "repeat": 0,
+      "arm": "read-reuse-off",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 3
+      },
+      "metrics": {
+        "elapsedMs": 17727,
+        "inputTokens": 17414,
+        "outputTokens": 2102,
+        "cachedInputTokens": 15616,
+        "totalTokens": 19516,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.8967497415872286,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 4,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "merge-intervals",
+      "repeat": 0,
+      "arm": "optimized",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 3
+      },
+      "metrics": {
+        "elapsedMs": 18291,
+        "inputTokens": 14699,
+        "outputTokens": 1373,
+        "cachedInputTokens": 13056,
+        "totalTokens": 16072,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.8882236886863052,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 3,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "json-pointer",
+      "repeat": 0,
+      "arm": "optimized",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 4
+      },
+      "metrics": {
+        "elapsedMs": 22466,
+        "inputTokens": 21010,
+        "outputTokens": 2179,
+        "cachedInputTokens": 19072,
+        "totalTokens": 23189,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.9077582103760115,
+        "modelCalls": 5,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 4,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "json-pointer",
+      "repeat": 0,
+      "arm": "read-reuse-off",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 4
+      },
+      "metrics": {
+        "elapsedMs": 18110,
+        "inputTokens": 17090,
+        "outputTokens": 2243,
+        "cachedInputTokens": 15232,
+        "totalTokens": 19333,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.8912814511410181,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 3,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "csv-record",
+      "repeat": 0,
+      "arm": "read-reuse-off",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 3
+      },
+      "metrics": {
+        "elapsedMs": 20811,
+        "inputTokens": 16073,
+        "outputTokens": 2174,
+        "cachedInputTokens": 14336,
+        "totalTokens": 18247,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.891930566789025,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 5,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "csv-record",
+      "repeat": 0,
+      "arm": "optimized",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 3
+      },
+      "metrics": {
+        "elapsedMs": 17461,
+        "inputTokens": 17494,
+        "outputTokens": 2434,
+        "cachedInputTokens": 15616,
+        "totalTokens": 19928,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.8926489081970962,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 3,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "topological-order",
+      "repeat": 0,
+      "arm": "optimized",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 4
+      },
+      "metrics": {
+        "elapsedMs": 26284,
+        "inputTokens": 19165,
+        "outputTokens": 3492,
+        "cachedInputTokens": 17152,
+        "totalTokens": 22657,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.8949647795460475,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 4,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "topological-order",
+      "repeat": 0,
+      "arm": "read-reuse-off",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 4
+      },
+      "metrics": {
+        "elapsedMs": 14965,
+        "inputTokens": 16709,
+        "outputTokens": 1803,
+        "cachedInputTokens": 14592,
+        "totalTokens": 18512,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.8733018133939793,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 3,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "decimal-sum",
+      "repeat": 0,
+      "arm": "read-reuse-off",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 4
+      },
+      "metrics": {
+        "elapsedMs": 35375,
+        "inputTokens": 17653,
+        "outputTokens": 1991,
+        "cachedInputTokens": 16384,
+        "totalTokens": 19644,
+        "usageComplete": false,
+        "estimatedUsd": null,
+        "cacheHitRate": null,
+        "modelCalls": 5,
+        "failedModelCalls": 1,
+        "httpRetries": null,
+        "toolCalls": 3,
+        "protocolRepairs": 1,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "decimal-sum",
+      "repeat": 0,
+      "arm": "optimized",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 4
+      },
+      "metrics": {
+        "elapsedMs": 22595,
+        "inputTokens": 18947,
+        "outputTokens": 3084,
+        "cachedInputTokens": 16768,
+        "totalTokens": 22031,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.8849949860136169,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 3,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "unicode-reverse",
+      "repeat": 0,
+      "arm": "optimized",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 3
+      },
+      "metrics": {
+        "elapsedMs": 22476,
+        "inputTokens": 22334,
+        "outputTokens": 2857,
+        "cachedInputTokens": 20608,
+        "totalTokens": 25191,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.9227187248141846,
+        "modelCalls": 5,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 5,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "unicode-reverse",
+      "repeat": 0,
+      "arm": "read-reuse-off",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 3
+      },
+      "metrics": {
+        "elapsedMs": 14623,
+        "inputTokens": 16656,
+        "outputTokens": 1639,
+        "cachedInputTokens": 14976,
+        "totalTokens": 18295,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.899135446685879,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 3,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "range-complement",
+      "repeat": 0,
+      "arm": "read-reuse-off",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 3
+      },
+      "metrics": {
+        "elapsedMs": 17362,
+        "inputTokens": 16735,
+        "outputTokens": 2050,
+        "cachedInputTokens": 14720,
+        "totalTokens": 18785,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.8795936659695249,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 4,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "range-complement",
+      "repeat": 0,
+      "arm": "optimized",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 3
+      },
+      "metrics": {
+        "elapsedMs": 15854,
+        "inputTokens": 15418,
+        "outputTokens": 1746,
+        "cachedInputTokens": 13440,
+        "totalTokens": 17164,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.8717083927876508,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 4,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "lru-cache",
+      "repeat": 0,
+      "arm": "optimized",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 3
+      },
+      "metrics": {
+        "elapsedMs": 13890,
+        "inputTokens": 15964,
+        "outputTokens": 1497,
+        "cachedInputTokens": 14080,
+        "totalTokens": 17461,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.8819844650463543,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 3,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "lru-cache",
+      "repeat": 0,
+      "arm": "read-reuse-off",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 3
+      },
+      "metrics": {
+        "elapsedMs": 16032,
+        "inputTokens": 16167,
+        "outputTokens": 1425,
+        "cachedInputTokens": 14208,
+        "totalTokens": 17592,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.87882724067545,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 3,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "minimal-edit-distance",
+      "repeat": 0,
+      "arm": "read-reuse-off",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 4
+      },
+      "metrics": {
+        "elapsedMs": 13270,
+        "inputTokens": 15439,
+        "outputTokens": 1296,
+        "cachedInputTokens": 13568,
+        "totalTokens": 16735,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.8788133946499126,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 4,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    },
+    {
+      "id": "minimal-edit-distance",
+      "repeat": 0,
+      "arm": "optimized",
+      "status": "completed",
+      "pass": true,
+      "artifactPass": true,
+      "falseCompletion": false,
+      "grading": {
+        "passed": true,
+        "checks": 4
+      },
+      "metrics": {
+        "elapsedMs": 14442,
+        "inputTokens": 15763,
+        "outputTokens": 1459,
+        "cachedInputTokens": 13824,
+        "totalTokens": 17222,
+        "usageComplete": true,
+        "estimatedUsd": null,
+        "cacheHitRate": 0.8769904206052147,
+        "modelCalls": 4,
+        "failedModelCalls": 0,
+        "httpRetries": null,
+        "toolCalls": 3,
+        "protocolRepairs": 0,
+        "compactions": 0,
+        "restoredMessages": 0,
+        "reuseEvents": 0,
+        "recoveryCount": 0,
+        "repetitionStops": 0,
+        "humanInterventions": 0,
+        "runs": 1
+      },
+      "termination": null
+    }
+  ],
+  "gradingAudit": {
+    "schemaVersion": 1,
+    "kind": "post-run-grader-audit",
+    "sourceHarnessHash": "cbd48287f05ceab04faad948f9e284457483eb262c95ae233020840f2726713c",
+    "graderHash": "efb17545849dc7305a69c7bfc5ae6c15241ceedd52220b0e5c2edb62f3af5610",
+    "reason": "Added input immutability check; no API calls or artifact writes repeated.",
+    "total": 20,
+    "passed": 20,
+    "results": [
+      {
+        "id": "stable-unique",
+        "repeat": 0,
+        "arm": "optimized",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 3
+        }
+      },
+      {
+        "id": "stable-unique",
+        "repeat": 0,
+        "arm": "read-reuse-off",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 3
+        }
+      },
+      {
+        "id": "merge-intervals",
+        "repeat": 0,
+        "arm": "read-reuse-off",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 3
+        }
+      },
+      {
+        "id": "merge-intervals",
+        "repeat": 0,
+        "arm": "optimized",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 3
+        }
+      },
+      {
+        "id": "json-pointer",
+        "repeat": 0,
+        "arm": "optimized",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 4
+        }
+      },
+      {
+        "id": "json-pointer",
+        "repeat": 0,
+        "arm": "read-reuse-off",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 4
+        }
+      },
+      {
+        "id": "csv-record",
+        "repeat": 0,
+        "arm": "read-reuse-off",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 3
+        }
+      },
+      {
+        "id": "csv-record",
+        "repeat": 0,
+        "arm": "optimized",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 3
+        }
+      },
+      {
+        "id": "topological-order",
+        "repeat": 0,
+        "arm": "optimized",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 4
+        }
+      },
+      {
+        "id": "topological-order",
+        "repeat": 0,
+        "arm": "read-reuse-off",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 4
+        }
+      },
+      {
+        "id": "decimal-sum",
+        "repeat": 0,
+        "arm": "read-reuse-off",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 4
+        }
+      },
+      {
+        "id": "decimal-sum",
+        "repeat": 0,
+        "arm": "optimized",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 4
+        }
+      },
+      {
+        "id": "unicode-reverse",
+        "repeat": 0,
+        "arm": "optimized",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 3
+        }
+      },
+      {
+        "id": "unicode-reverse",
+        "repeat": 0,
+        "arm": "read-reuse-off",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 3
+        }
+      },
+      {
+        "id": "range-complement",
+        "repeat": 0,
+        "arm": "read-reuse-off",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 3
+        }
+      },
+      {
+        "id": "range-complement",
+        "repeat": 0,
+        "arm": "optimized",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 3
+        }
+      },
+      {
+        "id": "lru-cache",
+        "repeat": 0,
+        "arm": "optimized",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 3
+        }
+      },
+      {
+        "id": "lru-cache",
+        "repeat": 0,
+        "arm": "read-reuse-off",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 3
+        }
+      },
+      {
+        "id": "minimal-edit-distance",
+        "repeat": 0,
+        "arm": "read-reuse-off",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 4
+        }
+      },
+      {
+        "id": "minimal-edit-distance",
+        "repeat": 0,
+        "arm": "optimized",
+        "pass": true,
+        "grading": {
+          "passed": true,
+          "checks": 4
+        }
+      }
+    ]
+  }
+}
