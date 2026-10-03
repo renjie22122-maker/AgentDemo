@@ -116,7 +116,7 @@ test('destination changes and disabled scopes never embed; repeated failure stop
   });
   for (let i = 0; i < 5; i++) await manager.tick();
   assert.equal(calls, 3);
-  assert.equal(store.get<any>('knowledge-watch', 'session:s').status, 'needs_attention');
+  assert.equal(store.get<any>('knowledge-watch', 'session:s').status, 'partial');
   await manager.close();
   knowledge.close();
   store.close();

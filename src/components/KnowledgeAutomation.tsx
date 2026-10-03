@@ -189,7 +189,7 @@ export function KnowledgeAutomation({ scope, zh, embedding, notify, profile, pro
       </button>
       <p role="status">
         {zh ? '状态：' : 'Status: '}
-        {value.status}
+        {value.status === 'partial' ? (zh ? '部分完成' : 'Partially completed') : value.status}
         {value.updatedAt ? ' · ' + new Date(value.updatedAt).toLocaleString() : ''}
       </p>
       {value.scan && (
@@ -200,11 +200,42 @@ export function KnowledgeAutomation({ scope, zh, embedding, notify, profile, pro
           {value.scan.unchanged}
         </p>
       )}
+      {value.skipped && (
+        <p className="muted">
+          {zh ? '跳过：隐藏或构建目录 ' : 'Skipped: hidden/build entries '}
+          {value.skipped.excluded}
+          {' · '}
+          {zh ? '链接 ' : 'links '}
+          {value.skipped.links}
+          {' · '}
+          {zh ? '不支持格式 ' : 'unsupported formats '}
+          {value.skipped.unsupported}
+        </p>
+      )}
       {value.error && <p role="alert">{value.error}</p>}
+      {!!value.issues?.length && (
+        <details open>
+          <summary>
+            {zh ? '失败或跳过的文件' : 'Failed or skipped files'} · {value.issues.length}
+          </summary>
+          <ul>
+            {value.issues.map((x: any, i: number) => (
+              <li key={i}>
+                <strong>{x.path}</strong> · {x.stage} · {x.error}
+              </li>
+            ))}
+          </ul>
+          <p>
+            {zh
+              ? '保存 / 重试会重新处理失败项；未变化的成功文件不会重复导入。'
+              : 'Save / retry retries failed items; unchanged successful files are reused.'}
+          </p>
+        </details>
+      )}
       <small>
         {zh
-          ? '每 30 秒检查；每范围最多 1,000 个支持文件 / 10,000 个目录项，单文件 25 MB。支持 TXT、Markdown、CSV、JSON、DOCX、XLSX、文本 PDF 等；跳过隐藏文件与构建目录；图片与扫描 PDF 使用本机 Windows OCR。临时网络故障退避重试；配置错误 3 次后暂停，移除源文件会使当前版本退出检索。'
-          : 'Checks every 30 seconds; up to 1,000 supported files / 10,000 entries per scope and 25 MB per file. Text, Markdown, CSV, JSON, DOCX, XLSX and text PDFs. Hidden/build folders excluded; Windows OCR handles images/scanned PDFs. Transient network errors retry with backoff; configuration errors pause after three attempts; removed files leave current retrieval.'}
+          ? '每 30 秒检查；无固定文件数量或目录项上限，无固定单文件大小上限；逐文件独立解析，解析时限 120 秒、V8 堆上限 768 MB、提取文本最多 500 万字符。支持 TXT、Markdown、CSV、JSON、DOCX、XLSX、文本 PDF 等；跳过隐藏文件与构建目录；图片与扫描 PDF 使用本机 Windows OCR。临时网络故障退避重试；配置错误 3 次后暂停，移除源文件会使当前版本退出检索。'
+          : 'Checks every 30 seconds; no fixed file-count, entry-count or per-file byte limit. Parsing is isolated per file: 120 seconds, 768 MB V8 heap, 5 million extracted characters. Text, Markdown, CSV, JSON, DOCX, XLSX and text PDFs. Hidden/build folders excluded; Windows OCR handles images/scanned PDFs. Transient network errors retry with backoff; configuration errors pause after three attempts; removed files leave current retrieval.'}
       </small>
     </section>
   );

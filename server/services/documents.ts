@@ -34,12 +34,12 @@ export async function extract(path: string, options: { ocr?: boolean } = {}): Pr
     }).promise;
     try {
       const pages: string[] = [];
-      for (let i = 1; i <= Math.min(doc.numPages, 500); i++) {
+      let characters = 0;
+      for (let i = 1; i <= doc.numPages; i++) {
         const page = await doc.getPage(i);
         const content = await page.getTextContent();
         let text = content.items.map((x) => ('str' in x ? x.str : '')).join(' ');
         if (options.ocr && text.trim().length < 12) {
-          if (i > 50) throw Error('Scanned PDF OCR supports up to 50 pages; split this document.');
           const require = createRequire(import.meta.url);
           const canvasModule = createRequire(require.resolve('pdfjs-dist/package.json'))(
             '@napi-rs/canvas',
@@ -62,7 +62,11 @@ export async function extract(path: string, options: { ocr?: boolean } = {}): Pr
             await rm(dir, { recursive: true, force: true });
           }
         }
+        characters += text.length;
+        if (characters > 5_000_000)
+          throw Error('Extracted PDF text exceeds 5 million characters; split the source.');
         pages.push('[Page ' + i + ']\n' + text);
+        page.cleanup();
       }
       return pages.join('\n\n');
     } finally {

@@ -31,6 +31,30 @@ export class Knowledge {
     CREATE TRIGGER IF NOT EXISTS vectors_update AFTER UPDATE OF vector ON chunks BEGIN UPDATE vector_revision SET version=version+1 WHERE id=1; END;
     CREATE TRIGGER IF NOT EXISTS vectors_delete AFTER DELETE ON chunks BEGIN UPDATE vector_revision SET version=version+1 WHERE id=1; END;`);
   }
+  diagnostics(scopes: string[]) {
+    const documents = this.store
+      .list<any>('document')
+      .filter((d) => scopes.includes(d.scope) && d.validUntil == null);
+    const sources = this.store.list<any>('knowledge-watch').filter((w) => scopes.includes(w.id));
+    return {
+      status: !scopes.length
+        ? 'disabled'
+        : !documents.length
+          ? sources.some((w) => w.error || w.issues?.length)
+            ? 'import_failed'
+            : 'not_imported'
+          : 'no_match',
+      documents: documents.length,
+      sources: sources.map((w) => ({
+        scope: w.id,
+        status: w.status,
+        error: w.error,
+        issueCount: (w.issues || []).length,
+        issues: (w.issues || []).slice(0, 20).map((x: any) => ({ stage: x.stage, error: x.error })),
+      })),
+      note: 'Chat history is not automatically imported into knowledge. Results are limited to authorized scopes.',
+    };
+  }
   import(
     scope: string,
     name: string,

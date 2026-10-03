@@ -3,13 +3,27 @@ import { evaluateRetrieval } from './retrieval-evaluation.js';
 import { Configuration } from './settings.js';
 import { GraphLearning } from './graph-learning.js';
 import { createHash } from 'node:crypto';
-import { lstat, readdir, readFile } from 'node:fs/promises';
+import { lstat, readdir } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { Store } from '../storage/store.js';
 import { Knowledge } from './knowledge.js';
 import { Embeddings } from './embedding.js';
 import { FileScope, inside } from './paths.js';
-import { extract } from './documents.js';
+import { extractIsolated } from './document-parser.js';
+import { createReadStream } from 'node:fs';
+async function fileHash(path: string) {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  return hash.digest('hex');
+}
+export interface SourceIssue {
+  path: string;
+  stage: string;
+  error: string;
+  hash?: string;
+  attempts: number;
+  revision: number;
+}
 export interface KnowledgeWatch {
   id: string;
   enabled: boolean;
@@ -18,6 +32,8 @@ export interface KnowledgeWatch {
   revision: number;
   status?: string;
   scan?: { files: number; updated: number; unchanged: number };
+  issues?: SourceIssue[];
+  skipped?: { excluded: number; links: number; unsupported: number };
   error?: string;
   updatedAt?: number;
   failures?: number;
@@ -55,6 +71,7 @@ export class KnowledgeMaintenance {
     private embeddings: Embeddings,
     private directory: string,
     private config?: Configuration,
+    private parse: (path: string) => Promise<string> = extractIsolated,
   ) {}
   start() {
     this.timer = setInterval(() => void this.tick(), 30000);
@@ -116,6 +133,8 @@ export class KnowledgeMaintenance {
       if (w.failedRevision && connectionRevision !== w.failedRevision && this.current(w)) {
         w = this.recheck(w.id);
       }
+      // Migrate the old whole-folder size failure; retain the authorized scope/service.
+      if (w.error?.startsWith('Source exceeds 25 MB:')) w = this.recheck(w.id);
       if ((w.failures || 0) >= 3 && w.failureKind !== 'transient') continue;
       if ((w.nextRetryAt || 0) > Date.now()) continue;
       try {
@@ -131,11 +150,29 @@ export class KnowledgeMaintenance {
         if (w.id.startsWith('project:') && (!project || project.removedAt))
           throw Error('Project is unavailable.');
         const files: string[] = [];
+        const issues: SourceIssue[] = [];
+        const skipped = { excluded: 0, links: 0, unsupported: 0 };
+        let traversalFailed = false;
+        let indexError: unknown;
+        const issue = (path: string, stage: string, error: unknown, hash?: string) => {
+          const old = w.issues?.find(
+            (x) =>
+              x.path === path && x.stage === stage && x.hash === hash && x.revision === w.revision,
+          );
+          issues.push({
+            path,
+            stage,
+            hash,
+            error: String((error as any)?.message || error).slice(0, 500),
+            attempts: (old?.attempts || 0) + 1,
+            revision: w.revision,
+          });
+        };
         let visited = 0;
         const scope = project && new FileScope(project.folders, this.directory);
         const walk = async (path: string): Promise<void> => {
           if (!this.current(w)) throw Error('Configuration changed');
-          if (++visited > 10000) throw Error('Too many source entries; narrow the source folders.');
+          if (++visited % 128 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
           if (!scope) throw Error('Folder watching requires a project scope');
           // Resolve against the matching declared project root.
           const root = project.folders.findIndex(
@@ -155,17 +192,25 @@ export class KnowledgeMaintenance {
               if (
                 entry.name.startsWith('.') ||
                 ['node_modules', 'dist', 'build', 'vendor'].includes(entry.name)
-              )
+              ) {
+                skipped.excluded++;
                 continue;
-              if (entry.isSymbolicLink()) continue;
-              await walk(join(safe, entry.name));
+              }
+              if (entry.isSymbolicLink()) {
+                skipped.links++;
+                continue;
+              }
+              try {
+                await walk(join(safe, entry.name));
+              } catch (e) {
+                traversalFailed = true;
+                issue(join(safe, entry.name), 'scan', e);
+              }
             }
           } else if (formats.has(extname(safe).toLowerCase())) {
-            if (stat.size > 25 * 1024 * 1024)
-              throw Error('Source exceeds 25 MB: ' + basename(safe));
             files.push(safe);
-            if (files.length > 1000)
-              throw Error('More than 1000 source files; narrow the watched paths.');
+          } else {
+            skipped.unsupported++;
           }
         };
         this.store.put('knowledge-watch', { ...w, status: 'processing', error: undefined });
@@ -173,7 +218,10 @@ export class KnowledgeMaintenance {
           try {
             await walk(path);
           } catch (e: any) {
-            if (e.code !== 'ENOENT') throw e;
+            if (e.code !== 'ENOENT') {
+              traversalFailed = true;
+              issue(path, 'scan', e);
+            }
           }
         }
         let updated = 0,
@@ -183,34 +231,58 @@ export class KnowledgeMaintenance {
           const key = createHash('sha256')
             .update(w.id + '|' + path)
             .digest('hex');
-          const hash = createHash('sha256')
-            .update(await readFile(path))
-            .digest('hex');
           const old = this.store.maybe<any>('knowledge-source', key);
-          if (old?.hash === hash && !old.removed) {
-            unchanged++;
-            continue;
+          let hash: string | undefined;
+          try {
+            hash = await fileHash(path);
+            const failed = w.issues?.find(
+              (x) =>
+                x.path === path &&
+                x.stage === 'parse' &&
+                x.hash === hash &&
+                x.revision === w.revision,
+            );
+            if (failed && failed.attempts >= 3) {
+              issues.push(failed);
+              continue;
+            }
+            if (old?.hash === hash && !old.removed) {
+              unchanged++;
+              continue;
+            }
+            const text = await this.parse(path);
+            if ((await fileHash(path)) !== hash)
+              throw Error('Source changed during parsing; retry on the next scan.');
+            if (!this.current(w)) return;
+            const doc: any = this.knowledge.import(w.id, basename(path), text, {
+              source: path,
+              revisionOf: old?.removed ? undefined : old?.documentId,
+            });
+            updated++;
+            this.store.put('knowledge-source', {
+              id: key,
+              scope: w.id,
+              path,
+              hash,
+              documentId: doc.id,
+              removed: false,
+            });
+          } catch (e) {
+            issue(path, 'parse', e, hash);
+            // A failed replacement must not leave stale facts searchable.
+            if (old && hash && old.hash !== hash) {
+              const doc = this.store.maybe<any>('document', old.documentId);
+              if (doc) this.store.put('document', { ...doc, validUntil: Date.now() });
+              this.store.put('knowledge-source', { ...old, removed: true });
+            }
           }
-          const text = await extract(path, { ocr: true });
-          if (!this.current(w)) return;
-          const doc: any = this.knowledge.import(w.id, basename(path), text, {
-            source: path,
-            revisionOf: old?.removed ? undefined : old?.documentId,
-          });
-          updated++;
-          this.store.put('knowledge-source', {
-            id: key,
-            scope: w.id,
-            path,
-            hash,
-            documentId: doc.id,
-            removed: false,
-          });
         }
         if (!this.current(w)) return;
         for (const old of this.store
           .list<any>('knowledge-source')
-          .filter((x) => x.scope === w.id && !x.removed && !files.includes(x.path))) {
+          .filter(
+            (x) => !traversalFailed && x.scope === w.id && !x.removed && !files.includes(x.path),
+          )) {
           const doc = this.store.maybe<any>('document', old.documentId);
           if (doc) this.store.put('document', { ...doc, validUntil: Date.now() });
           this.store.put('knowledge-source', { ...old, removed: true });
@@ -219,47 +291,59 @@ export class KnowledgeMaintenance {
           .list<any>('document')
           .filter((d) => d.scope === w.id && d.validUntil == null)) {
           if (!this.current(w)) return;
-          if (this.config && w.graphProfileId && w.graphTarget)
-            await new GraphLearning(this.store, this.config).document(
-              doc,
-              w.graphProfileId,
-              w.graphTarget,
-              () =>
-                !!this.current(w) &&
-                this.store.maybe<KnowledgeWatch>('knowledge-watch', w.id)?.graphTarget ===
-                  w.graphTarget,
-            );
-          const key = doc.id + '|' + w.target;
-          const attempt = this.store.maybe<any>('knowledge-index-job', key);
-          if (attempt?.status === 'completed') continue;
-          if (attempt?.attempts >= 3 && w.failureKind !== 'transient')
-            throw Error('Index retries exhausted; save configuration to retry.');
-          this.store.put('knowledge-index-job', {
-            id: key,
-            attempts: (attempt?.attempts || 0) + 1,
-            status: 'running',
-          });
-          await this.knowledge.index(doc.id, () => !!this.current(w));
-          if (!this.current(w)) return;
-          this.store.put('knowledge-index-job', {
-            id: key,
-            attempts: (attempt?.attempts || 0) + 1,
-            status: 'completed',
-          });
+          try {
+            if (this.config && w.graphProfileId && w.graphTarget)
+              await new GraphLearning(this.store, this.config).document(
+                doc,
+                w.graphProfileId,
+                w.graphTarget,
+                () =>
+                  !!this.current(w) &&
+                  this.store.maybe<KnowledgeWatch>('knowledge-watch', w.id)?.graphTarget ===
+                    w.graphTarget,
+              );
+            const key = doc.id + '|' + w.target;
+            const attempt = this.store.maybe<any>('knowledge-index-job', key);
+            if (attempt?.status === 'completed') continue;
+            if (attempt?.attempts >= 3 && w.failureKind !== 'transient')
+              throw Error('Index retries exhausted; save configuration to retry.');
+            this.store.put('knowledge-index-job', {
+              id: key,
+              attempts: (attempt?.attempts || 0) + 1,
+              status: 'running',
+            });
+            await this.knowledge.index(doc.id, () => !!this.current(w));
+            if (!this.current(w)) return;
+            this.store.put('knowledge-index-job', {
+              id: key,
+              attempts: (attempt?.attempts || 0) + 1,
+              status: 'completed',
+            });
+          } catch (e) {
+            issue(doc.name, 'index', e);
+            indexError = e;
+          }
         }
         if (this.current(w)) await evaluateRetrieval(this.store, this.knowledge, w.id);
         if (this.current(w))
           this.store.put('knowledge-watch', {
             ...w,
-            status: 'synced',
+            status: issues.length ? 'partial' : 'synced',
+            issues,
+            skipped,
             scan: { files: new Set(files).size, updated, unchanged },
             failures: 0,
-            failureKind: undefined,
-            nextRetryAt: undefined,
+            failureKind: indexError
+              ? diagnoseFailure(indexError).automatic
+                ? 'transient'
+                : 'configuration'
+              : undefined,
+            nextRetryAt:
+              indexError && diagnoseFailure(indexError).automatic ? Date.now() + 30000 : undefined,
             updatedAt: Date.now(),
             error: undefined,
             diagnosis: undefined,
-            failedRevision: undefined,
+            failedRevision: indexError ? this.embeddings.recoveryRevision?.() : undefined,
           });
       } catch (e: any) {
         const diagnosis = diagnoseFailure(e);

@@ -576,8 +576,12 @@ export function tools() {
       limit: z.number().int().min(1).max(12).default(6),
       asOf: z.number().int().nonnegative().optional(),
     }),
-    run: async (a, c) =>
-      text(await c.knowledge.hybrid(c.scopes, a.query, a.limit, c.signal, a.asOf)),
+    run: async (a, c) => {
+      const results = await c.knowledge.hybrid(c.scopes, a.query, a.limit, c.signal, a.asOf);
+      return text(
+        results.length ? results : { results, diagnostics: c.knowledge.diagnostics(c.scopes) },
+      );
+    },
   });
   const memoryScopes = (c: ToolContext) =>
     c.conversation.memory === false
