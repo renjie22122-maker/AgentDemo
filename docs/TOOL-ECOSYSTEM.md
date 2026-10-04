@@ -317,3 +317,22 @@ A real headless Edge integration test on a local fixture exercised Chinese input
 new-tab form submission, tab selection, result verification, screenshot and scoped
 cleanup. Run with AGENTDEMO_BROWSER_TEST=1 and node --import tsx --test
 tests/browser-tabs.test.ts. Default CI explicitly skips this installed-browser test.
+
+
+Media discovery follow-up: media_status is a core receipt lookup. Discovering or
+invoking a media workflow tool also exposes related media tools, always filtered
+through current permission/allowlist checks. Receipts include exact reference
+arguments and next-step guidance for export/inspection/image QA, including old
+completed jobs. Non-image read_image(mediaRef) failures distinguish unsupported
+decoding from available bytes and point to export_media; integrity and scope
+failures are not swallowed. Model guidance avoids manual reupload requests based
+only on a missing workspace file. This guides behavior without granting rights.
+
+
+list_media provides paginated, type-filtered current-conversation job discovery,
+including historical jobs, without returning full prompts, transcripts or private
+filesystem paths. It covers image/video/music/speech/transcription/3D jobs and
+exposes whether text is available through media_status. Regression coverage spans
+image/video/music/speech/3D byte export, old receipt upgrades, non-image read errors,
+reference format boundaries and restricted tool visibility. This is not automatic
+video decoding, transcription or 3D understanding.

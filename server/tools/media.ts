@@ -72,6 +72,41 @@ export function installMedia(registry: ToolRegistry) {
     },
   });
   registry.add({
+    name: 'list_media',
+    effect: 'read',
+    description:
+      'Find generated image/video/music/speech/transcription/3D jobs in this conversation, including earlier turns. Returns job IDs, status and output references without host paths. Use when a job ID is missing; do not search the workspace or ask the user to reupload host-held media.',
+    schema: z.object({
+      kind: z.enum(['image', 'video', 'music', 'speech', 'transcription', 'model3d']).optional(),
+      offset: z.number().int().min(0).default(0),
+      limit: z.number().int().min(1).max(30).default(10),
+    }),
+    run: (a, c) => {
+      const jobs = c.media
+        .list(c.conversation.id)
+        .filter((j) => !a.kind || j.kind === a.kind)
+        .sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
+      return {
+        content: JSON.stringify({
+          total: jobs.length,
+          jobs: jobs
+            .slice(a.offset, a.offset + a.limit)
+            .map((j) => ({
+              id: j.id,
+              kind: j.kind,
+              model: j.model,
+              status: j.status,
+              createdAt: j.createdAt,
+              outputs: j.outputs,
+              hasText: typeof j.text === 'string',
+            })),
+          nextOffset: a.offset + a.limit < jobs.length ? a.offset + a.limit : null,
+          note: 'Same-conversation results only. Use media_status for text/error/details, inspect_media for binary metadata, export_media for workspace bytes, read_image for image pixels.',
+        }),
+      };
+    },
+  });
+  registry.add({
     name: 'media_status',
     description:
       'Read a media job receipt and locally saved outputs in this conversation. Host polls remote jobs automatically; no need for a rapid tool polling loop.',

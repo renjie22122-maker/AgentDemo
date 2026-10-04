@@ -18,6 +18,8 @@ export const coreTools = new Set([
   'wait_background_command',
   'ask_user',
   'read_image',
+  'media_status',
+  'list_media',
   'web_search',
   'fetch_url',
   'read_web_evidence',
@@ -79,4 +81,23 @@ export function findTools(specs: ToolSpec[], query: string, offset: number, limi
     .filter((x) => !terms.length || x.score > 0)
     .sort((a, b) => b.score - a.score || a.tool.name.localeCompare(b.tool.name));
   return { total: ranked.length, results: ranked.slice(offset, offset + limit).map((x) => x.tool) };
+}
+
+// Discover a workflow's adjacent tools together; availability is still filtered by specs().
+const toolFamilies = [
+  [
+    'media_services',
+    'generate_media',
+    'media_status',
+    'list_media',
+    'inspect_media',
+    'export_media',
+    'cancel_media',
+  ],
+];
+export function relatedToolNames(names: string[]) {
+  const selected = new Set(names);
+  for (const family of toolFamilies)
+    if (family.some((name) => selected.has(name))) for (const name of family) selected.add(name);
+  return [...selected];
 }

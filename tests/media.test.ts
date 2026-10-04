@@ -269,6 +269,9 @@ test('generated output handles support QA, references, no-clobber export and iso
     const receipt = media.public(media.get(job.id, 'chat'));
     const ref = receipt.outputs[0].reference;
     assert.match(ref, /^media:/);
+    assert.equal(receipt.outputs[0].access.export.tool, 'export_media');
+    assert.equal(receipt.outputs[0].access.export.arguments.reference, ref);
+    assert.equal(receipt.outputs[0].access.view?.arguments.mediaRef, ref);
     assert.ok(receipt.outputs[0].url.includes('/files/0'));
     const output = await media.output(ref, 'chat');
     assert.deepEqual(output.bytes, pixels);
@@ -291,6 +294,67 @@ test('generated output handles support QA, references, no-clobber export and iso
     const file = f.store.get<any>('media-file', job.id + ':0');
     await writeFile(file.path, 'modified');
     await assert.rejects(media.output(ref, 'chat'), { code: 'MEDIA_INTEGRITY' });
+  } finally {
+    f.store.close();
+  }
+});
+
+test('all generated media kinds expose export routes including historical receipts', async () => {
+  const f = await fixture();
+  const { writeFile, mkdir } = await import('node:fs/promises');
+  const { createHash } = await import('node:crypto');
+  const { FileScope } = await import('../server/services/paths.js');
+  try {
+    const media = new MediaService(f.store, f.config, f.dir);
+    const root = join(f.dir, 'exports');
+    await mkdir(root);
+    const files = new FileScope([root]);
+    for (const [kind, mime, ext] of [
+      ['image', 'image/png', 'png'],
+      ['video', 'video/mp4', 'mp4'],
+      ['music', 'audio/mpeg', 'mp3'],
+      ['speech', 'audio/wav', 'wav'],
+      ['model3d', 'model/gltf-binary', 'glb'],
+    ]) {
+      const jobId = 'fixture-' + kind,
+        reference = 'media:' + jobId + ':0';
+      const bytes = Buffer.from('fixture-bytes-' + kind),
+        path = join(f.dir, jobId + '.' + ext);
+      await writeFile(path, bytes);
+      // Legacy shape has no access/reference fields: public receipt upgrades it dynamically.
+      f.store.put('media-job', {
+        id: jobId,
+        conversationId: 'chat',
+        kind,
+        status: 'completed',
+        outputs: [{ id: '0', name: '0.' + ext, mime }],
+      });
+      f.store.put('media-file', {
+        id: jobId + ':0',
+        conversationId: 'chat',
+        jobId,
+        path,
+        mime,
+        name: '0.' + ext,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+      });
+      const receipt = media.public(media.get(jobId, 'chat')).outputs[0];
+      assert.equal(receipt.reference, reference);
+      assert.equal(receipt.access.export.arguments.reference, reference);
+      assert.equal(!!receipt.access.view, kind === 'image');
+      const output = await media.output(reference, 'chat');
+      await files.writeBytes(kind + '.' + ext, output.bytes);
+      assert.deepEqual(await readFile(join(root, kind + '.' + ext)), bytes);
+      if (kind === 'model3d')
+        await assert.rejects(media.referenceOptions('chat', {}, { model: [reference] }), {
+          code: 'MEDIA_REFERENCE',
+        });
+      else {
+        const options = await media.referenceOptions('chat', {}, { inputs: [reference] });
+        assert.deepEqual(options.inputs, ['data:' + mime + ';base64,' + bytes.toString('base64')]);
+      }
+      await assert.rejects(media.output(reference, 'other'), { code: 'MEDIA_SCOPE' });
+    }
   } finally {
     f.store.close();
   }

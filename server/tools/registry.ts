@@ -1,3 +1,4 @@
+import { relatedToolNames } from './discovery.js';
 import { installGitState } from './git-state.js';
 import { enforceActionPolicy } from '../services/action-policy.js';
 import { installPatch } from './patch.js';
@@ -200,8 +201,9 @@ export class ToolRegistry {
   modelSpecs(ctx: ToolContext): ToolSpec[] {
     const all = this.specs(ctx);
     if (all.length <= 32 || !all.some((t) => t.name === 'search_tools')) return all;
-    const selected =
-      ctx.store.maybe<{ names: string[] }>('tool-selection', ctx.run.id)?.names || [];
+    const selected = relatedToolNames(
+      ctx.store.maybe<{ names: string[] }>('tool-selection', ctx.run.id)?.names || [],
+    );
     return all.filter((t) => coreTools.has(t.name) || selected.includes(t.name));
   }
   async invoke(name: string, args: Record<string, unknown>, ctx: ToolContext) {
@@ -215,6 +217,14 @@ export class ToolRegistry {
 
     if (!def || !this.specs(ctx).some((d) => d.name === name))
       throw new NotStartedError('TOOL_DENIED', 'Tool unavailable in the current task permissions.');
+    const related = relatedToolNames([name]);
+    if (related.length > 1) {
+      const old = ctx.store.maybe<{ names: string[] }>('tool-selection', ctx.run.id)?.names || [];
+      ctx.store.put('tool-selection', {
+        id: ctx.run.id,
+        names: [...new Set([...old, ...related])],
+      });
+    }
     const team = new Teams(ctx.store).get(ctx.run);
     if (team && ['spawn_agent', 'continue_agent'].includes(name))
       throw new NotStartedError(
@@ -458,8 +468,21 @@ export function tools() {
           'NETWORK_DISABLED',
           'Public web tools are disabled.',
         );
+      const mediaOutput = a.mediaRef
+        ? await c.media.output(a.mediaRef, c.conversation.id)
+        : undefined;
+      if (mediaOutput) {
+        const output = mediaOutput;
+        assert(
+          output.mime.startsWith('image/'),
+          'IMAGE_NOT_IMAGE',
+          'This output is ' +
+            output.mime +
+            ', not an image. Its bytes ARE available: use export_media({reference:mediaRef,path:"relative/output.ext"}) to copy it to the workspace, then extract frames/transcribe using authorized tools. Use inspect_media for container metadata. Do not ask the user to manually move host media.',
+        );
+      }
       const image = a.mediaRef
-        ? await normalizeImage((await c.media.output(a.mediaRef, c.conversation.id)).bytes)
+        ? await normalizeImage(mediaOutput!.bytes)
         : a.url
           ? await normalizeImage(await fetchPublicImage(a.url, c.signal))
           : await readScopedImage(c.files, a.path);
@@ -1135,21 +1158,19 @@ export function tools() {
     schema: z.object({}),
     run: (_a, c) =>
       text({
-        adapters: c.config
-          .get()
-          .mcp.map((s) => ({
-            id: s.id,
-            name: s.name,
-            capability: s.builtin || s.capability || 'general',
-            status: !s.enabled
-              ? 'disabled'
-              : c.run.depth !== 0 || c.conversation.permission === 'read-only' || c.run.recoveryOnly
-                ? 'policy-blocked'
-                : 'enabled-unverified',
-            next: !s.enabled
-              ? 'Ask user to enable in Settings; do not bypass via shell.'
-              : 'Use mcp_tools with serverId to discover actual tools under approval.',
-          })),
+        adapters: c.config.get().mcp.map((s) => ({
+          id: s.id,
+          name: s.name,
+          capability: s.builtin || s.capability || 'general',
+          status: !s.enabled
+            ? 'disabled'
+            : c.run.depth !== 0 || c.conversation.permission === 'read-only' || c.run.recoveryOnly
+              ? 'policy-blocked'
+              : 'enabled-unverified',
+          next: !s.enabled
+            ? 'Ask user to enable in Settings; do not bypass via shell.'
+            : 'Use mcp_tools with serverId to discover actual tools under approval.',
+        })),
         browser:
           'Prefer owned browser tabs for web interactions. They do not depend on desktop focus. No browser adapter listed means unconfigured, not unsupported.',
         desktop:

@@ -71,6 +71,27 @@ export class MediaService {
       outputs: rest.outputs.map((f) => ({
         ...f,
         reference: 'media:' + j.id + ':' + f.id,
+        access: {
+          storage: 'conversation-media',
+          export: {
+            tool: 'export_media',
+            arguments: { reference: 'media:' + j.id + ':' + f.id },
+            requires:
+              'Provide an authorized destination path; existing files are not overwritten. No ffmpeg needed for export.',
+          },
+          inspect: {
+            tool: 'inspect_media',
+            arguments: { reference: 'media:' + j.id + ':' + f.id },
+          },
+          ...(f.mime.startsWith('image/')
+            ? {
+                view: { tool: 'read_image', arguments: { mediaRef: 'media:' + j.id + ':' + f.id } },
+              }
+            : {}),
+          guidance: f.mime.startsWith('image/')
+            ? 'Read pixels directly or export exact bytes.'
+            : 'Binary bytes are available via export_media. read_image cannot decode video/audio/3D. Export first for authorized frame extraction, transcription or assembly; no manual download/upload required.',
+        },
         url: '/api/conversations/' + j.conversationId + '/media/' + j.id + '/files/' + f.id,
       })),
     };

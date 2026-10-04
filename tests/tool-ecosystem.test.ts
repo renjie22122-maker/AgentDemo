@@ -1045,3 +1045,94 @@ test('interaction diagnostics distinguish disabled and blocked adapters without 
   assert.equal(readonly.adapters[0].status, 'policy-blocked');
   assert.ok(!JSON.stringify(result).includes('apiKey'));
 });
+
+test('media workflow disclosure keeps export discoverable without granting readonly writes', async (t) => {
+  const f = fixture(t);
+  assert.ok(f.registry.modelSpecs(f.ctx).some((s) => s.name === 'media_status'));
+  f.store.put('tool-selection', { id: f.run.id, names: ['generate_media'] });
+  assert.ok(f.registry.modelSpecs(f.ctx).some((s) => s.name === 'export_media'));
+  assert.ok(f.registry.modelSpecs(f.ctx).some((s) => s.name === 'inspect_media'));
+  const readonly = { ...f.ctx, conversation: { ...f.conversation, permission: 'read-only' } };
+  assert.ok(!f.registry.modelSpecs(readonly).some((s) => s.name === 'export_media'));
+  const restricted = {
+    ...f.ctx,
+    conversation: { ...f.conversation, allowedTools: ['media_status', 'search_tools'] },
+  };
+  assert.ok(!f.registry.modelSpecs(restricted).some((s) => s.name === 'export_media'));
+  f.store.put('tool-selection', { id: f.run.id, names: [] });
+  f.ctx.media = { get: () => ({ id: 'job', outputs: [] }), public: (j: any) => j };
+  await f.registry.invoke('media_status', { jobId: 'job' }, f.ctx);
+  assert.ok(f.registry.modelSpecs(f.ctx).some((s) => s.name === 'export_media'));
+});
+test('non-image media explains export route without hiding permission failures', async (t) => {
+  const f = fixture(t);
+  const profile = {
+    id: 'vision',
+    name: 'Vision fixture',
+    transport: 'openai-chat',
+    baseUrl: 'https://example.invalid',
+    model: 'fixture',
+    vision: true,
+  };
+  f.config.save({ ...f.config.get(), profiles: [profile], defaultProfileId: profile.id } as any);
+  f.run.profileId = profile.id;
+  for (const mime of ['video/mp4', 'video/webm', 'audio/mpeg', 'audio/wav', 'model/gltf-binary']) {
+    let reads = 0;
+    f.ctx.media = {
+      output: async () => {
+        reads++;
+        return { mime, bytes: Buffer.from('fixture') };
+      },
+    };
+    await assert.rejects(
+      f.registry.invoke('read_image', { mediaRef: 'media:job:0' }, f.ctx),
+      (e: any) =>
+        e.code === 'IMAGE_NOT_IMAGE' &&
+        e.message.includes('export_media') &&
+        e.message.includes(mime),
+    );
+    assert.equal(reads, 1);
+  }
+  f.ctx.media.output = async () => {
+    throw Error('different conversation');
+  };
+  await assert.rejects(
+    f.registry.invoke('read_image', { mediaRef: 'media:job:0' }, f.ctx),
+    /different conversation/,
+  );
+});
+
+test('media catalog passes exact conversation scope and paginates without prompts or paths', async (t) => {
+  const f = fixture(t);
+  f.ctx.media = {
+    list: (scope: string) => {
+      assert.equal(scope, f.conversation.id);
+      return [
+        {
+          id: 'old',
+          kind: 'video',
+          status: 'completed',
+          createdAt: 1,
+          outputs: [],
+          prompt: 'private prompt',
+          text: 'private transcript',
+        },
+        { id: 'new', kind: 'video', status: 'running', createdAt: 2, outputs: [] },
+        { id: 'audio', kind: 'music', status: 'completed', createdAt: 3, outputs: [] },
+      ];
+    },
+  };
+  const data = JSON.parse(
+    (await f.registry.invoke('list_media', { kind: 'video', limit: 1 }, f.ctx)).content,
+  );
+  assert.equal(data.total, 2);
+  assert.equal(data.nextOffset, 1);
+  assert.equal(data.jobs[0].id, 'new');
+  const next = JSON.parse(
+    (await f.registry.invoke('list_media', { kind: 'video', limit: 1, offset: 1 }, f.ctx)).content,
+  );
+  assert.equal(next.jobs[0].id, 'old');
+  assert.equal(next.jobs[0].hasText, true);
+  assert.ok(!JSON.stringify(next).includes('private'));
+  assert.equal(next.nextOffset, null);
+});
