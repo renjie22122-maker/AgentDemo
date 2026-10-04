@@ -250,3 +250,22 @@ Approval presentation now distinguishes review availability failures from action
 risk, missing authorization, process ownership and incomplete source evidence.
 Validated assessment reasons replace the initial generic unknown label; deterministic
 high-risk signals remain visible. Presentation does not authorize execution.
+
+
+Review prefix optimization: stable environment and authorization fields precede
+changing sources and exact actions; object key order is canonical while array order
+is preserved. Provider cache hits remain measured, not guaranteed. Concurrent identical
+review computations join only within the same run, configuration/authorization stamp,
+exact serialized evidence and cancellation signal. Completed results are evicted,
+each caller retains source/context checks, and usage is charged to the owning review
+once. This is inference deduplication, not a reusable execution grant. Review cards
+separately show measured input/cached/output tokens, estimated cost and elapsed time.
+No local KV cache or completed authorization cache is implemented.
+
+
+Validation (2026-10-04): 324 tests passed, one opt-in desktop test skipped; typecheck
+and frontend build passed. Two sequential synthetic DeepSeek arithmetic-script
+reviews each used 1,118 input tokens, with 512 then 896 cached tokens (45.8% and
+80.1%). Durations were 1.896s and 3.322s. This small warm-cache observation is not
+a before/after benchmark or a latency improvement claim; reviewed commands were
+not executed. No private project source was used in this probe.

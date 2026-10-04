@@ -1,3 +1,4 @@
+import { reviewContent, reviewHash, ReviewFlights } from './review-cache.js';
 import type { FileScope } from './paths.js';
 import {
   inspectReviewSources,
@@ -21,6 +22,7 @@ import type { Configuration } from './settings.js';
 import { Store, id } from '../storage/store.js';
 export class AutoReview {
   private pool = new ModelPool(() => 1);
+  private flights = new ReviewFlights<any>();
   constructor(
     private store: Store,
     private config: Configuration,
@@ -131,63 +133,88 @@ export class AutoReview {
       } else if (risk.level === 'high')
         record.reason = 'High-risk operation requires explicit human approval: ' + risk.reason;
       else {
+        const content = reviewContent({
+          humanMessages: messages,
+          humanDecisions: humanDecisions(),
+          request: payload,
+          sandbox: settings.commandBackend,
+          network:
+            settings.commandBackend === 'approval-host'
+              ? 'host'
+              : settings.commandBackend === 'docker'
+                ? 'deny'
+                : settings.nativeNetwork,
+          cwdIsSecurityBoundary: false,
+          hostAccountPermissions: settings.commandBackend === 'approval-host',
+          risk,
+          observedSource: reviewEvidence(run, original.id === run.profileId),
+          inspectedSource,
+          executionEvidence:
+            original.id === run.profileId ? recentExecutionEvidence(this.store, run) : [],
+          commandSignals,
+        });
+        record.cache = {
+          policyPrefixHash: reviewHash(REVIEW_PROMPT),
+          requestHash: reviewHash(content),
+          serializedCharacters: content.length,
+          reuse: 'provider-prefix-eligible',
+          hitRate: null,
+        };
         phase = 'queue';
         const queuedAt = Date.now();
         const activeSignal = reviewSignal;
-        const result = await this.pool.run(
-          activeSignal,
-          () => {
-            phase = 'provider';
-            record.queueMs = Date.now() - queuedAt;
-            return boundedReview(
-              this.provider(profile).complete({
-                profile,
-                tools: [],
-                signal: activeSignal,
-                onText: () => {},
-                messages: [
-                  {
-                    role: 'system',
-                    content: REVIEW_PROMPT,
-                  },
-                  {
-                    role: 'user',
-                    content: JSON.stringify({
-                      humanMessages: messages,
-                      humanDecisions: humanDecisions(),
-                      request: payload,
-                      sandbox: settings.commandBackend,
-                      network:
-                        settings.commandBackend === 'approval-host'
-                          ? 'host'
-                          : settings.commandBackend === 'docker'
-                            ? 'deny'
-                            : settings.nativeNetwork,
-                      cwdIsSecurityBoundary: false,
-                      hostAccountPermissions: settings.commandBackend === 'approval-host',
-                      risk,
-                      observedSource: reviewEvidence(run, original.id === run.profileId),
-                      inspectedSource,
-                      executionEvidence:
-                        original.id === run.profileId
-                          ? recentExecutionEvidence(this.store, run)
-                          : [],
-                      commandSignals,
-                    }),
-                  },
-                ],
-              }),
+        const flight = this.flights.get(
+          signal,
+          reviewHash(initialStamp + run.id + JSON.stringify(profile) + content),
+          record.id,
+          () =>
+            this.pool.run(
               activeSignal,
-            );
-          },
-          run.conversationId,
+              () => {
+                phase = 'provider';
+                record.queueMs = Date.now() - queuedAt;
+                return boundedReview(
+                  this.provider(profile).complete({
+                    profile,
+                    tools: [],
+                    signal: activeSignal,
+                    onText: () => {},
+                    messages: [
+                      {
+                        role: 'system',
+                        content: REVIEW_PROMPT,
+                      },
+                      {
+                        role: 'user',
+                        content,
+                      },
+                    ],
+                  }),
+                  activeSignal,
+                );
+              },
+              run.conversationId,
+            ),
         );
-        record.usage = result.usage;
+        if (flight.joined) {
+          record.sharedReviewId = flight.owner;
+          phase = 'shared-review';
+        }
+        const result = await boundedReview(flight.work, activeSignal);
+        if (!flight.joined) record.usage = result.usage;
+        record.cache.hitRate =
+          result.usage.measured && result.usage.input > 0
+            ? Math.min(1, Math.max(0, result.usage.cached / result.usage.input))
+            : null;
         record.model = profile.model;
         const prices = profile.prices,
           u = result.usage;
         record.estimatedUsd =
-          u.measured && prices.input !== null && prices.output !== null && prices.cached !== null
+          !flight.joined &&
+          u.measured &&
+          prices.input !== null &&
+          prices.output !== null &&
+          prices.cached !== null
             ? (Math.max(0, u.input - u.cached) * prices.input +
                 u.cached * prices.cached +
                 u.output * prices.output) /
@@ -213,7 +240,7 @@ export class AutoReview {
       record.decision = 'ask';
       const code = signal.aborted
         ? 'REVIEW_CANCELLED'
-        : reviewSignal?.aborted
+        : reviewSignal?.aborted || error?.name === 'TimeoutError'
           ? 'REVIEW_TIMEOUT'
           : phase === 'validate-response'
             ? 'REVIEW_INVALID_RESPONSE'

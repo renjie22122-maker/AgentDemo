@@ -360,6 +360,59 @@ export function InputCard({ input, t, refresh, notify }: any) {
                   : ''}
               </p>
             )}
+            {input.payload.autoReview?.cache && (
+              <details>
+                <summary>
+                  {zh
+                    ? '审核用量与缓存（独立于主对话）'
+                    : 'Review usage and cache (separate from chat)'}
+                </summary>
+                {input.payload.autoReview.sharedReviewId ? (
+                  <p>
+                    {zh
+                      ? '共用进行中的审核调用，费用记在原审核：'
+                      : 'Shared in-flight review; usage charged to: '}
+                    {input.payload.autoReview.sharedReviewId}
+                  </p>
+                ) : (
+                  <p>
+                    {zh ? '输入 / 缓存输入 / 输出：' : 'Input / cached input / output: '}
+                    {input.payload.autoReview.usage?.measured
+                      ? [
+                          input.payload.autoReview.usage.input,
+                          input.payload.autoReview.usage.cached,
+                          input.payload.autoReview.usage.output,
+                        ].join(' / ')
+                      : zh
+                        ? '未取得 API 实测用量'
+                        : 'Measured API usage unavailable'}
+                    {' · '}
+                    {zh ? '估算费用：' : 'Estimated cost: '}
+                    {typeof input.payload.autoReview.estimatedUsd === 'number'
+                      ? '$' + input.payload.autoReview.estimatedUsd.toFixed(6)
+                      : zh
+                        ? '未知'
+                        : 'Unknown'}
+                  </p>
+                )}
+                <p>
+                  {zh ? '审核缓存命中：' : 'Review cache hit: '}
+                  {typeof input.payload.autoReview.cache.hitRate === 'number'
+                    ? (input.payload.autoReview.cache.hitRate * 100).toFixed(1) + '%'
+                    : zh
+                      ? '未知'
+                      : 'Unknown'}
+                  {' · '}
+                  {zh ? '总耗时：' : 'Total time: '}
+                  {((input.payload.autoReview.durationMs || 0) / 1000).toFixed(1)}s
+                </p>
+                <small>
+                  {zh
+                    ? '稳定前缀提供复用条件，实际命中由服务商决定；不复用已完成审批的授权。'
+                    : 'Stable prefixes enable reuse; actual hits are provider-controlled. Completed permissions are not reused.'}
+                </small>
+              </details>
+            )}
             {input.payload.autoReview?.failureCode && (
               <small>
                 {input.payload.autoReview.failureCode} ·{' '}

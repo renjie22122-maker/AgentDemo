@@ -397,3 +397,35 @@ test('package review follows concrete lifecycle scripts without executing them',
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('identical in-flight reviews share inference but never cache completed permissions', async () => {
+  const f = await setup();
+  let calls = 0;
+  let release!: () => void;
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
+  const review = new AutoReview(f.store, f.config, () => ({
+    complete: async () => {
+      calls++;
+      await gate;
+      return {
+        message: { role: 'assistant', content: approved() },
+        usage: { input: 100, output: 10, cached: 80, measured: true },
+      };
+    },
+  }));
+  const signal = new AbortController().signal;
+  const first = review.review(f.run, { command: 'echo hello' }, signal);
+  const second = review.review(f.run, { command: 'echo hello' }, signal);
+  await new Promise((r) => setTimeout(r, 30));
+  release();
+  const results = await Promise.all([first, second]);
+  assert.equal(calls, 1);
+  assert.equal(results.filter((r) => r.usage).length, 1);
+  assert.equal(results[1].sharedReviewId, results[0].id);
+  assert.equal(results[0].cache.hitRate, 0.8);
+  await review.review(f.run, { command: 'echo hello' }, signal);
+  assert.equal(calls, 2);
+  f.store.close();
+});
