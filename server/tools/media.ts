@@ -13,7 +13,7 @@ export function installMedia(registry: ToolRegistry) {
   registry.add({
     name: 'generate_media',
     description:
-      'Submit a paid image/video/music/speech/3D generation task using a configured service. Approval covers the exact prompt/options. Returns a durable job ID; use media_status, never resubmit because waiting is slow. URLs and data URIs in options are sent to the provider. No arbitrary local paths are read.',
+      'Submit a paid image/video/music/speech/3D generation task using a configured service. Approval covers the exact prompt/options. Returns a durable job ID; use media_status, never resubmit because waiting is slow. URLs and data URIs in options are sent to the provider. references maps provider input fields to attachment IDs or media:jobId:outputId handles from media_status (image/audio/video up to 25 MB). Use the actual provider field names and supported formats; data URI support varies. read_image accepts mediaRef for visual QA; export_media saves outputs to the workspace. No arbitrary local paths are read.',
     effect: 'coordinate',
     schema: z.object({
       serviceId: z.string(),
@@ -80,6 +80,48 @@ export function installMedia(registry: ToolRegistry) {
     run: (a, c) => ({
       content: JSON.stringify(c.media.public(c.media.get(a.jobId, c.conversation.id))),
     }),
+  });
+  registry.add({
+    name: 'inspect_media',
+    effect: 'read',
+    description:
+      'Inspect a completed same-conversation media reference: byte integrity, MIME and MP4 audio/video track declarations. Does not prove audible content or codec compatibility; unsupported containers report unknown. For visual QA use read_image(mediaRef).',
+    schema: z.object({ reference: z.string() }),
+    run: async (a, c) => {
+      const output = await c.media.output(a.reference, c.conversation.id);
+      return {
+        content: JSON.stringify({
+          reference: a.reference,
+          mime: output.mime,
+          name: output.name,
+          bytes: output.bytes.length,
+          sha256: output.sha256,
+          inspection: output.inspection,
+        }),
+      };
+    },
+  });
+  registry.add({
+    name: 'export_media',
+    effect: 'write',
+    description:
+      'Copy a completed image/video/audio/3D output in this conversation into an authorized workspace path, preserving exact bytes. Never overwrites existing files. Returns hash and audio-track inspection; no model generation or conversion.',
+    schema: z.object({ reference: z.string(), path: z.string().min(1) }),
+    run: async (a, c) => {
+      const output = await c.media.output(a.reference, c.conversation.id);
+      c.signal.throwIfAborted();
+      const path = await c.files.writeBytes(a.path, output.bytes);
+      return {
+        content: JSON.stringify({
+          path,
+          reference: a.reference,
+          mime: output.mime,
+          bytes: output.bytes.length,
+          sha256: output.sha256,
+          inspection: output.inspection,
+        }),
+      };
+    },
   });
   registry.add({
     name: 'cancel_media',

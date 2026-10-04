@@ -1,3 +1,4 @@
+import { mediaRange } from '../services/media-inspection.js';
 import type { FastifyInstance } from 'fastify';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
@@ -81,7 +82,21 @@ export function mediaRoutes(app: FastifyInstance, runtime: Runtime) {
         .header('Content-Security-Policy', "default-src 'none'; sandbox")
         .header('Content-Disposition', 'inline; filename="' + f.name + '"')
         .type(f.mime);
-      return reply.send(await readFile(f.path));
+      const bytes = await readFile(f.path);
+      reply.header('Accept-Ranges', 'bytes');
+      const range = mediaRange(req.headers.range, bytes.length);
+      if (range === false)
+        return reply
+          .code(416)
+          .header('Content-Range', 'bytes */' + bytes.length)
+          .send();
+      if (range)
+        return reply
+          .code(206)
+          .header('Content-Range', 'bytes ' + range.start + '-' + range.end + '/' + bytes.length)
+          .header('Content-Length', range.end - range.start + 1)
+          .send(bytes.subarray(range.start, range.end + 1));
+      return reply.header('Content-Length', bytes.length).send(bytes);
     },
   );
 }

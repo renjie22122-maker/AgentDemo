@@ -23,6 +23,30 @@ let browser: Browser | undefined,
   page: Page | undefined,
   tail = Promise.resolve(),
   lastUse = Date.now();
+const pages = new Map<string, Page>();
+let nextPageId = 0;
+function trackPage(p: Page) {
+  for (const [key, existing] of pages) if (existing === p) return key;
+  const key = String(++nextPageId);
+  pages.set(key, p);
+  p.on('close', () => {
+    pages.delete(key);
+    if (page === p) page = undefined;
+  });
+  return key;
+}
+async function tabs() {
+  return Promise.all(
+    [...pages]
+      .filter(([, p]) => !p.isClosed())
+      .map(async ([tabId, p]) => ({
+        tabId,
+        active: p === page,
+        url: p.url(),
+        title: await p.title().catch(() => ''),
+      })),
+  );
+}
 const text = (v: unknown): any => ({ content: [{ type: 'text', text: JSON.stringify(v) }] });
 function register(name: string, description: string, schema: any, fn: (a: any) => Promise<any>) {
   server.registerTool(name, { description, inputSchema: schema }, async (a: any) => {
@@ -30,7 +54,16 @@ function register(name: string, description: string, schema: any, fn: (a: any) =
       lastUse = Date.now();
       try {
         const result = await fn(a);
-        if (mode === 'browser') await saveBrowserState();
+        if (mode === 'browser') {
+          await saveBrowserState();
+          result.content.push({
+            type: 'text',
+            text: JSON.stringify({
+              tabs: await tabs(),
+              note: 'New tabs are retained. Select the result tab explicitly; no OS focus change.',
+            }),
+          });
+        }
         return result;
       } catch (e) {
         return { ...text({ error: e instanceof Error ? e.message : String(e) }), isError: true };
@@ -47,7 +80,13 @@ function register(name: string, description: string, schema: any, fn: (a: any) =
 }
 async function getPage() {
   if (page && !page.isClosed()) return page;
+  const remaining = [...pages.values()].find((p) => !p.isClosed());
+  if (remaining) {
+    page = remaining;
+    return page;
+  }
   await browser?.close();
+  pages.clear();
   const { chromium } = await import('@playwright/test');
   browser = await chromium.launch({
     headless: true,
@@ -92,13 +131,43 @@ async function getPage() {
     });
     await context.routeWebSocket('**/*', (ws) => ws.close());
   }
-  page = await context.newPage();
   context.on('page', (p) => {
-    if (p !== page) void p.close();
+    trackPage(p);
   });
+  page = await context.newPage();
+  trackPage(page);
   return page;
 }
 if (mode === 'browser') {
+  register(
+    'browser_tabs',
+    'List owned browser tabs, including popup search results. Does not start a browser or change desktop focus.',
+    {},
+    async () => text({ tabs: await tabs() }),
+  );
+  register(
+    'browser_select_tab',
+    'Select an existing owned tab for subsequent browser actions; no desktop focus change.',
+    { tabId: z.string() },
+    async (a) => {
+      const selected = pages.get(a.tabId);
+      if (!selected || selected.isClosed())
+        throw Error('Tab unavailable. Call browser_tabs to refresh.');
+      page = selected;
+      return text({ selected: a.tabId, url: page.url() });
+    },
+  );
+  register(
+    'browser_close_tab',
+    'Close exactly one owned tab; never touches personal browser windows.',
+    { tabId: z.string() },
+    async (a) => {
+      const selected = pages.get(a.tabId);
+      if (!selected || selected.isClosed()) throw Error('Tab unavailable.');
+      await selected.close();
+      return text({ closed: a.tabId });
+    },
+  );
   register(
     'browser_navigate',
     'Open HTTP(S) URL in a fresh conversation browser. Uses HOST network, not command sandbox. No existing cookies.',

@@ -1001,3 +1001,47 @@ test('source warnings survive ledger consolidation without becoming instructions
   )!;
   assert.match(many.content, /"omitted":6/);
 });
+
+test('interaction diagnostics distinguish disabled and blocked adapters without launching MCP', async (t) => {
+  const f = fixture(t);
+  f.config.save({
+    ...f.config.get(),
+    mcp: [
+      {
+        id: 'browser',
+        name: 'Browser',
+        enabled: true,
+        builtin: 'browser',
+        command: '',
+        args: [],
+        env: {},
+      },
+      {
+        id: 'computer',
+        name: 'Desktop',
+        enabled: false,
+        builtin: 'computer',
+        command: '',
+        args: [],
+        env: {},
+      },
+    ],
+  });
+  const result = JSON.parse(
+    (await f.registry.invoke('interaction_capabilities', {}, f.ctx)).content,
+  );
+  assert.equal(result.adapters[0].status, 'enabled-unverified');
+  assert.equal(result.adapters[1].status, 'disabled');
+  assert.equal(result.permissionsGranted, false);
+  const readonly = JSON.parse(
+    (
+      await f.registry.invoke(
+        'interaction_capabilities',
+        {},
+        { ...f.ctx, conversation: { ...f.conversation, permission: 'read-only' } },
+      )
+    ).content,
+  );
+  assert.equal(readonly.adapters[0].status, 'policy-blocked');
+  assert.ok(!JSON.stringify(result).includes('apiKey'));
+});

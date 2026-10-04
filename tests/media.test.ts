@@ -243,3 +243,55 @@ test('safe GLB preview rejects external resources and malformed files', () => {
   assert.equal(safeGlb(glb({ images: [{ uri: 'https://private.example/secret' }] })), false);
   assert.equal(safeGlb(Buffer.from('not a model')), false);
 });
+
+test('generated output handles support QA, references, no-clobber export and isolation', async () => {
+  const { FileScope } = await import('../server/services/paths.js');
+  const { normalizeImage } = await import('../server/services/images.js');
+  const { writeFile, mkdir } = await import('node:fs/promises');
+  const sharp = (await import('sharp')).default;
+  const f = await fixture();
+  try {
+    const pixels = await sharp({
+      create: { width: 8, height: 8, channels: 3, background: '#ff0000' },
+    })
+      .png()
+      .toBuffer();
+    const media = new MediaService(f.store, f.config, f.dir, async () =>
+      response({ data: [{ b64_json: pixels.toString('base64') }] }),
+    );
+    const job = await media.submit({
+      connectionId: 'service',
+      conversationId: 'chat',
+      operationKey: 'chain',
+      prompt: 'red',
+    });
+    await media.close();
+    const receipt = media.public(media.get(job.id, 'chat'));
+    const ref = receipt.outputs[0].reference;
+    assert.match(ref, /^media:/);
+    assert.ok(receipt.outputs[0].url.includes('/files/0'));
+    const output = await media.output(ref, 'chat');
+    assert.deepEqual(output.bytes, pixels);
+    assert.ok((await normalizeImage(output.bytes)).url.startsWith('data:image/'));
+    const references = await media.referenceOptions('chat', {}, { image_url: [ref] });
+    assert.equal(references.image_url, 'data:image/png;base64,' + pixels.toString('base64'));
+    await assert.rejects(media.output(ref, 'other'), { code: 'MEDIA_SCOPE' });
+    await assert.rejects(media.referenceOptions('other', {}, { image_url: [ref] }), {
+      code: 'MEDIA_SCOPE',
+    });
+    const root = join(f.dir, 'workspace');
+    await mkdir(root);
+    const scope = new FileScope([root]);
+    await scope.writeBytes('frames/key.png', output.bytes);
+    assert.deepEqual(await readFile(join(root, 'frames/key.png')), pixels);
+    await assert.rejects(scope.writeBytes('frames/key.png', Buffer.from('replacement')));
+    assert.deepEqual(await readFile(join(root, 'frames/key.png')), pixels);
+    await assert.rejects(scope.writeBytes('../outside.png', pixels));
+    await assert.rejects(scope.writeBytes('.git/config', pixels));
+    const file = f.store.get<any>('media-file', job.id + ':0');
+    await writeFile(file.path, 'modified');
+    await assert.rejects(media.output(ref, 'chat'), { code: 'MEDIA_INTEGRITY' });
+  } finally {
+    f.store.close();
+  }
+});

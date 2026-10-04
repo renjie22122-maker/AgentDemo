@@ -56,7 +56,13 @@ export interface MediaJob {
   text?: string;
   estimatedUsd: number | null;
   actualUsd: number | null;
-  outputs: { id: string; mime: string; name: string; preview?: boolean }[];
+  outputs: {
+    id: string;
+    mime: string;
+    name: string;
+    preview?: boolean;
+    inspection?: { audio: string; method: string; audioTracks?: number; videoTracks?: number };
+  }[];
 }
 export const mediaProtocols: {
   id: MediaProtocol;

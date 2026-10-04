@@ -1,3 +1,4 @@
+import { inspectMedia } from './media-inspection.js';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -65,7 +66,45 @@ export class MediaService {
   }
   public(j: MediaJob) {
     const { statusUrl, resultUrl, cancelUrl, origin, baseUrl, operationKey, ...rest } = j;
-    return rest;
+    return {
+      ...rest,
+      outputs: rest.outputs.map((f) => ({
+        ...f,
+        reference: 'media:' + j.id + ':' + f.id,
+        url: '/api/conversations/' + j.conversationId + '/media/' + j.id + '/files/' + f.id,
+      })),
+    };
+  }
+  async output(reference: string, conversationId: string) {
+    const match = /^media:([a-zA-Z0-9-]+):([0-9]+)$/.exec(reference);
+    assert(match, 'MEDIA_REFERENCE', 'Use the media:jobId:outputId reference from media_status.');
+    const job = this.get(match[1], conversationId);
+    assert(
+      job.status === 'completed' && job.outputs.some((f) => f.id === match[2]),
+      'MEDIA_STATE',
+      'This output is not complete.',
+    );
+    const file = this.store.get<any>('media-file', match[1] + ':' + match[2]);
+    assert(
+      file.conversationId === conversationId,
+      'MEDIA_SCOPE',
+      'Output belongs to another conversation.',
+      403,
+    );
+    const bytes = await readFile(file.path);
+    assert(
+      bytes.length <= 150 * 1024 * 1024 &&
+        createHash('sha256').update(bytes).digest('hex') === file.sha256,
+      'MEDIA_INTEGRITY',
+      'Saved media changed or exceeds the size limit.',
+    );
+    return {
+      bytes,
+      mime: file.mime,
+      name: file.name,
+      sha256: file.sha256,
+      inspection: inspectMedia(bytes, file.mime),
+    };
   }
   private save(j: MediaJob) {
     j.updatedAt = Date.now();
@@ -89,18 +128,40 @@ export class MediaService {
         'MEDIA_REFERENCE',
         'Invalid reference field/count.',
       );
+      assert(
+        field.endsWith('s') || ids.length === 1,
+        'MEDIA_REFERENCE',
+        'A singular reference field accepts exactly one asset.',
+      );
       const values = [];
       for (const key of ids) {
-        const a = this.store.get<Attachment>('attachment', key);
+        let bytes: Buffer, mime: string;
+        if (key.startsWith('media:')) {
+          const output = await this.output(key, conversationId);
+          bytes = output.bytes;
+          mime = output.mime;
+        } else {
+          const a = this.store.get<Attachment>('attachment', key);
+          assert(
+            a.conversationId === conversationId,
+            'MEDIA_SCOPE',
+            'References must belong to this conversation.',
+            403,
+          );
+          bytes = await readFile(a.path);
+          mime = a.mime;
+        }
         assert(
-          a.conversationId === conversationId && a.mime.startsWith('image/'),
-          'MEDIA_SCOPE',
-          'References must be images from this conversation.',
-          403,
+          /^(image|audio|video)\//.test(mime),
+          'MEDIA_REFERENCE',
+          'Reference must be an image, audio or video.',
         );
-        const bytes = await readFile(a.path);
-        assert(bytes.length <= 25 * 1024 * 1024, 'MEDIA_SIZE', 'Reference image exceeds 25 MB.');
-        values.push('data:' + a.mime + ';base64,' + bytes.toString('base64'));
+        assert(
+          bytes.length <= 25 * 1024 * 1024,
+          'MEDIA_SIZE',
+          'Inline media reference exceeds 25 MB; export it and use a provider-supported upload flow.',
+        );
+        values.push('data:' + mime + ';base64,' + bytes.toString('base64'));
       }
       out[field] = field.endsWith('s') ? values : values[0];
     }
@@ -312,6 +373,7 @@ export class MediaService {
         mime,
         name: fileName,
         preview: extension === 'glb' && safeGlb(bytes),
+        inspection: inspectMedia(bytes, mime),
       });
     }
     assert(

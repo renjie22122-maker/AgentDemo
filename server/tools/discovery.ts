@@ -4,6 +4,7 @@ export const coreTools = new Set([
   'grep',
   'search_tools',
   'search_capabilities',
+  'interaction_capabilities',
   'batch_read_tools',
   'list_files',
   'read_file',

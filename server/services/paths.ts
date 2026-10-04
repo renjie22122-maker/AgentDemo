@@ -1,5 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { lstat, mkdir, readdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
+import {
+  link,
+  unlink,
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  writeFile,
+} from 'node:fs/promises';
 import path from 'node:path';
 import { assert } from '../core/errors.js';
 export const inside = (root: string, file: string) => {
@@ -136,6 +146,21 @@ export class FileScope {
     await writeFile(tmp, content, { flag: 'wx' });
     await this.resolve(name, true);
     await rename(tmp, p);
+    return p;
+  }
+  async writeBytes(name: string, content: Buffer) {
+    const p = await this.resolve(name, true);
+    await mkdir(path.dirname(p), { recursive: true });
+    await this.resolve(name, true);
+    const tmp = path.join(path.dirname(p), '.agentdemo-write-' + randomUUID());
+    try {
+      await writeFile(tmp, content, { flag: 'wx' });
+      await this.resolve(name, true);
+      // Atomic no-clobber publication; an existing destination is never replaced.
+      await link(tmp, p);
+    } finally {
+      await unlink(tmp).catch(() => {});
+    }
     return p;
   }
   async list(name = '.') {

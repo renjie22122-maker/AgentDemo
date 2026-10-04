@@ -57,6 +57,21 @@ export function MediaGallery({ conversationId, jobs, zh, onText }: any) {
                 ) : f.mime.startsWith('audio/') ? (
                   <audio controls preload="metadata" src={url} />
                 ) : null}
+                {f.mime.startsWith('video/') && (
+                  <small>
+                    {f.inspection?.audio === 'absent'
+                      ? zh
+                        ? '源文件未检测到音轨；播放器无法恢复不存在的声音。'
+                        : 'No audio track found in the source; playback cannot restore missing sound.'
+                      : f.inspection?.audio === 'present'
+                        ? zh
+                          ? '源文件包含音轨；若无声，请检查播放器音量、系统音量与编解码兼容性。'
+                          : 'Audio track present; check player/system volume and codec compatibility if silent.'
+                        : zh
+                          ? '音轨状态未核实；未自动转码或补配音。'
+                          : 'Audio track status unverified; no automatic transcoding or dubbing.'}
+                  </small>
+                )}
                 <a href={url} download={f.name}>
                   {zh ? '下载' : 'Download'} {f.name}
                 </a>
