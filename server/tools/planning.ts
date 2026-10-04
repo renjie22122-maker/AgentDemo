@@ -1,3 +1,4 @@
+import { teamBlackboard } from '../services/team-blackboard.js';
 import { compilePlan } from '../services/plan-compiler.js';
 import { planningPolicy } from '../services/planning-policy.js';
 import { workerExpertise } from '../services/task-routing.js';
@@ -133,6 +134,7 @@ export function installPlanning(registry: ToolRegistry) {
     schema: z.object({}),
     run: async (_a, c) => ({
       content: JSON.stringify({
+        blackboard: teamBlackboard(c.store, c.run),
         team: new Teams(c.store).project(c.run),
         members: new TaskBoard(c.store).members(c.run),
         scheduling: c.store.maybe('team-scheduling', rootRun(c.store, c.run)) || null,

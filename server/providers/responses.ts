@@ -1,3 +1,4 @@
+import { cacheStableTools } from './prompt-cache.js';
 import { AppError as LimitError } from '../core/errors.js';
 import { withToolImages } from './protocol.js';
 import { assert } from '../core/errors.js';
@@ -13,6 +14,7 @@ import {
 } from './protocol.js';
 export function responsesPayload({ profile, messages, tools }: ModelRequest) {
   messages = withToolImages(messages);
+  tools = cacheStableTools(profile, tools);
   const input: any[] = [];
   for (const m of messages.filter((m) => m.role !== 'system')) {
     if (m.role === 'tool') {

@@ -282,3 +282,29 @@ SSE events have persisted IDs. Reconnection replays up to 1,000 events; larger g
 ### Optional unlimited execution counts
 
 `maxParallelRuns: 0` disables the per-conversation model/pump concurrency limit; `maxChildren: 0` disables the cumulative child-execution limit for a run tree, including continued members. Defaults remain 3 and 8. Zero is preserved in settings and normalized to infinity only in comparisons, never serialized as infinity. Delegation depth, user-selected collaboration mode, explicit budgets, provider quotas and independent team autoscaling settings remain separate controls.
+
+
+## Shared state and controlled recovery
+
+The read-only team blackboard projects TaskBoard, recipient-visible member messages,
+artifact declarations, evidence event references and unresolved effects. Both
+inspect_team and the compaction task snapshot consume this projection. Original
+records remain authoritative; member messages are untrusted claims. Selective
+context prioritizes owned tasks and dependencies, caps tasks/messages/artifacts,
+and identifies omissions. It does not reread the filesystem or establish truth.
+
+Cognitive interventions produce bounded, non-executing recovery proposals. Unknown
+effects require inspection, denied operations retain their authorization boundary,
+and new checks target the current artifact. Existing tool guards still apply.
+Completed advice is recorded once as an assessment: changed strategy or cleared
+errors are not verification. Observed progress is not a causal claim that the
+intervention improved quality. This remains a deterministic policy, not a second
+LLM agent or automatic replay engine.
+
+Startup recovery now commits interrupted run states and pending-input cancellation
+atomically, including old orphaned approvals. Fault tests cover 64 parent/child
+status combinations, rollback and idempotence while preserving unknown effects.
+This matrix is not exhaustive coverage of every runtime fault sequence.
+
+DeepSeek prefix stability and measured-cache limits are documented in
+[DEEPSEEK-CACHE.md](DEEPSEEK-CACHE.md).

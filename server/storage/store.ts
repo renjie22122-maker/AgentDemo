@@ -219,23 +219,28 @@ export class Store {
     return next;
   }
   recover() {
-    for (const run of this.runs().filter((r) => !terminal(r.status))) {
-      this.transition(
-        run.id,
-        'interrupted',
-        run.status === 'waiting_approval'
-          ? 'The service restarted while awaiting approval. Waiting itself has no timeout. Resume to reassess the unapproved action; it was not authorized by waiting.'
-          : 'The service restarted. Inspect unfinished operations before continuing.',
-      );
-      for (const q of this.list<PendingInput>('input').filter(
-        (q) => q.runId === run.id && q.status === 'pending',
-      ))
-        this.put('input', {
-          ...q,
-          status: 'cancelled',
-          payload: { ...q.payload, interruptionReason: 'service_restart' },
-        });
-    }
+    // Status and approval cancellation commit together. Unknown effects remain untouched.
+    this.transaction(() => {
+      for (const run of this.runs().filter((r) => !terminal(r.status))) {
+        this.transition(
+          run.id,
+          'interrupted',
+          run.status === 'waiting_approval'
+            ? 'The service restarted while awaiting approval. Waiting itself has no timeout. Resume to reassess the unapproved action; it was not authorized by waiting.'
+            : 'The service restarted. Inspect unfinished operations before continuing.',
+        );
+      }
+      // Also repair approvals orphaned by older non-atomic recovery implementations.
+      for (const q of this.list<PendingInput>('input').filter((q) => q.status === 'pending')) {
+        const run = this.maybe<Run>('run', q.runId);
+        if (!run || terminal(run.status))
+          this.put('input', {
+            ...q,
+            status: 'cancelled',
+            payload: { ...q.payload, interruptionReason: 'service_restart' },
+          });
+      }
+    });
   }
   beginEffect(runId: string, tool: string, args: Record<string, unknown>) {
     const key = id();

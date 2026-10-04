@@ -30,7 +30,8 @@ export function messageUnits(messages: ModelMessage[]) {
     0,
   );
 }
-export const profileKey = (p: Profile) => JSON.stringify([p.transport, p.baseUrl, p.model]);
+export const profileKey = (p: Profile) =>
+  JSON.stringify([p.transport, p.baseUrl, p.model, p.reasoningFormat, p.reasoning]);
 export function sampleContext(
   messages: ModelMessage[],
   tools: ToolSpec[],

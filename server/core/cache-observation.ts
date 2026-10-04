@@ -1,8 +1,10 @@
+import { cacheStableTools, promptCacheMode } from '../providers/prompt-cache.js';
 import { createHash } from 'node:crypto';
 import type { ModelMessage, Profile, ToolSpec, Usage } from '../../shared/types.js';
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export interface PrefixObservation {
   route: string;
+  cacheMode?: string;
   system: string;
   tools: string;
   messages: string[];
@@ -14,9 +16,16 @@ export function prefixObservation(
   profile: Profile,
 ): PrefixObservation {
   return {
-    route: hash([profile.transport, profile.baseUrl, profile.model, profile.reasoning]),
+    route: hash([
+      profile.transport,
+      profile.baseUrl,
+      profile.model,
+      profile.reasoningFormat,
+      profile.reasoning,
+    ]),
     system: hash(messages.filter((m) => m.role === 'system').map((m) => m.content)),
-    tools: hash(tools),
+    tools: hash(cacheStableTools(profile, tools)),
+    cacheMode: promptCacheMode(profile),
     messages: messages.slice(0, 256).map((m) =>
       hash({
         role: m.role,
@@ -45,6 +54,8 @@ export function comparePrefix(
       unchangedMessages++;
   return {
     baseline: !!previous,
+    cacheMode: current.cacheMode,
+    reuseCondition: 'matching local route and schema only; server cache residency is unknown',
     routeChanged: previous ? previous.route !== current.route : null,
     systemChanged: previous ? previous.system !== current.system : null,
     toolsChanged: previous ? previous.tools !== current.tools : null,
@@ -53,7 +64,14 @@ export function comparePrefix(
     measured: usage.measured,
     inputTokens: usage.measured ? usage.input : null,
     cachedTokens: usage.measured ? usage.cached : null,
-    cacheRatio: usage.measured && usage.input > 0 ? usage.cached / usage.input : null,
+    cacheRatio:
+      usage.measured && usage.input > 0 && usage.cached >= 0 && usage.cached <= usage.input
+        ? usage.cached / usage.input
+        : null,
+    reusablePrefixMessages:
+      previous && previous.route === current.route && previous.tools === current.tools
+        ? unchangedMessages
+        : 0,
   };
 }
 export function contextComponents(messages: ModelMessage[], tools: ToolSpec[]) {

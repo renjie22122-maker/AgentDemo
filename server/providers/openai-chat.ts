@@ -1,3 +1,4 @@
+import { cacheStableTools } from './prompt-cache.js';
 import { withToolImages } from './protocol.js';
 import { AppError, assert } from '../core/errors.js';
 import type { ModelProvider, ModelRequest, ModelResult } from './protocol.js';
@@ -13,6 +14,7 @@ import {
 } from './protocol.js';
 export function chatPayload({ profile, messages, tools }: ModelRequest) {
   messages = withToolImages(messages);
+  tools = cacheStableTools(profile, tools);
   return {
     model: profile.model,
     stream: true,

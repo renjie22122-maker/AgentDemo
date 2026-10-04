@@ -78,6 +78,16 @@ export function finishTaskMeasurement(
       )
     )
       continue;
+    const typed = e.data.outcome;
+    if (typed) {
+      // Permission, unknown effects and preflight failures are not worker competence.
+      if (!['succeeded', 'failed'].includes(typed.status)) continue;
+      if (/HTTP (401|403|429|5\d\d)|ECONN|ENET|EAI_AGAIN|TIMEOUT|ABORT/i.test(typed.code || ''))
+        continue;
+      const count = (tools[e.data.name] ||= { ok: 0, failed: 0 });
+      typed.status === 'succeeded' ? count.ok++ : count.failed++;
+      continue;
+    }
     const out = String(e.data.output);
     if (
       /^DENIED/.test(out) ||

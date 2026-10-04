@@ -18,7 +18,7 @@ import { TeamAutomation } from '../services/team-automation.js';
 import { Teams } from '../services/team-space.js';
 import { DelegationManager } from './delegation-manager.js';
 import { termination } from './termination.js';
-import { sampleContext } from './context-budget.js';
+import { sampleContext, profileKey } from './context-budget.js';
 import { ContextManager } from './context-manager.js';
 import { ToolExecutor } from './tool-executor.js';
 import { CognitiveController } from './cognitive-controller.js';
@@ -236,6 +236,8 @@ export class Runtime implements TeamPort {
         (previous.providerFingerprint && previous.providerFingerprint !== run.providerFingerprint))
     )
       run.checkpoints = this.history(conversationId);
+    if (run.contextSample?.fingerprint !== profileKey({ ...profile, reasoning: c.reasoning }))
+      run.contextSample = undefined;
     this.store.put('conversation', {
       ...c,
       title: c.title === 'New chat' ? message.slice(0, 70) : c.title,
