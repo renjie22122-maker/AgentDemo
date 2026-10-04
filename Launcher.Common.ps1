@@ -12,3 +12,31 @@ function Get-AgentDemoNode {
     }
     throw 'Node.js 24+ is required. Install it from https://nodejs.org or run: winget install OpenJS.NodeJS.LTS . Then reopen First-Start-AgentDemo.cmd.'
 }
+
+# Content fingerprints detect updates even when an old dist directory is retained.
+function Get-AgentDemoFingerprint([string]$Root, [switch]$DependenciesOnly) {
+    $taskFiles = @('package.json', 'pnpm-lock.yaml')
+    if (-not $DependenciesOnly) {
+        $taskFiles += @('index.html', 'vite.config.ts', 'tsconfig.json')
+        foreach ($taskDir in @('src', 'shared', 'server', 'public')) {
+            if (Test-Path -LiteralPath (Join-Path $Root $taskDir)) {
+                $taskFiles += Get-ChildItem -LiteralPath (Join-Path $Root $taskDir) -Recurse -File |
+                    ForEach-Object { $_.FullName.Substring($Root.Length + 1) }
+            }
+        }
+    }
+    $taskHashes = foreach ($taskRelative in ($taskFiles | Sort-Object -Unique)) {
+        $taskPath = Join-Path $Root $taskRelative
+        if (Test-Path -LiteralPath $taskPath -PathType Leaf) {
+            $taskRelative + ':' + (Get-FileHash -LiteralPath $taskPath -Algorithm SHA256).Hash
+        }
+    }
+    $taskHasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return [BitConverter]::ToString($taskHasher.ComputeHash([Text.Encoding]::UTF8.GetBytes(($taskHashes -join "
+")))).Replace('-', '')
+    } finally { $taskHasher.Dispose() }
+}
+function Test-AgentDemoStamp([string]$Path, [string]$Expected) {
+    return (Test-Path -LiteralPath $Path) -and ((Get-Content -LiteralPath $Path -Raw).Trim() -eq $Expected)
+}

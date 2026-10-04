@@ -13,22 +13,26 @@ try {
 . (Join-Path $taskRoot 'Launcher.Common.ps1')
 $taskNode = Get-AgentDemoNode
 $env:PATH = (Split-Path $taskNode) + ';' + $env:PATH
-if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'node_modules\tsx'))) {
-    Write-Host 'First launch detected. Preparing dependencies and frontend...'
+if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'node_modules/tsx')) -or
+    -not (Test-AgentDemoStamp (Join-Path $taskRoot 'node_modules/.agentdemo-dependencies') (Get-AgentDemoFingerprint $taskRoot -DependenciesOnly))) {
+    Write-Host 'First launch or dependency update detected. Preparing dependencies and frontend...'
     & (Join-Path $taskRoot 'First-Start-AgentDemo.ps1') -SetupOnly -NoBrowser
 }
-if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'dist\index.html'))) {
+if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'dist/index.html')) -or
+    -not (Test-AgentDemoStamp (Join-Path $taskRoot 'dist/.agentdemo-build') (Get-AgentDemoFingerprint $taskRoot))) {
     Push-Location $taskRoot
     try {
         & $taskNode node_modules/typescript/bin/tsc --noEmit
         if ($LASTEXITCODE -ne 0) { throw 'TypeScript check failed.' }
         & $taskNode node_modules/vite/bin/vite.js build
         if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
+        Set-Content -LiteralPath (Join-Path $taskRoot 'dist/.agentdemo-build') -Value (Get-AgentDemoFingerprint $taskRoot)
     } finally { Pop-Location }
 }
 $taskLogs = Join-Path $taskRoot '.data\logs'
 New-Item -ItemType Directory -Force -Path $taskLogs | Out-Null
-Start-Process -FilePath $taskNode -ArgumentList @('scripts/supervisor.mjs') -WorkingDirectory $taskRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $taskLogs 'supervisor.stdout.log') -RedirectStandardError (Join-Path $taskLogs 'supervisor.stderr.log') | Out-Null
+$taskLogStamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
+Start-Process -FilePath $taskNode -ArgumentList @('scripts/supervisor.mjs') -WorkingDirectory $taskRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $taskLogs "supervisor-$taskLogStamp.stdout.log") -RedirectStandardError (Join-Path $taskLogs "supervisor-$taskLogStamp.stderr.log") | Out-Null
 $taskReady = $false
 for ($taskAttempt = 0; $taskAttempt -lt 40; $taskAttempt++) {
     Start-Sleep -Milliseconds 250
