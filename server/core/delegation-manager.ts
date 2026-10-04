@@ -35,8 +35,13 @@ export class DelegationManager {
     deliverable: string,
     mode: 'read-only' | 'isolated' = 'read-only',
     controlTicket?: string,
+    specialistId?: string,
   ) {
     const settings = this.config.get();
+    const specialist = specialistId
+      ? settings.specialists?.find((s) => s.id === specialistId)
+      : undefined;
+    assert(!specialistId || specialist, 'SPECIALIST_UNKNOWN', 'Unknown specialist definition.');
     assert(
       parent.depth < settings.maxAgentDepth,
       'DEPTH_LIMIT',
@@ -70,6 +75,13 @@ export class DelegationManager {
         isolationId: isolation?.id || c.isolationId,
         id: id(),
         title: task.slice(0, 65),
+        specialistId: specialist?.id || c.specialistId,
+        allowedTools: specialist
+          ? specialist.allowedTools.filter((t) => !c.allowedTools || c.allowedTools.includes(t))
+          : c.allowedTools,
+        skillIds: specialist
+          ? specialist.skillIds.filter((key) => this.store.maybe<any>('skill', key)?.enabled)
+          : c.skillIds,
         permission:
           mode === 'isolated'
             ? c.permission === 'trusted'
@@ -94,6 +106,9 @@ export class DelegationManager {
         (mode === 'isolated'
           ? 'Independent isolated task. Write only to this copy; the parent must review and merge changes.\n'
           : 'Independent read-only task:\n') +
+          (specialist
+            ? 'Specialist guidance (does not grant permissions): ' + specialist.instructions + '\n'
+            : '') +
           task +
           '\nRequired deliverable:\n' +
           deliverable,

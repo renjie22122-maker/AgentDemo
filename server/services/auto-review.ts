@@ -1,5 +1,10 @@
 import type { FileScope } from './paths.js';
-import { inspectReviewSources, reviewEvidence } from './review-evidence.js';
+import {
+  inspectReviewSources,
+  reviewEvidence,
+  recentExecutionEvidence,
+  commandScopeSignals,
+} from './review-evidence.js';
 import { approvalRisk } from '../../shared/approval-risk.js';
 import { executionSettings } from '../../shared/execution.js';
 import { ModelPool } from '../core/pool.js';
@@ -78,6 +83,8 @@ export class AutoReview {
       id: record.id,
       policyVersion: REVIEW_POLICY_VERSION,
     });
+    let phase = 'prepare';
+    let reviewSignal: AbortSignal | undefined;
     try {
       const original = this.config.profile(settings.autoReview?.profileId || run.profileId);
       const files =
@@ -86,11 +93,15 @@ export class AutoReview {
       record.sourceEvidence = inspectedSource.map(({ content, ...metadata }: any) => metadata);
       const profile = {
         ...original,
-        reasoning: 'auto' as const,
+        reasoning: original.efforts.includes('none')
+          ? ('none' as const)
+          : original.efforts.includes('low')
+            ? ('low' as const)
+            : ('auto' as const),
         maxOutputTokens: Math.min(original.maxOutputTokens, 4096),
         timeoutMs: settings.autoReview?.timeoutMs || 30000,
       };
-      const reviewSignal = AbortSignal.any([signal, AbortSignal.timeout(profile.timeoutMs)]);
+      reviewSignal = AbortSignal.any([signal, AbortSignal.timeout(profile.timeoutMs)]);
       const allMessages = this.store
         .events(run.conversationId)
         .filter((e) => e.type === 'user.message')
@@ -103,6 +114,8 @@ export class AutoReview {
           ? [...allMessages.slice(0, 2), ...allMessages.slice(-6)]
           : allMessages;
       const risk = approvalRisk(payload);
+      const commandSignals = commandScopeSignals(String(payload.command || ''));
+      record.commandSignals = commandSignals;
       record.risk = risk;
       if (
         risk.automatic &&
@@ -111,17 +124,26 @@ export class AutoReview {
       ) {
         record.decision = 'allow';
         record.reason = 'Bounded built-in environment query; no arguments or shell composition.';
+      } else if (commandSignals.broadProcessSelection) {
+        record.reason =
+          'Process cleanup is not scoped to this task. Select runtime-owned process identities before retrying; cwd does not constrain Stop-Process.';
+        record.failureCode = 'UNSCOPED_PROCESS_TERMINATION';
       } else if (risk.level === 'high')
         record.reason = 'High-risk operation requires explicit human approval: ' + risk.reason;
       else {
+        phase = 'queue';
+        const queuedAt = Date.now();
+        const activeSignal = reviewSignal;
         const result = await this.pool.run(
-          reviewSignal,
-          () =>
-            boundedReview(
+          activeSignal,
+          () => {
+            phase = 'provider';
+            record.queueMs = Date.now() - queuedAt;
+            return boundedReview(
               this.provider(profile).complete({
                 profile,
                 tools: [],
-                signal: reviewSignal,
+                signal: activeSignal,
                 onText: () => {},
                 messages: [
                   {
@@ -135,16 +157,29 @@ export class AutoReview {
                       humanDecisions: humanDecisions(),
                       request: payload,
                       sandbox: settings.commandBackend,
-                      network: settings.nativeNetwork,
+                      network:
+                        settings.commandBackend === 'approval-host'
+                          ? 'host'
+                          : settings.commandBackend === 'docker'
+                            ? 'deny'
+                            : settings.nativeNetwork,
+                      cwdIsSecurityBoundary: false,
+                      hostAccountPermissions: settings.commandBackend === 'approval-host',
                       risk,
                       observedSource: reviewEvidence(run, original.id === run.profileId),
                       inspectedSource,
+                      executionEvidence:
+                        original.id === run.profileId
+                          ? recentExecutionEvidence(this.store, run)
+                          : [],
+                      commandSignals,
                     }),
                   },
                 ],
               }),
-              reviewSignal,
-            ),
+              activeSignal,
+            );
+          },
           run.conversationId,
         );
         record.usage = result.usage;
@@ -158,6 +193,7 @@ export class AutoReview {
                 u.output * prices.output) /
               1e6
             : null;
+        phase = 'validate-response';
         if (result.message.calls?.length) throw Error('Reviewer may not call tools.');
         const parsed = decideAssessment(
           JSON.parse(result.message.content.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, '')),
@@ -173,8 +209,40 @@ export class AutoReview {
           record.reason = 'Reviewed source changed during assessment; request a fresh review.';
         }
       }
-    } catch {
-      record.reason = 'Automatic review failed or timed out; manual approval is required.';
+    } catch (error: any) {
+      record.decision = 'ask';
+      const code = signal.aborted
+        ? 'REVIEW_CANCELLED'
+        : reviewSignal?.aborted
+          ? 'REVIEW_TIMEOUT'
+          : phase === 'validate-response'
+            ? 'REVIEW_INVALID_RESPONSE'
+            : phase === 'prepare'
+              ? 'REVIEW_PREPARATION_FAILED'
+              : 'REVIEW_PROVIDER_FAILED';
+      record.failureCode = code;
+      record.failurePhase = phase;
+      // Never persist arbitrary provider error bodies: they may contain credentials/source.
+      record.reason = (
+        {
+          REVIEW_CANCELLED: 'Automatic review cancelled; no automatic permission granted.',
+          REVIEW_TIMEOUT:
+            'Automatic reviewer exceeded its configured deadline; manual approval is required.',
+          REVIEW_INVALID_RESPONSE:
+            'Reviewer returned invalid JSON, schema or tool calls; manual approval is required.',
+          REVIEW_PREPARATION_FAILED:
+            'Could not prepare the configured reviewer or scoped evidence; manual approval is required.',
+          REVIEW_PROVIDER_FAILED:
+            'Reviewer connection/provider request failed; manual approval is required.',
+        } as Record<string, string>
+      )[code];
+      if (code === 'REVIEW_TIMEOUT' && phase === 'queue')
+        record.reason =
+          'Automatic review deadline expired while queued; no reviewer conclusion was received.';
+      record.errorType =
+        typeof error?.name === 'string' && /^[A-Za-z]+Error$/.test(error.name)
+          ? error.name
+          : 'Error';
     }
     if (this.store.get<Conversation>('conversation', run.conversationId).permission !== 'auto') {
       record.decision = 'ask';

@@ -25,6 +25,9 @@ public class DesktopBridge {
  [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h,out RECT r);
  [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+ [DllImport("user32.dll",SetLastError=true)] static extern bool PrintWindow(IntPtr hwnd,IntPtr hdc,uint flags);
+ [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hwnd);
+ [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
  [StructLayout(LayoutKind.Sequential)] struct RECT { public int L,T,R,B; }
  static JavaScriptSerializer json=new JavaScriptSerializer { MaxJsonLength=32*1024*1024 };
  static int Number(Dictionary<string,object> a,string k) {if(!a.ContainsKey(k))throw new Exception("Missing "+k);return Convert.ToInt32(a[k]);}
@@ -55,11 +58,33 @@ public class DesktopBridge {
     Console.WriteLine(json.Serialize(new {windowId=Text(a,"windowId"),controls=controls,truncated=queue.Count>0,source="UI Automation"}));return 0;
    }
    if(action=="cursor"){Console.WriteLine(json.Serialize(new {x=Cursor.Position.X,y=Cursor.Position.Y}));return 0;}
-   if(action=="screenshot"){if(a.ContainsKey("windowId")){var h=new IntPtr(Int64.Parse(Text(a,"windowId")));RECT r;if(!IsWindow(h)||!GetWindowRect(h,out r))throw new Exception("Window is unavailable");bounds=Rectangle.Intersect(bounds,Rectangle.FromLTRB(r.L,r.T,r.R,r.B));}
-    if(bounds.Width<=0||bounds.Height<=0)throw new Exception("Window has no visible screen bounds");
+   if(action=="screenshot"){
+    bool window=a.ContainsKey("windowId");IntPtr handle=IntPtr.Zero;
+    if(window){
+     handle=new IntPtr(Int64.Parse(Text(a,"windowId")));RECT r;
+     if(!IsWindow(handle)||!IsWindowVisible(handle)||!GetWindowRect(handle,out r))throw new Exception("CAPTURE_UNAVAILABLE: window is closed or hidden");
+     if(IsIconic(handle))throw new Exception("CAPTURE_MINIMIZED: restore the window before capturing");
+     bounds=Rectangle.FromLTRB(r.L,r.T,r.R,r.B);
+    }
+    if(bounds.Width<=0||bounds.Height<=0||(long)bounds.Width*bounds.Height>16000000)throw new Exception("CAPTURE_SIZE: invalid dimensions or more than 16 million pixels");
     using(var b=new Bitmap(bounds.Width,bounds.Height))using(var g=Graphics.FromImage(b))using(var stream=new MemoryStream()){
-     g.CopyFromScreen(bounds.Left,bounds.Top,0,0,bounds.Size);b.Save(stream,ImageFormat.Png);
-     Console.WriteLine(json.Serialize(new {image=Convert.ToBase64String(stream.ToArray()),x=bounds.Left,y=bounds.Top,width=bounds.Width,height=bounds.Height,capture="visible-screen"}));}return 0;}
+     if(window){
+      g.Clear(Color.FromArgb(255,1,254,3));
+      IntPtr dc=g.GetHdc();bool ok;
+      try{ok=PrintWindow(handle,dc,2);}finally{g.ReleaseHdc(dc);}
+      if(!ok)throw new Exception("CAPTURE_UNSUPPORTED: application rejected PrintWindow; no screen fallback");
+      bool painted=false;
+      for(int y=0;y<b.Height&&!painted;y+=Math.Max(1,b.Height/32))
+       for(int x=0;x<b.Width;x+=Math.Max(1,b.Width/32))
+        if(b.GetPixel(x,y).ToArgb()!=Color.FromArgb(255,1,254,3).ToArgb()){painted=true;break;}
+      if(!painted)throw new Exception("CAPTURE_EMPTY: application did not paint window pixels");
+      RECT after;
+      if(!IsWindow(handle)||IsIconic(handle)||!GetWindowRect(handle,out after)||after.L!=bounds.Left||after.T!=bounds.Top||after.R!=bounds.Right||after.B!=bounds.Bottom)
+       throw new Exception("CAPTURE_CHANGED: window changed during capture; inspect before retrying");
+     }else g.CopyFromScreen(bounds.Left,bounds.Top,0,0,bounds.Size);
+     b.Save(stream,ImageFormat.Png);
+     Console.WriteLine(json.Serialize(new {image=Convert.ToBase64String(stream.ToArray()),x=bounds.Left,y=bounds.Top,width=bounds.Width,height=bounds.Height,capture=window?"window-print":"visible-screen",windowId=window?handle.ToInt64().ToString():null,contentVerified=false,limitations=window?"PrintWindow is application-dependent; black, stale or incomplete frames remain possible. Not Windows.Graphics.Capture.":"Visible desktop pixels only."}));
+    }return 0;}
    if(action!="move"){
     var h=new IntPtr(Int64.Parse(Text(a,"windowId")));RECT r;
     if(!IsWindow(h)||GetForegroundWindow()!=h||!GetWindowRect(h,out r))throw new Exception("Target must be the existing foreground window; no input sent");

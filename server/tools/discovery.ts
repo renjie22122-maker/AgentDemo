@@ -10,6 +10,8 @@ export const coreTools = new Set([
   'read_json',
   'write_file',
   'edit_file',
+  'apply_patch',
+  'inspect_file_version',
   'run_command',
   'background_commands',
   'wait_background_command',

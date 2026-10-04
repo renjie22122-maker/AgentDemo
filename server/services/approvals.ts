@@ -29,7 +29,12 @@ export class Inputs {
       answer: null,
       createdAt: Date.now(),
     };
-    if (kind === 'approval' && this.review && payload.action !== 'resolve-effect') {
+    if (
+      kind === 'approval' &&
+      this.review &&
+      !payload.forceManual &&
+      payload.action !== 'resolve-effect'
+    ) {
       const review = await this.review(run, payload, signal);
       if (review) {
         item.payload = {

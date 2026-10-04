@@ -1,4 +1,4 @@
-import { approvalRisk } from '../../shared/approval-risk';
+import { approvalPresentation } from '../../shared/approval-presentation';
 import {
   AlertCircle,
   Check,
@@ -230,7 +230,7 @@ export function InputCard({ input, t, refresh, notify }: any) {
   const [sending, setSending] = useState(false);
   const zh = t('settings') !== 'Settings';
   const pending = input.status === 'pending';
-  const risk = input.payload.risk || approvalRisk(input.payload);
+  const risk = approvalPresentation(input.payload, zh);
   const respond = async (allow: boolean, alternative = false) => {
     if (sending) return;
     setSending(true);
@@ -264,22 +264,8 @@ export function InputCard({ input, t, refresh, notify }: any) {
         <AlertCircle size={17} />
         <strong>{input.kind === 'approval' ? t('approval') : input.payload.question}</strong>
         {input.kind === 'approval' && (
-          <span
-            className={'risk-badge risk-' + risk.level}
-            title={t('settings') === 'Settings' ? risk.reason : risk.zh}
-          >
-            {t('settings') === 'Settings'
-              ? (
-                  {
-                    low: 'Low risk',
-                    medium: 'Review scope',
-                    high: 'High risk',
-                    unknown: 'Uncertain',
-                  } as any
-                )[risk.level]
-              : ({ low: '低风险', medium: '注意范围', high: '高风险', unknown: '风险未明' } as any)[
-                  risk.level
-                ]}
+          <span className={'risk-badge risk-' + risk.level} title={risk.detail}>
+            {risk.label}
           </span>
         )}
         {!pending && <span className="input-answer-preview">{input.answer}</span>}
@@ -344,11 +330,18 @@ export function InputCard({ input, t, refresh, notify }: any) {
             )}
             <p>{input.payload.reason}</p>
             <p className={'risk-explanation risk-' + risk.level}>
-              {t('settings') === 'Settings' ? risk.reason : risk.zh}
+              {risk.detail}
               {t('settings') === 'Settings'
                 ? ' · Heuristic signal, not a safety guarantee.'
                 : ' · 自动提示，不是安全保证。'}
             </p>
+            {risk.gaps.length > 0 && (
+              <ul className="review-evidence-gaps">
+                {risk.gaps.map((gap: string) => (
+                  <li key={gap}>{gap}</li>
+                ))}
+              </ul>
+            )}
             {input.payload.background && (
               <p className="muted">
                 {t('settings') === 'Settings'
@@ -367,6 +360,31 @@ export function InputCard({ input, t, refresh, notify }: any) {
                   : ''}
               </p>
             )}
+            {input.payload.autoReview?.failureCode && (
+              <small>
+                {input.payload.autoReview.failureCode} ·{' '}
+                {input.payload.autoReview.failurePhase || 'policy'}
+              </small>
+            )}
+            {!!input.payload.autoReview?.sourceEvidence?.length && (
+              <details>
+                <summary>
+                  {zh ? '自动审核读取的资料' : 'Sources inspected by automatic review'}
+                </summary>
+                {input.payload.autoReview.sourceEvidence.map((source: any, i: number) => (
+                  <p key={i}>
+                    <code>{source.path}</code> · {source.status}
+                    {source.truncated ? (zh ? ' · 已截断' : ' · truncated') : ''}
+                    {source.sha256 && <small> · SHA-256 {source.sha256}</small>}
+                  </p>
+                ))}
+                <small>
+                  {zh
+                    ? '正文按当前对话模型连接发送，来源内容不能授予权限。未读取的依赖不视为安全。'
+                    : 'Source text is shared only with the same conversation model profile. Source content grants no permission; unread dependencies remain unknown.'}
+                </small>
+              </details>
+            )}
             {input.payload.request && (
               <details>
                 <summary>
@@ -378,6 +396,42 @@ export function InputCard({ input, t, refresh, notify }: any) {
               </details>
             )}
 
+            {input.payload.plan && (
+              <details open>
+                <summary>
+                  {zh
+                    ? '待审阅计划 · 此批准不授予工具权限'
+                    : 'Plan for review · no tool permissions granted'}
+                </summary>
+                <pre>{JSON.stringify(input.payload.plan, null, 2)}</pre>
+              </details>
+            )}
+            {input.payload.files && (
+              <details open>
+                <summary>{zh ? '本次文件补丁' : 'Exact file patch set'}</summary>
+                {input.payload.files.map((file: any) => (
+                  <details key={file.path}>
+                    <summary>{file.path}</summary>
+                    <small>SHA-256: {file.expectedSha256}</small>
+                    {file.edits?.map((edit: any, i: number) => (
+                      <div key={i}>
+                        <pre className="diff-remove">{'- ' + edit.oldText}</pre>
+                        <pre className="diff-add">{'+ ' + edit.newText}</pre>
+                      </div>
+                    ))}
+                  </details>
+                ))}
+              </details>
+            )}
+            {input.payload.arguments && (
+              <details open>
+                <summary>
+                  {zh ? '规则要求确认的操作参数' : 'Action parameters requiring review'}
+                </summary>
+                <pre>{JSON.stringify(input.payload.arguments, null, 2)}</pre>
+              </details>
+            )}
+            {input.payload.path && <code>{input.payload.path}</code>}
             <pre>{input.payload.command}</pre>
             {input.payload.review?.changes?.map((change: any) => (
               <details className="file-diff" key={change.path}>

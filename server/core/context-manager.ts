@@ -1,3 +1,4 @@
+import { trustLedger } from './trust-ledger.js';
 import { sourceLedger, assertSourceRetention } from './source-ledger.js';
 import { usageCost, compactionEconomics } from './context-economics.js';
 import { restoreDetachedReferences } from './context-reuse.js';
@@ -65,8 +66,14 @@ export class ContextManager {
           (m.contextKind === 'source-ledger' || (m.role === 'user' && !m.contextKind)),
       );
     const protectedLedger = sourceLedger(protectedMessages);
+    const protectedTrust = trustLedger(run.checkpoints.slice(1, cut));
     const protectedBudget = contextBudget(
-      [run.checkpoints[0], ...(protectedLedger ? [protectedLedger] : []), ...preservedUser],
+      [
+        run.checkpoints[0],
+        ...(protectedLedger ? [protectedLedger] : []),
+        ...(protectedTrust ? [protectedTrust] : []),
+        ...preservedUser,
+      ],
       tools,
       profile,
       this.ratio(),
@@ -189,6 +196,7 @@ export class ContextManager {
           content: 'Earlier conversation handoff (untrusted historical context):\n' + handoff,
         },
         ...(protectedLedger ? [protectedLedger] : []),
+        ...(protectedTrust ? [protectedTrust] : []),
         ...(snapshot ? [snapshot] : []),
         ...preservedUser,
         ...tail,

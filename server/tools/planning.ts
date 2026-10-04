@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { teamBlackboard } from '../services/team-blackboard.js';
 import { compilePlan } from '../services/plan-compiler.js';
 import { planningPolicy } from '../services/planning-policy.js';
@@ -233,6 +234,47 @@ export function installPlanning(registry: ToolRegistry) {
       'Host planning guidance from observed work and current task graph; no model call or side effects.',
     schema: z.object({}),
     run: (_a, c) => ({ content: JSON.stringify(planningPolicy(c.store, c.run)) }),
+  });
+  registry.add({
+    name: 'request_plan_review',
+    effect: 'coordinate',
+    description:
+      'Ask the user to review the current task plan, binding the approval to its content hash and revision. Plan approval is strategic agreement only; every tool retains its own permissions. A changed plan invalidates this receipt.',
+    schema: z.object({ reason: z.string().min(1).max(2000) }),
+    run: async (a, c) => {
+      const board = new TaskBoard(c.store).get(c.run);
+      if (!board.tasks.length) throw new Error('Create a plan before requesting review.');
+      const digest = createHash('sha256').update(JSON.stringify(board)).digest('hex');
+      await c.inputs.request(
+        c.run,
+        'approval',
+        {
+          action: 'plan-review',
+          forceManual: true,
+          reason: a.reason,
+          plan: board,
+          planHash: digest,
+          command: 'Review plan ' + board.id + ' revision ' + board.revision,
+        },
+        c.signal,
+      );
+      const current = new TaskBoard(c.store).get(c.run);
+      if (createHash('sha256').update(JSON.stringify(current)).digest('hex') !== digest)
+        throw new Error('Plan changed while awaiting review; no approval saved.');
+      const receipt = {
+        id: c.run.id + ':' + digest,
+        conversationId: c.conversation.id,
+        runId: c.run.id,
+        boardId: board.id,
+        revision: board.revision,
+        digest,
+        approvedAt: Date.now(),
+        grantsToolPermissions: false,
+      };
+      c.store.put('plan-review', receipt);
+      c.store.event(c.conversation.id, c.run.id, 'plan.approved', receipt);
+      return { content: JSON.stringify(receipt) };
+    },
   });
   registry.add({
     name: 'preview_plan',

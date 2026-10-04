@@ -80,14 +80,21 @@ PowerShell execution policy. Environments blocking native executables still need
 an administrator-approved installation or a separately configured backend.
 
 Capabilities: enumerate windows, inspect up to 100 UI Automation controls, capture
-visible screen/window pixels, move/click/double-click, type, basic keys, scroll and
+visible screen pixels or application-rendered window pixels, move/click/double-click, type, basic keys, scroll and
 drag. Input uses SendInput; a named mutex serializes desktop actions across clients.
 Typing/clicking/dragging requires the selected window to already be foreground.
 Loss of focus stops input; it does not silently activate another window. Drag releases
 the button in cleanup. Screenshot metadata describes physical screen coordinates.
 
-This is **host desktop control**, not a VM. Screenshots use visible-screen capture,
-not Windows.Graphics.Capture of occluded windows. Elevated applications, secure
+This is **host desktop control**, not a VM. With no windowId, screenshots capture
+visible-screen pixels. With windowId, screenshots use PrintWindow with
+PW_RENDERFULLCONTENT and can capture a covered window without activating it.
+There is no automatic screen-capture fallback. Hidden, minimized, invalid, unchanged
+sentinel and oversized windows fail explicitly. Capture stays under the existing
+20-second subprocess deadline. Dimensions are limited to 16 million pixels.
+PrintWindow success does not certify content: GPU/protected applications may return
+black, stale or incomplete frames. Metadata reports capture=window-print,
+contentVerified=false and these limitations. This is not Windows.Graphics.Capture. Elevated applications, secure
 desktops, every international keyboard and arbitrary GUI applications are not
 certified. Use a trusted external MCP desktop running in a separately provisioned
 VM when OS isolation is required. AgentDemo does not provision or certify that VM.
@@ -166,3 +173,80 @@ model calls. Earlier attempts exposed numbered-text/JSON incompatibility (fixed 
 read_json) and a model choosing a JSON reader for plain text. The final test specified
 the readers explicitly; it does not demonstrate reliable autonomous tool selection.
 Semantic ranking and broad application-level desktop benchmarks remain separate work.
+
+## Coding harness extensions (2026-10-04)
+
+- `inspect_file_version` provides a UTF-8 content hash; `apply_patch` accepts
+  version-pinned exact-context hunks for up to 20 existing files. It preflights all
+  targets, rechecks before each write and reports completed/uncertain paths after
+  partial failure. It is not a multi-file transaction, adversarial lock, deletion
+  tool, or syntax verifier. Use language-specific checks afterward. Existing
+  `edit_file` remains available for small edits.
+- Patch write approval shows the declared file/hunk set in one request. This does
+  not approve future commands or changed patches.
+- `inspect_git_state` parses porcelain branch/file/conflict state and records the
+  first observation per run. `inspect_git_diff` inspects staged/unstaged tracked
+  differences. Both use the ordinary audited command backend and approvals.
+  No privileged Git subprocess bypass, automatic restore, or inferred authorship.
+  A first observation is not necessarily the repository state before the task.
+- `transform_data` offers count, field projection, equality filtering, unique and
+  numeric sum, usable with workflow references. Bounds: 1000 items / 1 MB.
+  No JS evaluation, arbitrary expression language or unbounded parallelism.
+- Settings has additive action restrictions: tool, optional project, relative
+  path glob, exact command and backend. Deny wins; ask requires a human even in
+  automatic-review mode. No allow rule can bypass existing isolation because no
+  allow grants are implemented. File path rules do not inspect arbitrary shell
+  internals. Use the OS backend to enforce command filesystem boundaries.
+- Source warning IDs are retained in a bounded compaction ledger (64 recent references,
+  with an explicit omitted count); this is not full semantic taint propagation.
+- Tool output receives a host source hash and untrusted provenance event. A small
+  heuristic probe warns about instruction override, role/authorization spoofing,
+  and secret-export language. Raw JSON remains intact for workflows. Matches are
+  warnings, not proof of attack; no matches never mean trusted. This is not a
+  comprehensive injection classifier or semantic taint tracking system.
+- `request_plan_review` records explicit human agreement to an exact board hash
+  and revision, rejecting changes during review. It does not grant tool rights
+  or automatically gate every existing execution path.
+- Specialist definitions in Settings provide role instructions, enabled skill
+  IDs and restrictive tool lists. `spawn_agent(specialistId)` intersects parent
+  tools and retains the parent model and normal permission/isolated-copy rules.
+  No automatic external provider switch. Existing persistent members and
+  `continue_agent` are reused rather than adding a duplicate background-agent API.
+- `inspect_model_capabilities` separates configuration, adapter support, unknown
+  and not-integrated states. No endpoint capability is labelled verified without
+  an actual test. This reports capabilities; it is not native deferred-tool-search
+  integration or an endpoint probing service.
+
+Still open: robust multi-file crash recovery for patches, Git-aware restore with
+user-change ownership, unified scoped allow grants, broad injection attack and
+false-positive benchmarks, native provider deferred protocols, automatic capability
+probes, fully isolated desktop provisioning, broader GPU-window capture compatibility, and online
+publisher/registry/OAuth lifecycle. These are not implied by passing unit tests.
+
+Validation of this extension: 312 regression tests passed; a synthetic DeepSeek run used five model calls to discover aggregation, compute 42, apply a hash-pinned patch, and verify persisted bytes. An isolated browser test saved action rules and specialist settings with no page errors. These results do not establish optimal delegation or attack resistance.
+
+Window-capture regression: opt in with AGENTDEMO_DESKTOP_TEST=1 and run
+node --import tsx --test tests/window-capture.test.ts on Windows. The fixture creates
+a red target behind a blue occluder, independently confirms the screen pixel is blue,
+asserts the target capture is red, then checks minimized/invalid window rejection.
+It closes only its own process. Default CI skips this interactive test explicitly;
+a skip is not a pass. This local integration test passed on 2026-10-04.
+
+
+Automatic review evidence (2026-10-04): the same conversation model may inspect up
+to six scoped literal/package/test candidates, reading at most 128 KB per file and
+sending at most 12000 characters per file, with full-content hashes and truncation
+flags. Package pre/main/post scripts are considered; imports and test discovery are
+not exhaustive. Recent same-run command observations supplement these sources.
+Separate reviewer connections do not automatically receive source or command logs.
+Approval cards show source metadata. Failed reviews distinguish preparation,
+provider, invalid-response, deadline and cancellation failures without exposing raw
+provider error bodies. Exact host process-name/test-substring cleanup patterns
+require human scope review; cwd does not limit which processes may be terminated.
+Host command review reports host networking, not the native backend's deny setting.
+No automatic approval is proof of safety, and no failed review defaults to allow.
+
+Approval presentation now distinguishes review availability failures from action
+risk, missing authorization, process ownership and incomplete source evidence.
+Validated assessment reasons replace the initial generic unknown label; deterministic
+high-risk signals remain visible. Presentation does not authorize execution.

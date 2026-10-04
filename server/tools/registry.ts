@@ -1,3 +1,8 @@
+import { installGitState } from './git-state.js';
+import { enforceActionPolicy } from '../services/action-policy.js';
+import { installPatch } from './patch.js';
+import { installDataTransform } from './data-transform.js';
+import { capabilityReport } from '../providers/capabilities.js';
 import { installResearch } from './research-tools.js';
 import { stat, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
@@ -51,6 +56,7 @@ export interface TeamPort {
     deliverable: string,
     mode?: 'read-only' | 'isolated',
     controlTicket?: string,
+    specialistId?: string,
   ): Promise<string>;
   members?(parent: Run): unknown;
   continueMember?(parent: Run, key: string, message: string, ticket?: string): Promise<unknown>;
@@ -144,6 +150,7 @@ export class ToolRegistry {
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
       .filter(
         (d) =>
+          (!ctx.conversation.allowedTools || ctx.conversation.allowedTools.includes(d.name)) &&
           !(
             ['mcp_tools', 'mcp_call'].includes(d.name) &&
             (ctx.run.depth > 0 ||
@@ -222,6 +229,7 @@ export class ToolRegistry {
     const validation = def.schema.safeParse(args);
     if (!validation.success) throw new NotStartedError('TOOL_ARGUMENTS', validation.error.message);
     const parsed = validation.data;
+    await enforceActionPolicy(ctx, name, parsed);
     await toolHooks(ctx, 'beforeTool', name);
     if (def.effect === 'execute') await toolHooks(ctx, 'beforeCommand', name);
     if (ctx.conversation.isolationId && ['write', 'execute'].includes(def.effect))
@@ -242,6 +250,7 @@ export class ToolRegistry {
           action: 'file-write',
           tool: name,
           path: parsed.path,
+          files: parsed.files,
           reason: 'Approve this scoped file mutation.',
         },
         ctx.signal,
@@ -327,6 +336,31 @@ export class ToolRegistry {
 export function tools() {
   const registry = new ToolRegistry();
   installComposition(registry);
+  installPatch(registry);
+  installGitState(registry);
+  registry.add({
+    name: 'list_specialists',
+    effect: 'read',
+    parallelSafe: true,
+    description:
+      'List user-configured specialist instructions, skills and restrictive tool sets. Delegation retains the parent model and cannot widen permissions.',
+    schema: z.object({}),
+    run: (_a, c) => ({ content: JSON.stringify(c.config.get().specialists || []) }),
+  });
+  installDataTransform(registry);
+  registry.add({
+    name: 'inspect_model_capabilities',
+    effect: 'read',
+    parallelSafe: true,
+    description:
+      'Inspect configured current model capabilities, distinguishing declared, adapter-supported, unknown and not-integrated. Does not probe endpoint or expose credentials.',
+    schema: z.object({}),
+    run: (_a, c) => ({
+      content: JSON.stringify(
+        capabilityReport(c.config.get().profiles.find((p) => p.id === c.conversation.profileId)!),
+      ),
+    }),
+  });
   installFileSearch(registry);
   installArtifacts(registry);
   installResearch(registry);
@@ -964,6 +998,7 @@ export function tools() {
       task: z.string().min(20).max(12000),
       deliverable: z.string().min(10).max(2000),
       mode: z.enum(['read-only', 'isolated']).default('read-only'),
+      specialistId: z.string().optional(),
     }),
     run: async (a, c) => {
       const runId = await c.team.spawn(
@@ -972,6 +1007,7 @@ export function tools() {
         a.deliverable,
         a.mode,
         c.callId ? c.run.id + ':' + c.callId : undefined,
+        a.specialistId,
       );
       return text({ runId, agentId: c.store.get<Run>('run', runId).conversationId });
     },

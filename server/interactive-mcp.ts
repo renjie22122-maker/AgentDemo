@@ -233,15 +233,11 @@ if (mode === 'browser') {
     },
     async (a) => {
       if (!a.file) throw Error('Use AgentDemo scoped upload bridge.');
-      await (
-        await getPage()
-      )
-        .locator(a.selector)
-        .setInputFiles({
-          name: a.file.name,
-          mimeType: a.file.mimeType,
-          buffer: Buffer.from(a.file.base64, 'base64'),
-        });
+      await (await getPage()).locator(a.selector).setInputFiles({
+        name: a.file.name,
+        mimeType: a.file.mimeType,
+        buffer: Buffer.from(a.file.base64, 'base64'),
+      });
       return text({ uploaded: a.file.name });
     },
   );
@@ -296,7 +292,7 @@ if (mode === 'browser') {
 } else {
   register(
     'computer_action',
-    'Operate actual Windows desktop with host permissions. NOT an isolated desktop. Each action requires approval. Input except pointer move requires windowId from windows and that window already foreground. Screenshots may contain private data. Use a configured VM MCP server for isolation.',
+    'Operate actual Windows desktop with host permissions. NOT an isolated desktop. Each action requires approval. Input except pointer move requires windowId from windows and that window already foreground. Screenshots may contain private data. screenshot with windowId uses application-dependent PrintWindow for covered windows; minimized/hidden windows fail, and there is no automatic screen fallback. Without windowId captures visible desktop pixels. Use a configured VM MCP server for isolation.',
     {
       action: z.enum([
         'windows',
@@ -336,6 +332,9 @@ if (mode === 'browser') {
                   width: data.width,
                   height: data.height,
                   capture: data.capture,
+                  windowId: data.windowId,
+                  contentVerified: data.contentVerified,
+                  limitations: data.limitations,
                   coordinates: 'physical screen coordinates; add x/y offsets to image coordinates',
                 }),
               },

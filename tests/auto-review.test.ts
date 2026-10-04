@@ -56,6 +56,9 @@ test('automatic approval is a separate tool-free request and records its rationa
     complete: async (req) => {
       count++;
       assert.equal(req.tools.length, 0);
+      const env = JSON.parse(req.messages[1].content);
+      assert.equal(env.network, 'host');
+      assert.equal(env.cwdIsSecurityBoundary, false);
       return {
         message: {
           role: 'assistant',
@@ -190,7 +193,7 @@ test('new instructions, configuration or changed action invalidate approval', as
       const result = await reviewer.review(f.run, payload, new AbortController().signal);
       assert.equal(result.decision, 'ask');
       assert.match(result.reason, /changed/);
-      assert.equal(result.policyVersion, '2026-10-03.2');
+      assert.equal(result.policyVersion, '2026-10-04.1');
     } finally {
       f.store.close();
     }
@@ -319,4 +322,78 @@ test('reviewer reads literal scoped scripts, excludes escapes and notices change
   await writeFile(join(work, 'check.py'), 'print(2)');
   assert.notEqual((await inspectReviewSources(files, payload))[0].sha256, first[0].sha256);
   assert.deepEqual(await inspectReviewSources(files, { ...payload, cwd: root }), []);
+});
+
+test('review failure identifies invalid response versus provider error without leaking body', async () => {
+  const f = await setup();
+  try {
+    const invalid = new AutoReview(f.store, f.config, () => ({
+      complete: async () => ({
+        message: { role: 'assistant', content: 'not JSON' },
+        usage: { input: 100, output: 3, cached: 0, measured: true },
+      }),
+    }));
+    const result = await invalid.review(f.run, {}, new AbortController().signal);
+    assert.equal(result.failureCode, 'REVIEW_INVALID_RESPONSE');
+    assert.equal(result.usage.input, 100);
+    const failed = new AutoReview(f.store, f.config, () => ({
+      complete: async () => {
+        throw Error('secret-key-do-not-log');
+      },
+    }));
+    const failure = await failed.review(f.run, {}, new AbortController().signal);
+    assert.equal(failure.failureCode, 'REVIEW_PROVIDER_FAILED');
+    assert.ok(!JSON.stringify(failure).includes('secret-key'));
+  } finally {
+    f.store.close();
+  }
+});
+test('global test-runner termination requires human scope review without spending reviewer tokens', async () => {
+  const f = await setup();
+  let calls = 0;
+  try {
+    const reviewer = new AutoReview(f.store, f.config, () => ({
+      complete: async () => {
+        calls++;
+        throw Error('unreachable');
+      },
+    }));
+    const result = await reviewer.review(
+      f.run,
+      {
+        command:
+          "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '--test' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
+      },
+      new AbortController().signal,
+    );
+    assert.equal(result.decision, 'ask');
+    assert.equal(result.failureCode, 'UNSCOPED_PROCESS_TERMINATION');
+    assert.equal(calls, 0);
+  } finally {
+    f.store.close();
+  }
+});
+test('package review follows concrete lifecycle scripts without executing them', async () => {
+  const { inspectReviewSources } = await import('../server/services/review-evidence.js');
+  const { FileScope } = await import('../server/services/paths.js');
+  const { writeFile, rm } = await import('node:fs/promises');
+  const dir = await mkdtemp(join(tmpdir(), 'package-review-'));
+  try {
+    await writeFile(
+      join(dir, 'package.json'),
+      JSON.stringify({
+        scripts: { pretest: 'node before.js', test: 'node check.js', posttest: 'node after.js' },
+      }),
+    );
+    for (const file of ['before.js', 'check.js', 'after.js'])
+      await writeFile(join(dir, file), 'console.log("synthetic test")');
+    const sources = await inspectReviewSources(new FileScope([dir]), {
+      cwd: dir,
+      command: 'npm test',
+    });
+    for (const file of ['package.json', 'before.js', 'check.js', 'after.js'])
+      assert.ok(sources.some((s) => s.path.endsWith(file) && s.status === 'read'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

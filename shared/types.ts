@@ -24,8 +24,14 @@ export interface ToolCall {
   arguments: Record<string, unknown>;
 }
 export interface ModelMessage {
+  sourceWarnings?: string[];
   contextKind?:
-    'runtime-snapshot' | 'runtime-advice' | 'task-snapshot' | 'source-ledger' | 'history-handoff';
+    | 'runtime-snapshot'
+    | 'runtime-advice'
+    | 'task-snapshot'
+    | 'source-ledger'
+    | 'history-handoff'
+    | 'trust-ledger';
   contextSourceCallId?: string;
   contextPatch?: string;
   contextResultHash?: string;
@@ -75,7 +81,27 @@ export interface ToolHook {
   message: string;
   projectId?: string;
 }
+export interface AgentSpecialist {
+  id: string;
+  name: string;
+  instructions: string;
+  skillIds: string[];
+  allowedTools: string[];
+}
+export interface ActionRule {
+  id: string;
+  enabled: boolean;
+  tool: string;
+  decision: 'deny' | 'ask';
+  projectId?: string;
+  pathGlob?: string;
+  commandEquals?: string;
+  backend?: string;
+  reason: string;
+}
 export interface Settings {
+  specialists?: AgentSpecialist[];
+  actionRules?: ActionRule[];
   hooks?: ToolHook[];
 
   agentName?: string;
@@ -124,6 +150,8 @@ export interface Project {
   createdAt: number;
 }
 export interface Conversation {
+  allowedTools?: string[];
+  specialistId?: string;
   execution?: { backend: Settings['commandBackend']; network: 'host' | 'deny' } | null;
   isolationId?: string;
   teamMode?: 'hierarchy' | 'host' | 'creative';

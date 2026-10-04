@@ -1,3 +1,5 @@
+import { SpecialistsPanel } from './SpecialistsPanel';
+import { ActionRulesPanel } from './ActionRulesPanel';
 export function ToolEcosystemSettings({ value, setValue, zh }: any) {
   const add = (builtin: string) =>
     setValue({
@@ -36,6 +38,8 @@ export function ToolEcosystemSettings({ value, setValue, zh }: any) {
           ? '在下方 MCP 列表启用并保存。浏览器在 Windows 使用 Edge，其他平台需要已安装的 Playwright Chromium；不会自动下载。需要隔离桌面时，请配置你信任的 VM MCP 后端。'
           : 'Enable and save the entry in MCP settings below. Browser uses Edge on Windows or an installed Playwright Chromium elsewhere; no automatic downloads. Configure a trusted VM MCP backend for an isolated desktop.'}
       </p>
+      <SpecialistsPanel value={value} setValue={setValue} zh={zh} />
+      <ActionRulesPanel value={value} setValue={setValue} zh={zh} />
       <details>
         <summary>{zh ? '技能与扩展来源目录' : 'Skill and extension source catalog'}</summary>
         <p>

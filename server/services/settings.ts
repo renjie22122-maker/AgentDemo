@@ -32,6 +32,34 @@ export const profileSchema = z.object({
     .default({ input: null, output: null, cached: null }),
 });
 const schema = z.object({
+  specialists: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().min(1).max(80),
+        instructions: z.string().max(6000),
+        skillIds: z.array(z.string()).max(100),
+        allowedTools: z.array(z.string().min(1).max(100)).min(1).max(200),
+      }),
+    )
+    .max(30)
+    .default([]),
+  actionRules: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        enabled: z.boolean(),
+        tool: z.string().min(1).max(100),
+        decision: z.enum(['deny', 'ask']),
+        projectId: z.string().optional(),
+        pathGlob: z.string().max(300).optional(),
+        commandEquals: z.string().max(20000).optional(),
+        backend: z.enum(['approval-host', 'docker', 'native-windows']).optional(),
+        reason: z.string().min(1).max(1000),
+      }),
+    )
+    .max(100)
+    .default([]),
   hooks: z
     .array(
       z
