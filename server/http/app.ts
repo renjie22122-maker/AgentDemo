@@ -1,3 +1,5 @@
+import { memoryHooks } from '../services/tool-hooks.js';
+import { SkillPackages } from '../services/skill-packages.js';
 import { ScheduledWorkService } from '../services/scheduled-work.js';
 import { inheritedMemory } from '../services/memory-policy.js';
 import { KnowledgeMaintenance } from '../services/knowledge-maintenance.js';
@@ -434,7 +436,11 @@ export async function createApp(options: { directory: string; dist?: string; run
   });
   app.delete<{ Params: { id: string } }>('/api/conversations/:id', async (req) => {
     const data = z.object({ confirmTitle: z.string(), permanent: z.literal(true) }).parse(req.body);
-    return deleteConversation(store, directory, req.params.id, data.confirmTitle);
+    const before = store.conversations().map((c) => c.id);
+    const result = deleteConversation(store, directory, req.params.id, data.confirmTitle);
+    for (const key of before)
+      if (!store.maybe('conversation', key)) await runtime.mcp.closeScope(key);
+    return result;
   });
   app.post<{ Params: { id: string } }>('/api/conversations/:id/fork', async (req) => {
     const c = store.get<Conversation>('conversation', req.params.id),
@@ -671,6 +677,28 @@ export async function createApp(options: { directory: string; dist?: string; run
     const { id } = z.object({ id: z.string() }).parse(req.body);
     return classification.apply(id);
   });
+  const packages = new SkillPackages(store, join(directory, 'skill-packages'));
+  app.get('/api/skill-packages', async () => packages.list());
+  app.post('/api/skill-packages/preview', async (req) => {
+    const a = z
+      .object({ path: z.string().min(1), publicKey: z.string().max(10000).optional() })
+      .parse(req.body);
+    return packages.preview(a.path, a.publicKey);
+  });
+  app.post('/api/skill-packages/install', async (req) => {
+    const a = z
+      .object({
+        path: z.string().min(1),
+        digest: z.string().regex(/^[a-f0-9]{64}$/),
+        publicKey: z.string().max(10000).optional(),
+      })
+      .parse(req.body);
+    return packages.install(a.path, a.digest, a.publicKey);
+  });
+  app.post('/api/skill-packages/revision', async (req) => {
+    const a = z.object({ id: z.string(), digest: z.string().optional() }).parse(req.body);
+    return packages.setRevision(a.id, a.digest);
+  });
   app.post('/api/skills/import', async (req) => {
     const { path } = z.object({ path: z.string().min(1) }).parse(req.body);
     return skills.import(path);
@@ -690,7 +718,9 @@ export async function createApp(options: { directory: string; dist?: string; run
     );
     return runtime.memories.index(scope);
   });
-  const memoryLifecycle = new MemoryLifecycle(store);
+  const memoryLifecycle = new MemoryLifecycle(store, (stage, m) =>
+    memoryHooks(store, config, stage, m),
+  );
   const memoryFields = {
     topic: z.string().max(80).optional(),
     entityId: z.string().max(200).optional(),

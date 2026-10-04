@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import { toolHooks } from '../services/tool-hooks.js';
 import { inspectEffects } from '../services/recovery.js';
 import {
   prefixObservation,
@@ -52,7 +54,7 @@ export class Runtime implements TeamPort {
   readonly teamAutomation: TeamAutomation;
   private maintenanceTimer?: ReturnType<typeof setInterval>;
   private maintenanceTask: Promise<void> | null = null;
-  readonly mcp = new McpHub();
+  readonly mcp: McpHub;
   readonly bus = new EventEmitter();
   readonly media: MediaService;
   readonly background: BackgroundCommands;
@@ -90,6 +92,7 @@ export class Runtime implements TeamPort {
         this.bus.emit('finished', key);
       },
     });
+    this.mcp = new McpHub(join(directory, 'browser-sessions'));
     this.teamCoordinator = new TeamCoordinator(store, {
       events: this.bus,
       filesForConversation: (c) => this.filesForConversation(c),
@@ -104,6 +107,17 @@ export class Runtime implements TeamPort {
       (run, req) => this.complete(run, req),
       (run) => this.executionScope(run),
       (run) => new CognitiveController(store).snapshot(run),
+      (stage, run) =>
+        toolHooks(
+          {
+            store,
+            config,
+            run,
+            conversation: store.get<Conversation>('conversation', run.conversationId),
+          },
+          stage,
+          'context',
+        ),
     );
     this.toolExecutor = new ToolExecutor(store, this.registry, directory);
     this.delegation = new DelegationManager(store, config, directory, this.bus, {
@@ -587,7 +601,7 @@ export class Runtime implements TeamPort {
           run,
           profile,
           signal,
-          this.registry.specs(ctx),
+          this.registry.modelSpecs(ctx),
         );
         cognitive.context(run, contextBudget);
         this.store.put('run', run);
@@ -606,7 +620,7 @@ export class Runtime implements TeamPort {
               this.complete(run, {
                 profile,
                 messages: run.checkpoints,
-                tools: this.registry.specs(ctx),
+                tools: this.registry.modelSpecs(ctx),
                 signal,
                 onText: (text) => {
                   const stream = this.streams.get(key);
@@ -743,7 +757,10 @@ export class Runtime implements TeamPort {
             }
             continue;
           }
+          await toolHooks(ctx, 'beforeTaskComplete', 'task');
           await finalizeRun(this.store, run, ctx.files);
+          if (this.store.get<Run>('run', run.id).status === 'completed')
+            await toolHooks(ctx, 'afterTaskComplete', 'task');
           return;
         }
         const outputs = await this.toolExecutor.batch(run, result.message.calls, ctx);

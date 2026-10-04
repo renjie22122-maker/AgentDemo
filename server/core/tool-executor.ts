@@ -121,12 +121,135 @@ export class ToolExecutor {
       });
     });
     let effectId: string | undefined;
+    const hookBudget = ctx.hookBudget || { remaining: 8 };
+    let hookSequence = 0;
     // Persist intent before side effects. Unknown outcomes remain visible after crashes.
     let output: string;
+    const startedAt = Date.now();
+    const progress = () =>
+      this.store.event(run.conversationId, run.id, 'tool.progress', {
+        callId: call.id,
+        name: call.name,
+        phase: 'waiting-or-running',
+        elapsedMs: Date.now() - startedAt,
+      });
+    const timer = setInterval(progress, 15000);
+    timer.unref();
     try {
       const result = await this.registry.invoke(call.name, call.arguments, {
         ...ctx,
         callId: call.id,
+        invokeHook: async (hookId, command, timeoutSeconds) => {
+          if (hookBudget.remaining-- <= 0)
+            throw new NotStartedError(
+              'HOOK_LIMIT',
+              'At most eight hook commands per outer tool invocation.',
+            );
+          const nested = {
+            id: call.id + ':hook:' + hookSequence++,
+            name: 'run_command',
+            arguments: {
+              command,
+              timeoutSeconds,
+              folder: 0,
+              background: false,
+              reason: 'Configured hook ' + hookId,
+            },
+          };
+          const childImages = new Map<string, string[]>(),
+            childOutcomes = new Map<string, ToolOutcome>();
+          const content = await this.invoke(
+            run,
+            nested,
+            { ...ctx, hookBudget, disabledHookIds: [...(ctx.disabledHookIds || []), hookId] },
+            childImages,
+            childOutcomes,
+          );
+          const outcome = childOutcomes.get(nested.id);
+          this.store.event(run.conversationId, run.id, 'tool.completed', {
+            callId: nested.id,
+            parentCallId: call.id,
+            name: nested.name,
+            output: content,
+            outcome,
+            hookId,
+          });
+          if (outcome?.status !== 'succeeded')
+            throw new Error(
+              'Hook command did not succeed: ' +
+                hookId +
+                ' (' +
+                outcome?.code +
+                '). Inspect its operation record.',
+            );
+        },
+        invokeRead: async (name, args, index) => {
+          if (!this.registry.parallelSafe(name))
+            throw new NotStartedError(
+              'BATCH_READ_ONLY',
+              'Only parallel-safe reads may be composed.',
+            );
+          const nested = { id: call.id + ':read:' + index, name, arguments: args };
+          const childImages = new Map<string, string[]>(),
+            childOutcomes = new Map<string, ToolOutcome>();
+          const content = await this.invoke(
+            run,
+            nested,
+            {
+              ...ctx,
+              conversation: this.store.get('conversation', ctx.conversation.id),
+              invokeRead: undefined,
+            },
+            childImages,
+            childOutcomes,
+          );
+          const outcome = childOutcomes.get(nested.id);
+          if (childImages.has(nested.id))
+            images.set(
+              call.id,
+              [...(images.get(call.id) || []), ...childImages.get(nested.id)!].slice(0, 4),
+            );
+          const event = this.store.event(run.conversationId, run.id, 'tool.completed', {
+            callId: nested.id,
+            parentCallId: call.id,
+            name,
+            output: content,
+            outcome,
+          });
+          return { content, outcome, eventId: event.id };
+        },
+        invokeTool: async (name, args, index) => {
+          if (['tool_workflow', 'batch_read_tools', 'search_capabilities'].includes(name))
+            throw new NotStartedError('WORKFLOW_RECURSION', 'Nested composition is not allowed.');
+          const nested = { id: call.id + ':step:' + index, name, arguments: args };
+          const childImages = new Map<string, string[]>(),
+            childOutcomes = new Map<string, ToolOutcome>();
+          const content = await this.invoke(
+            run,
+            nested,
+            {
+              ...ctx,
+              conversation: this.store.get('conversation', ctx.conversation.id),
+              invokeRead: undefined,
+            },
+            childImages,
+            childOutcomes,
+          );
+          const outcome = childOutcomes.get(nested.id);
+          if (childImages.has(nested.id))
+            images.set(
+              call.id,
+              [...(images.get(call.id) || []), ...childImages.get(nested.id)!].slice(0, 4),
+            );
+          const event = this.store.event(run.conversationId, run.id, 'tool.completed', {
+            callId: nested.id,
+            parentCallId: call.id,
+            name,
+            output: content,
+            outcome,
+          });
+          return { content, outcome, eventId: event.id };
+        },
         beforeExecution: (expectation) => {
           if (!effectId) effectId = this.store.beginEffect(run.id, call.name, call.arguments);
           if (expectation)
@@ -181,6 +304,15 @@ export class ToolExecutor {
           reason: output,
         });
       if (signal.aborted) throw error;
+    } finally {
+      clearInterval(timer);
+      this.store.event(run.conversationId, run.id, 'tool.progress', {
+        callId: call.id,
+        name: call.name,
+        phase: 'settled',
+        elapsedMs: Date.now() - startedAt,
+        outcome: outcomes.get(call.id),
+      });
     }
     if (output.length > 24000) {
       const folder = join(this.directory, 'spills', run.conversationId);

@@ -40,7 +40,7 @@ export function inspectionRoutes(app: FastifyInstance, runtime: Runtime) {
       pending = (async () => {
         const full = run ? store.get<Run>('run', run.id) : undefined;
         const messages = full?.checkpoints || [];
-        const tools = full ? runtime.registry.specs(await runtime.context(full)) : [];
+        const tools = full ? runtime.registry.modelSpecs(await runtime.context(full)) : [];
         const budget = profile
           ? contextBudget(
               messages,

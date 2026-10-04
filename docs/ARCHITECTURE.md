@@ -308,3 +308,8 @@ This matrix is not exhaustive coverage of every runtime fault sequence.
 
 DeepSeek prefix stability and measured-cache limits are documented in
 [DEEPSEEK-CACHE.md](DEEPSEEK-CACHE.md).
+
+
+## Tool ecosystem boundary
+
+See [TOOL-ECOSYSTEM.md](TOOL-ECOSYSTEM.md) for progressive discovery, guarded composition, scoped sources/artifacts, deterministic hooks and optional browser/desktop adapters. Host GUI and browser profiles must not be confused with the command sandbox.

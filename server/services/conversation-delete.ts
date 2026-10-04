@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, realpathSync, rmSync } from 'node:fs';
 import { join, resolve, relative, isAbsolute, sep } from 'node:path';
 import type { Conversation } from '../../shared/types.js';
@@ -96,6 +97,8 @@ export function deleteConversation(store: Store, directory: string, key: string,
   const paths: string[] = [];
   for (const id of chats)
     for (const kind of ['chats', 'spills']) paths.push(join(directory, kind, id));
+  for (const id of chats)
+    paths.push(join(directory, 'browser-sessions', createHash('sha256').update(id).digest('hex')));
   for (const r of selected.values()) {
     if (r.kind === 'attachment' && !shared(r.id)) paths.push(join(directory, 'attachments', r.id));
     if (r.kind === 'media-job' && !shared(r.id)) paths.push(join(directory, 'media', r.id));
@@ -141,6 +144,10 @@ export function deleteConversation(store: Store, directory: string, key: string,
       store.db.prepare('DELETE FROM ledger WHERE run_id=?').run(id);
       store.remove('run', id);
     }
+    for (const id of chats)
+      paths.push(
+        join(directory, 'browser-sessions', createHash('sha256').update(id).digest('hex')),
+      );
     for (const r of selected.values()) {
       if (
         (r.kind === 'attachment' || r.kind === 'media-job' || r.kind === 'media-file') &&

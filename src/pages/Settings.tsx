@@ -1,3 +1,4 @@
+import { ToolEcosystemSettings } from '../components/ToolEcosystemSettings';
 import { ApprovalSettings } from '../components/ApprovalSettings';
 import { MediaSettings } from '../components/MediaSettings';
 import { matchModel } from '../../shared/model-metadata';
@@ -651,6 +652,7 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
           </label>
         </div>
       </section>
+      <ToolEcosystemSettings value={value} setValue={setValue} zh={t('settings') !== 'Settings'} />
       <section className="panel">
         <div className="section-title">
           <h2>{t('MCP servers')}</h2>
@@ -687,6 +689,8 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
                 <label key={key}>
                   {key}
                   <input
+                    disabled={!!server.builtin && key === 'command'}
+                    placeholder={server.builtin ? 'Bundled adapter' : undefined}
                     value={server[key]}
                     onChange={(e) =>
                       setValue({
@@ -702,6 +706,7 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
               <label className="wide">
                 {t('Arguments · one per line')}
                 <textarea
+                  disabled={!!server.builtin}
                   value={server.args.join('\n')}
                   onChange={(e) =>
                     setValue({
@@ -714,6 +719,67 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
                 />
               </label>
             </div>
+            {server.builtin === 'browser' && (
+              <div className="form-grid">
+                <label>
+                  {t('settings') === 'Settings'
+                    ? 'Allowed hosts (one per line; empty = host network)'
+                    : '允许域名（每行一个；留空使用宿主网络）'}
+                  <textarea
+                    value={(server.browser?.allowedHosts || []).join('\n')}
+                    onChange={(e) =>
+                      setValue({
+                        ...value,
+                        mcp: value.mcp.map((s: any, i: number) =>
+                          i === index
+                            ? {
+                                ...s,
+                                browser: {
+                                  persistSession: s.browser?.persistSession || false,
+                                  allowedHosts: e.target.value
+                                    .split('\n')
+                                    .map((v) => v.trim().toLowerCase())
+                                    .filter(Boolean),
+                                },
+                              }
+                            : s,
+                        ),
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={server.browser?.persistSession || false}
+                    onChange={(e) =>
+                      setValue({
+                        ...value,
+                        mcp: value.mcp.map((s: any, i: number) =>
+                          i === index
+                            ? {
+                                ...s,
+                                browser: {
+                                  allowedHosts: s.browser?.allowedHosts || [],
+                                  persistSession: e.target.checked,
+                                },
+                              }
+                            : s,
+                        ),
+                      })
+                    }
+                  />
+                  {t('settings') === 'Settings'
+                    ? 'Keep cookies and local storage per conversation on this computer'
+                    : '在本机按对话保存 Cookie 和本地存储'}
+                </label>
+                <p className="muted">
+                  {t('settings') === 'Settings'
+                    ? 'Host filtering is an application rule, not OS network isolation. Downloads require a new path in an existing project folder.'
+                    : '域名过滤是应用规则，不是 OS 网络隔离。下载需指定项目已有文件夹中的新文件路径。'}
+                </p>
+              </div>
+            )}
             <div className="row">
               <label className="checkbox">
                 <input

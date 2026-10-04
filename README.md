@@ -17,6 +17,8 @@ Built with **TypeScript, Node.js, React, Fastify and SQLite**. The interface sup
 - **Access controls** — read-only, manual or assisted approval, plus selectable host, AppContainer and Docker execution backends.
 - **Local persistence** — conversations, task state and operation records survive restarts; uncertain operations are not silently replayed.
 
+- **Tool ecosystem** — progressive tool discovery, scoped glob/grep, bounded tool workflows, configurable hooks and optional browser/Windows desktop adapters. See [setup and boundaries](docs/TOOL-ECOSYSTEM.md).
+
 ## Quick start
 
 ### Requirements

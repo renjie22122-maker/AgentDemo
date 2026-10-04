@@ -17,6 +17,10 @@ export class ContextManager {
     private complete: (run: Run, request: ModelRequest) => Promise<ModelResult>,
     private scope: (run: Run) => string = (run) => run.conversationId,
     private taskSnapshot: (run: Run) => ModelMessage | undefined = () => undefined,
+    private lifecycle: (
+      stage: 'beforeCompaction' | 'afterCompaction',
+      run: Run,
+    ) => void | Promise<void> = () => {},
   ) {}
   async compact(
     run: Run,
@@ -85,6 +89,7 @@ export class ContextManager {
       'No older messages can be compressed without discarding the current request.',
     );
 
+    await this.lifecycle('beforeCompaction', run);
     this.store.event(run.conversationId, run.id, 'context.compacting', {
       estimatedTokens: before.tokens,
       thresholdTokens: before.threshold,
@@ -220,6 +225,7 @@ export class ContextManager {
       economicsAssumption:
         'Estimated constant future context and observed aggregate cache ratio; not guaranteed billing savings.',
     });
+    await this.lifecycle('afterCompaction', run);
     return after;
   }
 }

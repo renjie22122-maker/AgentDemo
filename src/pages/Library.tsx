@@ -1,3 +1,4 @@
+import { SkillPackagesPanel } from '../components/SkillPackagesPanel';
 import { KnowledgeScopePicker } from '../components/KnowledgeScopePicker';
 import { libraryConversations } from '../library-scopes';
 import { MemoryDefaults } from '../components/MemoryDefaults';
@@ -75,6 +76,7 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
               {t('import')}
             </button>
           </section>
+          <SkillPackagesPanel zh={t('settings') !== 'Settings'} refresh={refresh} notify={notify} />
           <SkillClassificationPanel
             state={state}
             refresh={refresh}

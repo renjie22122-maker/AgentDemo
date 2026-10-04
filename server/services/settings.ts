@@ -32,6 +32,46 @@ export const profileSchema = z.object({
     .default({ input: null, output: null, cached: null }),
 });
 const schema = z.object({
+  hooks: z
+    .array(
+      z
+        .object({
+          id: z.string(),
+          enabled: z.boolean(),
+          stage: z.enum([
+            'beforeTool',
+            'afterTool',
+            'beforeCommand',
+            'afterCommand',
+            'beforeCompaction',
+            'afterCompaction',
+            'beforeTaskComplete',
+            'afterTaskComplete',
+            'beforeMemoryWrite',
+            'afterMemoryWrite',
+          ]),
+          tool: z.string().min(1).max(100),
+          action: z.enum(['deny', 'notify', 'command']),
+          command: z.string().min(1).max(8000).optional(),
+          timeoutSeconds: z.number().int().min(1).max(300).optional(),
+          message: z.string().min(1).max(2000),
+          projectId: z.string().optional(),
+        })
+        .refine(
+          (h) => h.action !== 'deny' || h.stage.startsWith('before'),
+          'Deny hooks must run before the tool.',
+        )
+        .refine(
+          (h) =>
+            h.action !== 'command' ||
+            (!!h.command &&
+              ['beforeTool', 'afterTool', 'beforeCommand', 'afterCommand'].includes(h.stage)),
+          'Command hooks require a command and a tool/command lifecycle stage.',
+        ),
+    )
+    .max(64)
+    .default([]),
+
   agentName: z
     .string()
     .trim()
@@ -115,6 +155,14 @@ const schema = z.object({
         id: z.string(),
         name: z.string(),
         command: z.string(),
+        capability: z.enum(['general', 'browser', 'computer']).optional(),
+        builtin: z.enum(['browser', 'computer']).optional(),
+        browser: z
+          .object({
+            allowedHosts: z.array(z.string().regex(/^[a-zA-Z0-9.-]+$/)).max(100),
+            persistSession: z.boolean(),
+          })
+          .optional(),
         args: z.array(z.string()),
         enabled: z.boolean(),
       }),

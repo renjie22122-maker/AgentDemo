@@ -54,7 +54,30 @@ export interface Profile {
   prices: { input: number | null; output: number | null; cached: number | null };
 }
 export type PublicProfile = Omit<Profile, 'apiKey'> & { hasKey: boolean };
+export interface ToolHook {
+  id: string;
+  enabled: boolean;
+  stage:
+    | 'beforeTool'
+    | 'afterTool'
+    | 'beforeCommand'
+    | 'afterCommand'
+    | 'beforeCompaction'
+    | 'afterCompaction'
+    | 'beforeTaskComplete'
+    | 'afterTaskComplete'
+    | 'beforeMemoryWrite'
+    | 'afterMemoryWrite';
+  tool: string;
+  action: 'deny' | 'notify' | 'command';
+  command?: string;
+  timeoutSeconds?: number;
+  message: string;
+  projectId?: string;
+}
 export interface Settings {
+  hooks?: ToolHook[];
+
   agentName?: string;
   autoReview?: { profileId: string; timeoutMs: number };
   media?: {
@@ -82,7 +105,16 @@ export interface Settings {
   nativePython?: string;
   nativeNetwork?: 'deny' | 'host';
   embedding: { baseUrl: string; apiKey: string; model: string; backend?: 'remote' | 'local' };
-  mcp: { id: string; name: string; command: string; args: string[]; enabled: boolean }[];
+  mcp: {
+    id: string;
+    name: string;
+    command: string;
+    args: string[];
+    enabled: boolean;
+    capability?: 'general' | 'browser' | 'computer';
+    builtin?: 'browser' | 'computer';
+    browser?: { allowedHosts: string[]; persistSession: boolean };
+  }[];
 }
 export interface Project {
   removedAt?: number | null;
@@ -188,6 +220,7 @@ export interface Attachment {
   createdAt: number;
 }
 export interface Skill {
+  manifest?: { requires: string[]; tools: string[]; verification: string[]; hasHooks: boolean };
   categories?: Array<{ id: string; labelEn: string; labelZh: string }>;
   sourceGroup?: string;
   id: string;

@@ -1,0 +1,80 @@
+using System.Windows.Automation;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Threading;
+using System.Web.Script.Serialization;
+using System.Windows.Forms;
+public class DesktopBridge {
+ [DllImport("user32.dll")] static extern bool SetCursorPos(int x,int y);
+ [StructLayout(LayoutKind.Sequential)] struct MOUSEINPUT {public int dx,dy;public uint mouseData,flags,time;public UIntPtr extra;}
+ [StructLayout(LayoutKind.Sequential)] struct KEYINPUT {public ushort vk,scan;public uint flags,time;public UIntPtr extra;}
+ [StructLayout(LayoutKind.Explicit)] struct INPUTUNION {[FieldOffset(0)]public MOUSEINPUT mouse;[FieldOffset(0)]public KEYINPUT key;}
+ [StructLayout(LayoutKind.Sequential)] struct INPUT {public uint type;public INPUTUNION data;}
+ [DllImport("user32.dll",SetLastError=true)] static extern uint SendInput(uint count,INPUT[] inputs,int size);
+ static void Emit(INPUT value){if(SendInput(1,new[]{value},Marshal.SizeOf(typeof(INPUT)))!=1)throw new Exception("Windows rejected input; possible privilege boundary");}
+ static void mouse_event(uint f,uint x,uint y,uint d,UIntPtr e){Emit(new INPUT{type=0,data=new INPUTUNION{mouse=new MOUSEINPUT{flags=f,mouseData=d}}});}
+ static void Key(ushort vk,ushort scan,uint flags){Emit(new INPUT{type=1,data=new INPUTUNION{key=new KEYINPUT{vk=vk,scan=scan,flags=flags}}});}
+ static void CheckTarget(Dictionary<string,object>a){if(GetForegroundWindow()!=new IntPtr(Int64.Parse(Text(a,"windowId"))))throw new Exception("Target lost foreground; stopped input");}
+
+ [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+ [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
+ [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h,out RECT r);
+ [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+ [StructLayout(LayoutKind.Sequential)] struct RECT { public int L,T,R,B; }
+ static JavaScriptSerializer json=new JavaScriptSerializer { MaxJsonLength=32*1024*1024 };
+ static int Number(Dictionary<string,object> a,string k) {if(!a.ContainsKey(k))throw new Exception("Missing "+k);return Convert.ToInt32(a[k]);}
+ static string Text(Dictionary<string,object>a,string k) {return a.ContainsKey(k)?Convert.ToString(a[k]):"";}
+ [STAThread] public static int Main(string[] args) {
+  using(var gate=new Mutex(false,"Local\\AgentDemoDesktopInput")){
+   bool owned=false;
+   try {try{owned=gate.WaitOne(5000);}catch(AbandonedMutexException){owned=true;}
+    if(!owned)throw new Exception("Desktop busy in another conversation");
+    return Run(args);
+   }finally{if(owned)gate.ReleaseMutex();}
+  }
+ }
+ static int Run(string[] args) {
+  try {SetProcessDPIAware(); var a=json.Deserialize<Dictionary<string,object>>(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(args[0])));
+   string action=Text(a,"action"); var bounds=SystemInformation.VirtualScreen;
+   if(action=="windows"){var windows=new List<object>();foreach(var p in Process.GetProcesses()){try{if(p.MainWindowHandle!=IntPtr.Zero)windows.Add(new {windowId=p.MainWindowHandle.ToInt64().ToString(),title=p.MainWindowTitle,processId=p.Id});}catch{}} Console.WriteLine(json.Serialize(new {windows=windows}));return 0;}
+   if(action=="inspect"){
+    var handle=new IntPtr(Int64.Parse(Text(a,"windowId")));if(!IsWindow(handle))throw new Exception("Window unavailable");
+    var root=AutomationElement.FromHandle(handle);var queue=new Queue<AutomationElement>();queue.Enqueue(root);var controls=new List<object>();var timer=Stopwatch.StartNew();
+    while(queue.Count>0 && controls.Count<100 && timer.ElapsedMilliseconds<2000){
+     var element=queue.Dequeue();try{var cur=element.Current;var rect=cur.BoundingRectangle;
+      controls.Add(new {name=cur.Name,role=cur.ControlType.ProgrammaticName,automationId=cur.AutomationId,enabled=cur.IsEnabled,password=cur.IsPassword,x=rect.X,y=rect.Y,width=rect.Width,height=rect.Height});
+      var child=TreeWalker.ControlViewWalker.GetFirstChild(element);
+      for(int n=0;child!=null && n<100 && queue.Count<200;n++){queue.Enqueue(child);child=TreeWalker.ControlViewWalker.GetNextSibling(child);}
+     }catch(ElementNotAvailableException){}
+    }
+    Console.WriteLine(json.Serialize(new {windowId=Text(a,"windowId"),controls=controls,truncated=queue.Count>0,source="UI Automation"}));return 0;
+   }
+   if(action=="cursor"){Console.WriteLine(json.Serialize(new {x=Cursor.Position.X,y=Cursor.Position.Y}));return 0;}
+   if(action=="screenshot"){if(a.ContainsKey("windowId")){var h=new IntPtr(Int64.Parse(Text(a,"windowId")));RECT r;if(!IsWindow(h)||!GetWindowRect(h,out r))throw new Exception("Window is unavailable");bounds=Rectangle.Intersect(bounds,Rectangle.FromLTRB(r.L,r.T,r.R,r.B));}
+    if(bounds.Width<=0||bounds.Height<=0)throw new Exception("Window has no visible screen bounds");
+    using(var b=new Bitmap(bounds.Width,bounds.Height))using(var g=Graphics.FromImage(b))using(var stream=new MemoryStream()){
+     g.CopyFromScreen(bounds.Left,bounds.Top,0,0,bounds.Size);b.Save(stream,ImageFormat.Png);
+     Console.WriteLine(json.Serialize(new {image=Convert.ToBase64String(stream.ToArray()),x=bounds.Left,y=bounds.Top,width=bounds.Width,height=bounds.Height,capture="visible-screen"}));}return 0;}
+   if(action!="move"){
+    var h=new IntPtr(Int64.Parse(Text(a,"windowId")));RECT r;
+    if(!IsWindow(h)||GetForegroundWindow()!=h||!GetWindowRect(h,out r))throw new Exception("Target must be the existing foreground window; no input sent");
+    bounds=Rectangle.Intersect(bounds,Rectangle.FromLTRB(r.L,r.T,r.R,r.B));
+   }
+   if(action=="move"||action=="click"||action=="double_click"||action=="drag"){
+    int x=Number(a,"x"),y=Number(a,"y");if(!bounds.Contains(x,y))throw new Exception("Point outside target");
+    if(action=="drag"){int endX=Number(a,"toX"),endY=Number(a,"toY");if(!bounds.Contains(endX,endY))throw new Exception("Drag outside target");SetCursorPos(x,y);mouse_event(2,0,0,0,UIntPtr.Zero);
+     try{for(int i=1;i<=10;i++){CheckTarget(a);SetCursorPos(x+(endX-x)*i/10,y+(endY-y)*i/10);Thread.Sleep(20);}}finally{mouse_event(4,0,0,0,UIntPtr.Zero);}
+    }else{if(!SetCursorPos(x,y))throw new Exception("Cursor move failed");if(action!="move"){int count=action=="double_click"?2:1;for(int i=0;i<count;i++){CheckTarget(a);mouse_event(2,0,0,0,UIntPtr.Zero);mouse_event(4,0,0,0,UIntPtr.Zero);}}}
+   }else if(action=="type"){string s=Text(a,"text");if(s.Length>2000)throw new Exception("Text too long");foreach(char c in s){CheckTarget(a);Key(0,(ushort)c,4);Key(0,(ushort)c,6);}}
+   else if(action=="key"){string key=Text(a,"key");if(Array.IndexOf(new[]{"ENTER","ESC","TAB","BACKSPACE","UP","DOWN","LEFT","RIGHT"},key)<0)throw new Exception("Unsupported key");CheckTarget(a);ushort[] codes={13,27,9,8,38,40,37,39};ushort code=codes[Array.IndexOf(new[]{"ENTER","ESC","TAB","BACKSPACE","UP","DOWN","LEFT","RIGHT"},key)];Key(code,0,0);Key(code,0,2);}
+   else if(action=="scroll"){int delta=Number(a,"delta");if(Math.Abs(delta)>1200)throw new Exception("Scroll too large");mouse_event(2048,0,0,unchecked((uint)delta),UIntPtr.Zero);}
+   else throw new Exception("Unsupported action");
+   Console.WriteLine(json.Serialize(new {completed=true,action=action}));return 0;
+  }catch(Exception e){Console.Error.WriteLine(e.Message);return 1;}
+ }
+}

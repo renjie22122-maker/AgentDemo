@@ -15,7 +15,27 @@ export function parseSkill(text: string) {
     'SKILL_FORMAT',
     'A skill needs a name and a readable description.',
   );
-  return { name: meta.name, description: meta.description, content: m[2] };
+
+  const strings = (v: unknown) =>
+    (Array.isArray(v) ? v : typeof v === 'string' ? [v] : [])
+      .filter((x): x is string => typeof x === 'string')
+      .slice(0, 50)
+      .map((x) => x.slice(0, 1000));
+  const manifest =
+    meta.requires || meta.tools || meta['allowed-tools'] || meta.verification || meta.hooks
+      ? {
+          requires: strings(meta.requires),
+          tools: strings(meta.tools || meta['allowed-tools']),
+          verification: strings(meta.verification),
+          hasHooks: !!meta.hooks,
+        }
+      : undefined;
+  return {
+    name: meta.name,
+    description: meta.description,
+    content: m[2],
+    ...(manifest ? { manifest } : {}),
+  };
 }
 export class Skills {
   constructor(private store: Store) {}
@@ -46,7 +66,7 @@ export class Skills {
             ? 'OpenAI'
             : basename(root),
         source: path,
-        enabled: true,
+        enabled: existing?.enabled ?? true,
         createdAt: existing?.createdAt || Date.now(),
       };
       this.store.put('skill', value);

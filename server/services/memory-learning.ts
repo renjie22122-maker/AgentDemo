@@ -1,3 +1,4 @@
+import { memoryHooks } from './tool-hooks.js';
 import { Embeddings } from './embedding.js';
 import { MemoryIndex } from './memory-index.js';
 import { manageAutomaticMemory, reconsiderMemoryConflicts } from './memory-automatic.js';
@@ -217,7 +218,9 @@ export class MemoryLearning {
                 (m) => m.topic === item.topic && normalized(m.content) !== normalized(item.content),
               );
             const active = (c.automaticMemory === true || item.kind === 'preference') && !conflict;
-            const saved = new MemoryLifecycle(this.store).create({
+            const saved = new MemoryLifecycle(this.store, (stage, m) =>
+              memoryHooks(this.store, this.config, stage, m),
+            ).create({
               id: id(),
               scope,
               content: item.content,
@@ -241,7 +244,9 @@ export class MemoryLearning {
             if (!this.store.get<Memory>('memory', saved.id).active) candidates++;
           }
           if (c.automaticMemory) reconsiderMemoryConflicts(this.store, scope);
-          new MemoryLifecycle(this.store).consolidate(scope);
+          new MemoryLifecycle(this.store, (stage, m) =>
+            memoryHooks(this.store, this.config, stage, m),
+          ).consolidate(scope);
           this.store.put('memory-learning', {
             ...job,
             status: 'completed',

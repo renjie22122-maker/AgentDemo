@@ -22,8 +22,15 @@ export function memoryValid(m: Memory, at = Date.now()) {
   );
 }
 export class MemoryLifecycle {
-  constructor(private store: Store) {}
+  constructor(
+    private store: Store,
+    private hook: (
+      stage: 'beforeMemoryWrite' | 'afterMemoryWrite',
+      memory: Memory,
+    ) => void = () => {},
+  ) {}
   private record(before: Memory | null, after: Memory, reason: string) {
+    this.hook('beforeMemoryWrite', after);
     this.store.put('memory-history', {
       id: id(),
       memoryId: after.id,
@@ -35,6 +42,7 @@ export class MemoryLifecycle {
     });
     this.store.put('memory', after);
     this.store.remove('memory-vector', after.id);
+    this.hook('afterMemoryWrite', after);
     return after;
   }
   evidenceValid(m: Memory) {
