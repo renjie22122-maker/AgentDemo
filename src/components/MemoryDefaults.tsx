@@ -47,6 +47,11 @@ export function MemoryDefaults({ scope, state, zh, notify }: any) {
       </label>
       <p className="muted">
         {zh
+          ? '旧候选也会按原文复审：每批最多 8 条，每条原文最多 12,000 字符，发送到原对话已授权模型，会消耗额度；停用、历史、过期和冲突不会自动恢复。原对话需未归档且开启自动管理。'
+          : 'Old candidates are also reviewed: up to 8 per batch with 12,000 characters per human source, using the original authorized model at model cost. Disabled, historical, expired and disputed entries are not revived. The original chat must be unarchived and opted in.'}
+      </p>
+      <p className="muted">
+        {zh
           ? '仅授权此模型地址处理本范围记忆；对话级例外不覆盖：'
           : 'Only this model destination is authorized; per-chat overrides remain: '}
         {profile?.baseUrl || '—'}

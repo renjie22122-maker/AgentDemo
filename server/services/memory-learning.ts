@@ -1,3 +1,4 @@
+import { reviewMemoryCandidates } from './memory-candidate-review.js';
 import { memoryAccessible, memoryPartition } from '../../shared/memory-scope.js';
 import { memoryHooks } from './tool-hooks.js';
 import { Embeddings } from './embedding.js';
@@ -115,6 +116,33 @@ export class MemoryLearning {
     if (this.store.runMetadata().some((r) => !terminal(r.status))) return;
     for (const c of this.store.list<Conversation>('conversation')) {
       if (!this.ready(c, now)) continue;
+      if (c.automaticMemory) {
+        const profile = this.config.profile(c.profileId),
+          target = memoryTarget(profile);
+        const reviewed = await reviewMemoryCandidates(
+          this.store,
+          c,
+          profile,
+          this.provider(profile),
+          AbortSignal.any([this.controller.signal, AbortSignal.timeout(65000)]),
+          () => {
+            const latest = this.store.maybe<Conversation>('conversation', c.id);
+            return (
+              !!latest &&
+              latest.automaticMemory === true &&
+              this.ready(latest, Date.now()) &&
+              memoryTarget(this.config.profile(latest.profileId)) === target &&
+              this.config.profile(latest.profileId).model === profile.model
+            );
+          },
+          sensitive,
+          new MemoryLifecycle(this.store, (stage, m) =>
+            memoryHooks(this.store, this.config, stage, m),
+          ),
+        );
+        if (reviewed) return;
+      }
+
       const events = this.store.events(c.id, 0, 'user.message');
       if (events.length < 2) continue;
       const observedLast = events.at(-1)!.id;

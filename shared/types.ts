@@ -260,6 +260,7 @@ export interface Skill {
   createdAt: number;
 }
 export interface Memory {
+  candidateReview?: { status: 'enabled' | 'needs_review' | 'blocked'; reason: string; at: number };
   decayPolicy?: 'auto' | 'stable' | 'time' | 'turns' | 'time-and-turns';
   halfLifeDays?: number;
   halfLifeTurns?: number;
@@ -267,7 +268,7 @@ export interface Memory {
   topic?: string;
   automatic?: boolean;
   kind?: 'preference' | 'decision' | 'episode' | 'experience';
-  status?: 'candidate' | 'active' | 'superseded' | 'disputed' | 'forgotten';
+  status?: 'candidate' | 'inactive' | 'active' | 'superseded' | 'disputed' | 'forgotten';
   recordedAt?: number;
   validFrom?: number;
   validUntil?: number | null;

@@ -399,3 +399,20 @@ test('distinct episodes sharing a topic are additive, not automatically contradi
     s.close();
   }
 });
+
+test('deactivated memory is separate from candidate and remains inactive on edits', async () => {
+  const s = await fixture(),
+    life = new MemoryLifecycle(s);
+  try {
+    life.create(memory('enabled'));
+    const inactive = life.update('enabled', { active: false }, 1);
+    assert.equal(inactive.status, 'inactive');
+    assert.equal(life.update('enabled', { content: 'Updated wording' }, 2).status, 'inactive');
+    assert.equal(life.batch('project:a', 'confirm', [{ id: 'enabled', revision: 3 }]).changed, 1);
+    assert.equal(s.get<Memory>('memory', 'enabled').status, 'active');
+    const candidate = life.create(memory('candidate', { active: false, attribute: 'other' }));
+    assert.equal(candidate.status, 'candidate');
+  } finally {
+    s.close();
+  }
+});

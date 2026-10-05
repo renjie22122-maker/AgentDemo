@@ -40,11 +40,11 @@ User-labelled retrieval examples can compare lexical/hybrid strategies; selectio
 
 ## Managing a growing memory list
 
-The library defaults to current entries and separates active, candidate/inactive, disputed and historical/expired states. Search content, topic or source; pages contain 25 records. Select a page or individual records, then confirm, deactivate or forget up to 200 explicitly selected entries per request. Forgetting asks for confirmation and uses existing source-exclusion semantics. Every item checks scope and revision independently; a failed item does not undo successful items. Conflicting, expired or superseded records cannot be bulk-approved.
+The library defaults to current entries and separates active, candidate and explicitly deactivated, disputed and historical/expired states. Search content, topic or source; pages contain 25 records. Select a page or individual records, then confirm, deactivate or forget any number of explicitly selected entries (sent sequentially in requests of 100). Forgetting asks for confirmation and uses existing source-exclusion semantics. Every item checks scope and revision independently; a failed item does not undo successful items. Conflicting, expired or superseded records cannot be bulk-approved.
 
 Ambiguous conflicts have a visible count and direct review filter, with competing content and sources. They remain outside recall until resolved. No automatic interruption or automatic choice of winner is introduced.
 
-Opted-in background learning now processes new user messages after the last successful extraction, in batches of up to 30, instead of repeatedly extracting the same recent history. Existing same-scope structured attribute/value matches are reused. Exact duplicate candidates can be consolidated without activating them; source/revision history remains. Old pending entries are not all silently approved. Use the existing scope default to enable automatic management for new/inheriting chats; chat-level overrides and project/general isolation remain. No new external destination is authorized by these changes.
+Opted-in background learning now processes new user messages after the last successful extraction, in batches of up to 30, instead of repeatedly extracting the same recent history. Existing same-scope structured attribute/value matches are reused. Exact duplicate candidates can be consolidated without activating them; source/revision history remains. Old candidates can be reviewed against sources when their original conversation is opted in, never blanket-approved. Use the existing scope default to enable automatic management for new/inheriting chats; chat-level overrides and project/general isolation remain. No new external destination is authorized by these changes.
 
 ## Recall reach and decay
 
@@ -59,3 +59,11 @@ Classification uses the extractor's generic memory kind, not topic keywords. Mis
 System memory:<id> nodes represent provenance, not people or concepts. The UI hides them by default and displays memory summaries when shown. Advanced creation controls are collapsed; relations support search and pagination. Revisions update system-owned source quotations, deactivation retires those links, retrieval checks expiry, and forgetting removes unreferenced internal nodes. Unrelated domain edges are never rewritten automatically. Missing/invalid evidence is visibly marked and excluded from current traversal. Source links do not imply semantic entity resolution or factual inference.
 
 The memory list shows source conversation titles where available, dates, reach and decay rules. Raw IDs/revisions remain under technical details. Scope search without a conversation context excludes local records; these remain visible in management and recallable in their original conversation.
+
+Enabled means eligible for retrieval, not included in every prompt or verified as true. Scope, relevance, expiry and decay determine actual recall. Manual confirmation enables a candidate; reactivation enables an explicitly deactivated memory. Legacy inactive candidates without clear lifecycle metadata remain candidates rather than guessing their intent.
+
+## Automatic review of existing candidates
+
+The original conversation must be unarchived, idle and opted into automatic memory using its authorized model connection. Old candidates can then be reviewed, up to 8 per request with corresponding original human messages of up to 12,000 characters each. Attachments and tool output are excluded. Review uses model quota. Unchanged versions/source/model/active-set fingerprints are not repeatedly reviewed; failed or interrupted calls are not blindly replayed.
+
+The host checks exact source quotes, revisions, permission, expiry, conflict and experience evidence before activation. Disabled, disputed, historical, expired and forgotten entries are not revived. Untraceable sources remain manual. Changes to source/model/active memories can trigger reconsideration. Activation permits relevant recall, not proof of truth. Enabling another conversation does not approve every project candidate. No extra dependency or first-start change is needed.

@@ -209,6 +209,18 @@ export class MemoryLifecycle {
       'End must be after start.',
     );
     const conflicts = this.conflicts(next);
+    for (const key of next.conflictsWith || []) {
+      const other = this.store.maybe<Memory>('memory', key);
+      if (
+        other &&
+        other.scope === next.scope &&
+        memoryPartition(other) === memoryPartition(next) &&
+        memoryValid(other) &&
+        !conflicts.some((x) => x.id === key)
+      )
+        conflicts.push(other);
+    }
+
     if (next.active) {
       assert(
         !conflicts.length,
@@ -221,7 +233,13 @@ export class MemoryLifecycle {
         'Experience needs successful tool evidence and applicability conditions.',
       );
     }
-    next.status = next.active ? 'active' : conflicts.length ? 'disputed' : 'candidate';
+    next.status = next.active
+      ? 'active'
+      : patch.active === false || old.status === 'inactive'
+        ? 'inactive'
+        : conflicts.length
+          ? 'disputed'
+          : 'candidate';
     return this.record(old, next, 'edited');
   }
   resolve(

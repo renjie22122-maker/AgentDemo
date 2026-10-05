@@ -1,3 +1,4 @@
+import { submitMemoryBatch } from '../memory-batch';
 import { memoryDecayPolicy } from '../../shared/memory-decay';
 import { memoryReach, memoryConversation } from '../../shared/memory-scope';
 import { useMemo, useState } from 'react';
@@ -13,6 +14,7 @@ function status(m: Memory) {
     (m.validUntil != null && m.validUntil <= Date.now())
   )
     return 'history';
+  if (m.status === 'inactive') return 'inactive';
   if (m.status === 'disputed') return 'disputed';
   return m.active ? 'active' : 'candidate';
 }
@@ -53,8 +55,9 @@ export function MemoryList({
   };
   const names: Record<string, string> = {
     current: label('Current', '当前'),
-    active: label('Active', '有效'),
-    candidate: label('Candidates / inactive', '候选／已停用'),
+    active: label('Enabled · recalled when relevant', '已启用 · 可按需召回'),
+    candidate: label('Awaiting confirmation', '待确认'),
+    inactive: label('Deactivated', '已停用'),
     disputed: label('Conflicts', '冲突'),
     history: label('History / expired', '历史／过期'),
     all: label('All', '全部'),
@@ -86,14 +89,20 @@ export function MemoryList({
     setBusy(true);
     try {
       await go(async () => {
-        const result: any = await api('/memories/batch', { scope, action, items });
-        setReport(result);
-        setSelected((previous) =>
-          Object.fromEntries(
-            Object.entries(previous).filter(
-              ([id]) => !result.outcomes.some((x: any) => x.id === id && x.ok),
-            ),
-          ),
+        setReport({ outcomes: [], changed: 0, failed: 0, processed: 0, total: items.length });
+        await submitMemoryBatch(
+          items,
+          (chunk) => api('/memories/batch', { scope, action, items: chunk }),
+          (result) => {
+            setReport(result);
+            setSelected((previous) =>
+              Object.fromEntries(
+                Object.entries(previous).filter(
+                  ([id]) => !result.outcomes.some((x) => x.id === id && x.ok),
+                ),
+              ),
+            );
+          },
         );
       });
     } finally {
@@ -164,25 +173,39 @@ export function MemoryList({
         </div>
         <p className="muted">
           {label(
-            'History is hidden by default. Selection is explicit; conflicts are never bulk-overridden.',
-            '默认隐藏历史条目。仅处理明确勾选的记录，批量确认不会强行覆盖冲突。',
+            'Candidates await permission to recall; deactivated entries were explicitly disabled. Confirmation allows use, not proof of truth. Conflicts need separate resolution. Selection is unlimited; requests run in batches.',
+            '待确认：尚未允许召回。已停用：用户主动停止召回。确认／启用是允许使用，不代表验证为真；冲突需单独处理。选择数量不设上限，自动分批执行。',
           )}
         </p>
         <div className="row" style={{ flexWrap: 'wrap' }}>
           <button
             disabled={busy}
-            onClick={() => setSelected(Object.fromEntries(visible.map((m) => [m.id, m.revision])))}
+            onClick={() =>
+              setSelected((previous) => ({
+                ...previous,
+                ...Object.fromEntries(visible.map((m) => [m.id, m.revision])),
+              }))
+            }
           >
             {label('Select this page', '选择本页')}
+          </button>
+          <button
+            disabled={busy}
+            onClick={() => setSelected(Object.fromEntries(filtered.map((m) => [m.id, m.revision])))}
+          >
+            {label('Select all matching', '选择全部筛选结果')} ({filtered.length})
           </button>
           <button disabled={busy} onClick={() => setSelected({})}>
             {label('Clear', '取消选择')}
           </button>
           <span>
-            {label('Selected', '已选')} {items.length}/200
+            {label('Selected', '已选')} {items.length}
           </span>
           <button disabled={busy || !items.length} onClick={() => void perform('confirm')}>
-            {label('Confirm selected', '批量确认')}
+            {items.length &&
+            items.every((x) => scoped.find((m) => m.id === x.id)?.status === 'inactive')
+              ? label('Reactivate selected', '重新启用所选')
+              : label('Confirm / activate selected', '确认／启用所选')}
           </button>
           <button disabled={busy || !items.length} onClick={() => void perform('deactivate')}>
             {label('Deactivate selected', '批量停用')}
@@ -204,8 +227,9 @@ export function MemoryList({
         </div>
         {report && (
           <div role="status">
-            {label('Processed', '已处理')} {report.changed} · {label('Not changed', '未更改')}{' '}
-            {report.failed}
+            {label('Processed', '已处理')} {report.processed ?? report.changed} /{' '}
+            {report.total ?? report.changed} · {label('Changed', '已更改')} {report.changed} ·{' '}
+            {label('Not changed', '未更改')} {report.failed}
             {report.outcomes
               .filter((x: any) => !x.ok)
               .map((x: any) => (
@@ -226,7 +250,7 @@ export function MemoryList({
               style={{ width: 'auto' }}
               aria-label={label('Select memory: ', '选择记忆：') + m.content}
               checked={selected[m.id] != null}
-              disabled={busy || (items.length >= 200 && selected[m.id] == null)}
+              disabled={busy}
               onChange={(e) =>
                 setSelected((previous) => {
                   const next = { ...previous };

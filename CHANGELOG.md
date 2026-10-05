@@ -4,6 +4,10 @@
 
 Entries below describe repository changes, not a semantic-version release series. Historical test counts belong to their recorded runs.
 
+## 2026-10-06 — Memory candidate review
+
+Unlimited memory selection with sequential batches, separate candidate/deactivated states, and source-backed automatic review of existing opted-in candidates.
+
 ## 2026-10-05 — Memory management
 
 Memory management: scoped bulk actions, readable source/status filters, incremental extraction, local episodes, configurable type-based decay, and maintained provenance links.
