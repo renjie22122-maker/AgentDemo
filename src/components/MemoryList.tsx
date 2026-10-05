@@ -21,6 +21,7 @@ function status(m: Memory) {
 export function MemoryList({
   memories,
   conversations = [],
+  currentConversationId,
   scope,
   zh,
   go,
@@ -28,11 +29,14 @@ export function MemoryList({
   memories: Memory[];
   conversations?: { id: string; title: string }[];
   scope: string;
+  currentConversationId?: string;
   zh: boolean;
   go: (fn: () => Promise<unknown>) => Promise<void>;
 }) {
   const [filter, setFilter] = useState('current'),
     [query, setQuery] = useState('');
+  const [reachFilter, setReachFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
   const [page, setPage] = useState(0),
     [selected, setSelected] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false),
@@ -68,14 +72,21 @@ export function MemoryList({
       (m) =>
         (filter === 'all' ||
           (filter === 'current' ? status(m) !== 'history' : status(m) === filter)) &&
-        [m.content, m.topic, m.source].join(' ').toLowerCase().includes(query.toLowerCase()),
+        (reachFilter === 'all' || memoryReach(m) === reachFilter) &&
+        (sourceFilter === 'all' ||
+          (sourceFilter === 'manual'
+            ? !memoryConversation(m)
+            : memoryConversation(m) === sourceFilter)) &&
+        [m.content, m.topic, sourceName(m)].join(' ').toLowerCase().includes(query.toLowerCase()),
     )
     .sort((a, b) => b.createdAt - a.createdAt);
   const lastPage = Math.max(0, Math.ceil(filtered.length / 25) - 1);
   const currentPage = Math.min(page, lastPage);
   const visible = filtered.slice(currentPage * 25, (currentPage + 1) * 25);
   const items = Object.entries(selected).map(([id, revision]) => ({ id, revision }));
-  const perform = async (action: 'confirm' | 'deactivate' | 'forget') => {
+  const perform = async (
+    action: 'confirm' | 'deactivate' | 'forget' | 'local' | 'share' | 'auto-reach',
+  ) => {
     if (
       action === 'forget' &&
       !window.confirm(
@@ -138,7 +149,64 @@ export function MemoryList({
             </button>
           </div>
         )}
-        <div className="row">
+        {currentConversationId &&
+          scoped.some((m) => memoryConversation(m) === currentConversationId) && (
+            <button
+              onClick={() => {
+                setSourceFilter(currentConversationId);
+                setReachFilter('all');
+                setFilter('current');
+                setQuery('');
+                setPage(0);
+                setSelected({});
+              }}
+            >
+              {label('Show current conversation memories', '查看当前对话的记忆')}
+            </button>
+          )}
+        <div className="memory-scope-fields">
+          <label>
+            {label('Recall scope', '召回范围')}
+            <select
+              aria-label={label('Recall scope', '召回范围')}
+              value={reachFilter}
+              onChange={(e) => {
+                setReachFilter(e.target.value);
+                setPage(0);
+                setSelected({});
+              }}
+            >
+              <option value="all">{label('All memories', '全部记忆')}</option>
+              <option value="conversation">
+                {label('Original conversation only', '仅原对话')}
+              </option>
+              <option value="scope">{label('Shared in this group', '本范围共享')}</option>
+            </select>
+          </label>
+          <label>
+            {label('Original conversation', '原对话')}
+            <select
+              aria-label={label('Original conversation', '原对话')}
+              value={sourceFilter}
+              onChange={(e) => {
+                setSourceFilter(e.target.value);
+                setPage(0);
+                setSelected({});
+              }}
+            >
+              <option value="all">{label('All conversations', '全部原对话')}</option>
+              <option value="manual">
+                {label('No original conversation / manual', '无原对话／手动录入')}
+              </option>
+              {[...new Set(scoped.map(memoryConversation).filter(Boolean))].map((id) => (
+                <option key={id} value={id}>
+                  {sourceName(scoped.find((m) => memoryConversation(m) === id)!)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="row wrap">
           <input
             aria-label={label('Search memories', '搜索记忆')}
             placeholder={label('Search content, topic or source', '搜索内容、主题或来源')}
@@ -171,6 +239,12 @@ export function MemoryList({
             ))}
           </select>
         </div>
+        <p className="muted">
+          {label(
+            'Changing reach never activates a memory or changes its source. Local means each memory stays with its own original chat. Automatic: episodes and general-chat decisions stay local; preferences and project decisions are shared.',
+            '修改使用范围不会自动启用记忆，也不会改变来源。“仅各自原对话”保留每条记忆自己的原对话。自动规则：事件和普通对话决定留在原对话，偏好和项目决定在本范围共享。',
+          )}
+        </p>
         <p className="muted">
           {label(
             'Candidates await permission to recall; deactivated entries were explicitly disabled. Confirmation allows use, not proof of truth. Conflicts need separate resolution. Selection is unlimited; requests run in batches.',
@@ -206,6 +280,15 @@ export function MemoryList({
             items.every((x) => scoped.find((m) => m.id === x.id)?.status === 'inactive')
               ? label('Reactivate selected', '重新启用所选')
               : label('Confirm / activate selected', '确认／启用所选')}
+          </button>
+          <button disabled={busy || !items.length} onClick={() => void perform('local')}>
+            {label('Limit to original chats', '仅各自原对话')}
+          </button>
+          <button disabled={busy || !items.length} onClick={() => void perform('share')}>
+            {label('Share in this group', '本范围共享')}
+          </button>
+          <button disabled={busy || !items.length} onClick={() => void perform('auto-reach')}>
+            {label('Use automatic reach', '恢复自动范围')}
           </button>
           <button disabled={busy || !items.length} onClick={() => void perform('deactivate')}>
             {label('Deactivate selected', '批量停用')}
@@ -276,6 +359,10 @@ export function MemoryList({
             {m.automatic && <small>{label('Automatic', '自动管理')}</small>}
           </div>
           <p>{m.content}</p>
+          <p className="muted">
+            {label('Original conversation / source: ', '原对话／来源：')}
+            {sourceName(m)}
+          </p>
           {status(m) === 'disputed' && (
             <div className="muted">
               <strong>{label('Conflicting with:', '与以下记忆冲突：')}</strong>

@@ -264,7 +264,7 @@ export interface Memory {
   decayPolicy?: 'auto' | 'stable' | 'time' | 'turns' | 'time-and-turns';
   halfLifeDays?: number;
   halfLifeTurns?: number;
-  recallScope?: 'conversation' | 'scope';
+  recallScope?: 'auto' | 'conversation' | 'scope';
   topic?: string;
   automatic?: boolean;
   kind?: 'preference' | 'decision' | 'episode' | 'experience';

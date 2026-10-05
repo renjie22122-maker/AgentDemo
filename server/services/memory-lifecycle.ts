@@ -1,4 +1,4 @@
-import { memoryPartition } from '../../shared/memory-scope.js';
+import { memoryPartition, memoryConversation } from '../../shared/memory-scope.js';
 import { createHash } from 'node:crypto';
 import { Store, id } from '../storage/store.js';
 import type { Memory } from '../../shared/types.js';
@@ -370,7 +370,7 @@ export class MemoryLifecycle {
   }
   batch(
     scope: string,
-    action: 'confirm' | 'deactivate' | 'forget',
+    action: 'confirm' | 'deactivate' | 'forget' | 'local' | 'share' | 'auto-reach',
     items: { id: string; revision: number }[],
   ) {
     const outcomes: { id: string; ok: boolean; reason?: string }[] = [];
@@ -389,7 +389,26 @@ export class MemoryLifecycle {
             'MEMORY_CONFLICT',
             'Compare conflicting sources and resolve explicitly.',
           );
-          if (action === 'forget') this.forget(m.id);
+          if (action === 'local' || action === 'share' || action === 'auto-reach') {
+            assert(
+              action !== 'local' || memoryConversation(m),
+              'MEMORY_SOURCE',
+              'No original conversation is recorded; cannot restrict to an unknown conversation.',
+            );
+            assert(
+              m.status !== 'superseded' && m.status !== 'forgotten',
+              'MEMORY_HISTORY',
+              'Historical entries cannot change reach.',
+            );
+            this.update(
+              m.id,
+              {
+                recallScope:
+                  action === 'local' ? 'conversation' : action === 'share' ? 'scope' : 'auto',
+              },
+              m.revision,
+            );
+          } else if (action === 'forget') this.forget(m.id);
           else {
             assert(
               m.status !== 'superseded' && m.status !== 'forgotten',

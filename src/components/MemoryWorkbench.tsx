@@ -1,5 +1,5 @@
 import { memoryDecayPolicy, type DecayPolicy } from '../../shared/memory-decay';
-import { memoryReach, memoryConversation } from '../../shared/memory-scope';
+import { memoryConversation } from '../../shared/memory-scope';
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 export function MemoryDetails({ memory: m, go, zh }: any) {
@@ -15,7 +15,7 @@ export function MemoryDetails({ memory: m, go, zh }: any) {
   const [decay, setDecay] = useState<DecayPolicy>(m.decayPolicy || 'auto');
   const [days, setDays] = useState(m.halfLifeDays || 30),
     [turns, setTurns] = useState(m.halfLifeTurns || 100);
-  const [reach, setReach] = useState(memoryReach(m));
+  const [reach, setReach] = useState(m.recallScope || 'auto');
   const [history, setHistory] = useState<any[]>([]);
   return (
     <details>
@@ -76,12 +76,15 @@ export function MemoryDetails({ memory: m, go, zh }: any) {
         {decay === 'auto' && ' · ' + memoryDecayPolicy({ ...m, kind, decayPolicy: 'auto' })}
       </p>
       <label>
-        {zh ? '召回范围' : 'Recall reach'}
+        {zh ? '召回范围' : 'Recall scope'}
         <select
           value={reach}
           onChange={(e) => setReach(e.target.value as 'conversation' | 'scope')}
         >
-          <option value="conversation">{zh ? '仅原对话' : 'Original conversation only'}</option>
+          <option value="auto">{zh ? '自动：按记忆类型' : 'Automatic by memory kind'}</option>
+          <option value="conversation" disabled={!memoryConversation(m)}>
+            {zh ? '仅原对话' : 'Original conversation only'}
+          </option>
           <option value="scope">
             {zh ? '本范围共享（普通对话或当前项目）' : 'Shared within this user/project scope'}
           </option>

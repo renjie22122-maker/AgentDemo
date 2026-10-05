@@ -57,8 +57,8 @@ const words: Record<string, [string, string]> = {
   delete: ['Delete', '删除'],
   empty: ['Nothing here yet', '暂无内容'],
   memoryHelp: [
-    'Only active memories are recalled. Opt-in background learning saves clear preferences; decisions and conflicts require confirmation.',
-    '只召回已生效记忆。可开启后台整理自动保存明确偏好；决策和冲突仍需确认。',
+    'Only active memories are recalled. Automatic management reviews supported candidates; uncertain conflicts remain isolated. Filter by original conversation or shared recall scope.',
+    '只召回已生效记忆。自动管理可复审有依据的候选；模糊冲突仍隔离。可按原对话与共享范围筛选和批量调整。',
   ],
   knowledgeHelp: [
     'Project documents are shared within that project. Conversation documents stay in that conversation and its delegated tasks. Unrelated projects and chats cannot retrieve them.',

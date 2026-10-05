@@ -2,7 +2,15 @@
 
 [English](MEMORY.md) | [简体中文](MEMORY.zh-CN.md) · [Documentation](README.md)
 
-Reviewed: 2026-10-05; code baseline: `d663030`.
+Reviewed: 2026-10-06.
+
+## Managing recall scope
+
+Storage scope (general conversations or one project) is separate from recall scope (original conversation only or shared in that storage scope). Search by conversation title, filter by original chat and recall scope, or jump to the current conversation. Manual creation is optional and preselects the current eligible original chat; worker chats and other projects are excluded.
+
+Select any number of matching entries and apply **original chats only**, **share within scope**, or **restore automatic scope** in sequential batches. Each local entry keeps its own source chat; changing reach never rewrites provenance or activates a candidate/disabled memory. Stale revisions and conflicting active facts fail individually. Entries without a recorded original chat cannot be explicitly restricted to one.
+
+Automatic scope follows kind: episodes and general-chat decisions remain local; preferences, experiences and project decisions are shared in their storage scope. Explicit overrides remain until reset. The effective scope is shown during creation. A local manual entry requires a same-scope original conversation. Existing records are not mass-migrated or automatically broadened by this UI change.
 
 ## Scopes and opt-in
 

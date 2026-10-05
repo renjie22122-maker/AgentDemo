@@ -1,3 +1,4 @@
+import { MemoryCreate } from '../components/MemoryCreate';
 import { MemoryList } from '../components/MemoryList';
 import { SkillPackagesPanel } from '../components/SkillPackagesPanel';
 import { KnowledgeScopePicker } from '../components/KnowledgeScopePicker';
@@ -261,15 +262,13 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
           <section className="panel">
             <div className="form-grid">
               <label>
-                {t('scope')}
+                {t('settings') === 'Settings' ? 'Storage scope' : '存储范围'}
                 <select
                   value={scope.startsWith('project:') ? scope : 'user'}
                   onChange={(e) => setScope(e.target.value)}
                 >
                   <option value="user">
-                    {t('settings') === 'Settings'
-                      ? 'General chats · user preferences'
-                      : '普通对话 · 用户偏好'}
+                    {t('settings') === 'Settings' ? 'General conversations' : '普通对话'}
                   </option>
                   {state.projects.map((p: any) => (
                     <option key={p.id} value={'project:' + p.id}>
@@ -279,31 +278,14 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
                 </select>
               </label>
             </div>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder={
-                t('settings') === 'Settings'
-                  ? 'Optional: add a preference manually. You can also ask the agent to remember it.'
-                  : '可选：手工添加偏好。也可在聊天里说“记住这个偏好”，由 Agent 提出候选。'
-              }
+            <MemoryCreate
+              key={scope}
+              scope={scope}
+              conversations={selectable}
+              currentConversationId={selected}
+              zh={t('settings') !== 'Settings'}
+              go={go}
             />
-            <button
-              className="primary"
-              disabled={!text || busy}
-              onClick={() =>
-                go(async () => {
-                  await api('/memories', {
-                    scope: scope.startsWith('project:') ? scope : 'user',
-                    content: text,
-                  });
-                  setText('');
-                })
-              }
-            >
-              <Plus size={16} />
-              {t('create')}
-            </button>
           </section>
           <MemoryDefaults
             scope={scope.startsWith('project:') ? scope : 'user'}
@@ -355,6 +337,7 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
             zh={t('settings') !== 'Settings'}
           />
           <MemoryList
+            currentConversationId={selected}
             key={scope}
             memories={state.memories}
             conversations={state.conversations}

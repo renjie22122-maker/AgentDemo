@@ -1,3 +1,4 @@
+import { memoryReach } from '../../shared/memory-scope.js';
 import { memoryHooks } from '../services/tool-hooks.js';
 import { SkillPackages } from '../services/skill-packages.js';
 import { ScheduledWorkService } from '../services/scheduled-work.js';
@@ -725,7 +726,7 @@ export async function createApp(options: { directory: string; dist?: string; run
     decayPolicy: z.enum(['auto', 'stable', 'time', 'turns', 'time-and-turns']).optional(),
     halfLifeDays: z.number().int().min(1).max(36500).optional(),
     halfLifeTurns: z.number().int().min(1).max(100000).optional(),
-    recallScope: z.enum(['conversation', 'scope']).optional(),
+    recallScope: z.enum(['auto', 'conversation', 'scope']).optional(),
     topic: z.string().max(80).optional(),
     entityId: z.string().max(200).optional(),
     attribute: z.string().max(80).optional(),
@@ -781,7 +782,7 @@ export async function createApp(options: { directory: string; dist?: string; run
     const data = z
       .object({
         scope: z.string(),
-        action: z.enum(['confirm', 'deactivate', 'forget']),
+        action: z.enum(['confirm', 'deactivate', 'forget', 'local', 'share', 'auto-reach']),
         items: z
           .array(z.object({ id: z.string(), revision: z.number().int() }))
           .min(1)
@@ -894,6 +895,7 @@ export async function createApp(options: { directory: string; dist?: string; run
         content: z.string().trim().min(1).max(4000),
         scope: z.string(),
         source: z.string().max(1000).default('User'),
+        sourceConversationId: z.string().optional(),
         active: z.boolean().default(true),
         expiresAt: z.number().nullable().default(null),
       })
@@ -903,6 +905,21 @@ export async function createApp(options: { directory: string; dist?: string; run
         (data.scope.startsWith('project:') && store.maybe('project', data.scope.slice(8))),
       'SCOPE',
       'Select a valid memory scope.',
+    );
+    if (data.sourceConversationId) {
+      const chat = store.maybe<Conversation>('conversation', data.sourceConversationId);
+      assert(
+        chat &&
+          !store.list<Run>('run').some((r) => r.conversationId === chat.id && r.parentRunId) &&
+          (chat.projectId ? 'project:' + chat.projectId : 'user') === data.scope,
+        'MEMORY_SCOPE',
+        'Choose an original conversation in this storage group.',
+      );
+    }
+    assert(
+      memoryReach(data as Memory) !== 'conversation' || data.sourceConversationId,
+      'MEMORY_SOURCE',
+      'Choose the original conversation first.',
     );
     return memoryLifecycle.create({ id: id(), ...data, revision: 1, createdAt: Date.now() });
   });

@@ -4,7 +4,7 @@ export function memoryConversation(m: Memory) {
 }
 export function memoryReach(m: Memory): 'conversation' | 'scope' {
   return (
-    m.recallScope ||
+    (m.recallScope !== 'auto' ? m.recallScope : undefined) ||
     (m.kind === 'episode' || (m.scope === 'user' && m.kind === 'decision')
       ? 'conversation'
       : 'scope')

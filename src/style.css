@@ -3702,3 +3702,19 @@ input.team-switch:checked::after {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+.memory-scope-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+.memory-scope-fields label {
+  min-width: 0;
+}
+.memory-scope-fields select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
