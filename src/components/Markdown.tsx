@@ -20,7 +20,7 @@ function Code({ children }: any) {
   return (
     <div className="code-block">
       <div className="code-bar">
-        <span>{children?.props?.className?.replace('language-', '') || 'code'}</span>
+        <span>{children?.props?.className?.match(/language-([^\s]+)/)?.[1] || 'code'}</span>
         <button
           aria-label="Copy code"
           onClick={async () => {
@@ -32,12 +32,19 @@ function Code({ children }: any) {
           {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <details className="code-source" open>
-        <summary>代码 / Code</summary>
-        <pre>{children}</pre>
-      </details>
-      {/language-(html|html-preview)$/.test(children?.props?.className || '') && (
-        <CodePreview source={plain(children)} />
+      {/language-(html|html-preview|mermaid)(?:\s|$)/.test(children?.props?.className || '') ? (
+        <CodePreview
+          source={plain(children)}
+          code={children}
+          language={
+            /language-mermaid(?:\s|$)/.test(children?.props?.className || '') ? 'mermaid' : 'html'
+          }
+        />
+      ) : (
+        <details className="code-source" open>
+          <summary>代码 / Code</summary>
+          <pre>{children}</pre>
+        </details>
       )}
     </div>
   );

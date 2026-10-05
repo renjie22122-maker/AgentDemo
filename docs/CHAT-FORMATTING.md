@@ -24,7 +24,7 @@ The UI shows a name and a deterministic color. Chinese `[角色: 名字]` is als
 
 Use `$x^2$` / `$$...$$` or LaTeX `\( ... \)` / `\[ ... \]` delimiters. KaTeX is not a complete TeX document compiler.
 
-A fenced `html` or `html-preview` block exposes an **opt-in Preview** button. Self-contained inline HTML/CSS/JavaScript can implement a simulation, chart or small interactive demo. Preview starts only after a click; closing it unmounts the iframe, and Reset reloads it.
+A fenced `html` or `html-preview` block displays its interactive preview by default. Switch between Preview and Code in the same-sized panel; code scrolls internally. Switching preserves the iframe state; Reset reloads it. Choose compact, standard or tall height, or resize vertically. A fenced `mermaid` block renders local relationship, flow, sequence, state and entity diagrams with the same preview/code switch. Mermaid uses strict mode and an inert SVG image; parse errors leave the source accessible.
 
 The iframe has an opaque origin, scripts only (no same-origin, top-navigation, popup or form sandbox privileges), and a CSP restricting resource loads and connections. It cannot access the parent application's DOM/storage. This is a browser preview boundary, not an OS sandbox: it does not guarantee resource limits or prevent every possible navigation. Do not use it as a general execution environment for hostile programs. Remote dependencies, arbitrary Python execution, package installation and full development-server projects are not supported. Raw HTML in ordinary Markdown remains escaped/ignored.
 
@@ -36,4 +36,4 @@ The microphone icon is next to **Send**. Configure a transcription connection in
 
 ## Validation
 
-267 regression tests passed on Windows, including Markdown compatibility and media anchoring. An Edge browser fixture verified named quotes, math, interactive HTML, denial of parent DOM access, and iframe removal on close. Live paid speech/media generation was not exercised for this UI change.
+332 regression tests passed, with 2 environment-dependent skips. A real headless Edge fixture verified default previews, state-preserving switches, same-sized scrolling code, two Mermaid diagrams and mobile width. TypeScript and the production build passed. No paid media service was called.

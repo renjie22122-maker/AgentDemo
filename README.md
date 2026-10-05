@@ -43,9 +43,9 @@ If Corepack is unavailable, install pnpm and use `pnpm` in place of `corepack pn
 
 Open **http://127.0.0.1:8810**. In **Settings**, add a model connection, enter its endpoint and API key, and test the connection.
 
-On Windows, install Node.js 24+ (including npm), extract the complete repository, then double-click **First-Start-AgentDemo.cmd**. It installs locked dependencies and builds the UI before starting. You do not need to install Corepack or pnpm globally. Network access is required during setup; native build errors may require Python and Visual Studio C++ Build Tools. Rerunning First Start preserves your data.
+On Windows, install Node.js 24+ (including npm), extract the complete repository, then double-click **First-Start-AgentDemo.cmd**. It installs locked dependencies and builds the UI before starting. You do not need to install Corepack or pnpm globally. Network access is required during setup; native build errors may require Python and Visual Studio C++ Build Tools. Rerunning First Start preserves your data. It refuses to replace dependencies while the service is running; finish your tasks and stop the service first.
 
-For later launches, double-click **Start-AgentDemo.cmd**; it also runs setup automatically when dependencies are missing. It starts the local supervisor and opens the browser. The launcher uses a process-only PowerShell execution-policy override; it does not change system policy.
+For later launches, double-click **Start-AgentDemo.cmd**; it also runs setup automatically when dependencies are missing or the lockfile changes, and rebuilds changed source files. It starts the local supervisor and opens the browser. If a service is already running, Quick Start opens that service and warns when the local build is outdated; it does not interrupt tasks or apply a live update. The launcher uses a process-only PowerShell execution-policy override; it does not change system policy.
 
 ## Using AgentDemo
 
@@ -59,7 +59,7 @@ Personal chats cannot execute project commands. Select a project when the task n
 
 ### Conversation formatting
 
-Replies support tables, highlighted and collapsible code, math, named quotations and opt-in interactive HTML previews. Generated media stays with its originating task. The dictation microphone sits beside Send. See [formatting and media](docs/CHAT-FORMATTING.md) for syntax and preview boundaries.
+Replies support tables, highlighted and collapsible code, math, named quotations and interactive HTML previews and Mermaid diagrams, shown by default with a same-size scrollable code view. Generated media stays with its originating task. The dictation microphone sits beside Send. See [formatting and media](docs/CHAT-FORMATTING.md) for syntax and preview boundaries.
 
 A reproducible [coding evaluation pilot](evals/coding/README.md) runs the production Runtime with independent grading. Its first 20 synthetic runs passed; they did not trigger context reuse or compaction and do not establish an optimization benefit or a real-repository benchmark score.
 

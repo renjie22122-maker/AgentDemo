@@ -336,3 +336,21 @@ exposes whether text is available through media_status. Regression coverage span
 image/video/music/speech/3D byte export, old receipt upgrades, non-image read errors,
 reference format boundaries and restricted tool visibility. This is not automatic
 video decoding, transcription or 3D understanding.
+
+
+## Interactive message previews
+
+HTML/html-preview and Mermaid fences default to a rendered preview, with Preview
+and Code buttons sharing one resizable viewport. Source scrolls inside that area;
+switching views retains the mounted HTML frame state. Reset reruns the component.
+Compact/standard/tall heights and mobile layouts are supported. Other code blocks
+remain code with bounded scrolling. Mermaid is bundled locally and lazy-loaded,
+uses strict rendering, and displays its result as an SVG image without callbacks.
+HTML keeps an opaque-origin sandbox with host access, connections, frames and form
+submission blocked by existing CSP. Rendering failures leave source accessible.
+Source updates debounce briefly during streaming. This is HTML/JS and Mermaid
+preview support, not arbitrary Python/React package execution in chat.
+
+A headless Edge UI check verified default preview, clickable HTML, retained state
+after switching, matching viewport dimensions, long-source internal scrolling,
+flowchart/sequence diagrams and a 390px-wide mobile viewport.

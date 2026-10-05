@@ -2,15 +2,17 @@ param([switch]$NoBrowser)
 $ErrorActionPreference = 'Stop'
 $taskRoot = $PSScriptRoot
 $taskUrl = 'http://127.0.0.1:8810'
-try {
-    $taskHealth = Invoke-RestMethod "$taskUrl/api/health" -TimeoutSec 2
-    if ($taskHealth.application -eq 'AgentDemo') {
+. (Join-Path $taskRoot 'Launcher.Common.ps1')
+$taskHealth = $null
+try { $taskHealth = Invoke-RestMethod "$taskUrl/api/health" -TimeoutSec 2 } catch {}
+if ($taskHealth.application -eq 'AgentDemo') {
+        if (-not (Test-AgentDemoStamp (Join-Path $taskRoot 'dist/.agentdemo-build') (Get-AgentDemoFingerprint $taskRoot))) {
+            Write-Warning 'Local files have changed since the last build. Stop the running service when your tasks are finished, then run this launcher again to apply updates. Opening the existing service does not reload it.'
+        }
         if (-not $NoBrowser) { Start-Process $taskUrl }
         Write-Host "AgentDemo is already running at $taskUrl"
         exit 0
-    }
-} catch {}
-. (Join-Path $taskRoot 'Launcher.Common.ps1')
+}
 $taskNode = Get-AgentDemoNode
 $env:PATH = (Split-Path $taskNode) + ';' + $env:PATH
 if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'node_modules/tsx')) -or

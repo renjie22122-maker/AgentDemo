@@ -1,6 +1,12 @@
 param([switch]$NoBrowser, [switch]$SetupOnly)
 $ErrorActionPreference = 'Stop'
 $taskRoot = $PSScriptRoot
+# Never replace dependencies underneath a live runtime.
+$taskExisting = $null
+try { $taskExisting = Invoke-RestMethod 'http://127.0.0.1:8810/api/health' -TimeoutSec 2 } catch {}
+if ($taskExisting.application -eq 'AgentDemo') {
+    throw 'AgentDemo is already running. Setup has not changed any dependencies. Finish your tasks and stop the service before running First Start; use Start-AgentDemo.cmd to open the current service.'
+}
 . (Join-Path $taskRoot 'Launcher.Common.ps1')
 $taskNode = Get-AgentDemoNode
 $env:PATH = (Split-Path $taskNode) + ';' + $env:PATH
@@ -10,7 +16,7 @@ try {
     $taskPnpm = Get-Command pnpm.cmd -ErrorAction SilentlyContinue
     $taskNpm = Get-Command npm.cmd -ErrorAction SilentlyContinue
     $taskNpmCli = Join-Path (Split-Path $taskNode) 'node_modules\npm\bin\npm-cli.js'
-    if ($taskPnpm -and ((& $taskPnpm.Source --version) -match '^11\.')) {
+    if ($taskPnpm -and ((& $taskPnpm.Source --version) -eq '11.19.0')) {
         & $taskPnpm.Source install --frozen-lockfile
     } elseif ($taskNpm) {
         & $taskNpm.Source exec --yes --package=pnpm@11.19.0 -- pnpm install --frozen-lockfile
