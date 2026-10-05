@@ -153,7 +153,7 @@ Further work includes richer semantic decision snapshots, optional per-component
 context allocation policies and held-out end-to-end evaluations.
 Tianshu-harness's convergence detector is a useful comparison for observation-led
 interventions, but its composite scores and reported cache rates are not evidence
-of AgentDemo performance. No Tianshu code was copied into this implementation.
+of Amadeus performance. No Tianshu code was copied into this implementation.
 
 ### Cognitive control plane (bounded first version)
 

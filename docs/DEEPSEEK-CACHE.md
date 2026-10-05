@@ -1,6 +1,6 @@
 # DeepSeek prompt caching
 
-AgentDemo uses DeepSeek's automatic provider-side prefix cache. It does not hold,
+Amadeus uses DeepSeek's automatic provider-side prefix cache. It does not hold,
 export or restore KV tensors. No cache-control flags are invented, and no
 application result cache substitutes old model answers for new requests.
 
@@ -28,7 +28,7 @@ improvement or a representative savings rate. No project content was transmitted
 ## Costs and limits
 
 DeepSeek's documented usage fields report input, output and cache hit/miss tokens,
-not a per-request currency charge. AgentDemo calculates estimated USD from measured
+not a per-request currency charge. Amadeus calculates estimated USD from measured
 usage and configured prices; unknown prices remain unknown. This change does not
 automatically fetch prices or handle public-holiday peak pricing. Check the pricing
 page before configuring rates. Account balance changes are not safe per-request

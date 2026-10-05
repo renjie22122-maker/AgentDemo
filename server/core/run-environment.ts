@@ -72,7 +72,7 @@ export class RunEnvironment {
       JSON.stringify({
         runId: run.id,
         agentId: run.conversationId,
-        displayName: this.config.get().agentName || 'AgentDemo',
+        displayName: this.config.get().agentName || 'Amadeus',
         model: profile.model,
         transport: profile.transport,
         reasoning: profile.reasoning,

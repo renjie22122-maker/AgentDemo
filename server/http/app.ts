@@ -104,7 +104,7 @@ export async function createApp(options: { directory: string; dist?: string; run
       .map((s) => s.trim())
       .find((s) => s.startsWith('agentdemo='))
       ?.slice(10);
-    assert(candidate === cookie, 'LOGIN_REQUIRED', 'Reload AgentDemo in the local browser.', 401);
+    assert(candidate === cookie, 'LOGIN_REQUIRED', 'Reload Amadeus in the local browser.', 401);
     if (!['GET', 'HEAD'].includes(req.method))
       assert(
         req.headers['x-csrf-token'] === csrf,
@@ -116,7 +116,7 @@ export async function createApp(options: { directory: string; dist?: string; run
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024, files: 1 } });
   mediaRoutes(app, runtime);
   runtime.media.start();
-  app.get('/api/health', async () => ({ application: 'AgentDemo', version: '0.1.0', ready: true }));
+  app.get('/api/health', async () => ({ application: 'Amadeus', version: '0.1.0', ready: true }));
   app.get('/api/bootstrap', async (req, reply) => {
     const origin = req.headers.origin;
     assert(
@@ -1147,7 +1147,7 @@ export async function createApp(options: { directory: string; dist?: string; run
       folder = await mkdtemp(join(directory, 'execution-check-'));
     try {
       const result = await executeCommand(
-        'echo AgentDemo-backend-ready',
+        'echo Amadeus-backend-ready',
         folder,
         AbortSignal.timeout(30000),
         10000,

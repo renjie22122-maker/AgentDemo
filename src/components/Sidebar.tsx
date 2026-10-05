@@ -68,7 +68,7 @@ export function Sidebar({
           <Sparkles size={20} />
         </div>
         <strong>
-          {t('AgentDemo')}
+          {t('Amadeus')}
           <span>{t('YOUR LOCAL WORKSPACE')}</span>
         </strong>
         <button className="icon" title="Hide sidebar" onClick={() => setSidebar(false)}>

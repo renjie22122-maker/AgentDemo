@@ -11,7 +11,7 @@ export function lockService(directory: string) {
   } catch {
     db.close();
     throw Error(
-      'Another AgentDemo service owns this data directory. Stop it before opening a second service.',
+      'Another Amadeus service owns this data directory. Stop it before opening a second service.',
     );
   }
   return () => db.close();

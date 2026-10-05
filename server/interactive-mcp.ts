@@ -18,7 +18,7 @@ async function saveBrowserState() {
 }
 
 if (!['browser', 'computer'].includes(mode)) throw Error('Choose browser or computer');
-const server = new McpServer({ name: 'AgentDemo ' + mode, version: '1.0.0' });
+const server = new McpServer({ name: 'Amadeus ' + mode, version: '1.0.0' });
 let browser: Browser | undefined,
   page: Page | undefined,
   tail = Promise.resolve(),
@@ -301,7 +301,7 @@ if (mode === 'browser') {
         .optional(),
     },
     async (a) => {
-      if (!a.file) throw Error('Use AgentDemo scoped upload bridge.');
+      if (!a.file) throw Error('Use Amadeus scoped upload bridge.');
       await (await getPage()).locator(a.selector).setInputFiles({
         name: a.file.name,
         mimeType: a.file.mimeType,

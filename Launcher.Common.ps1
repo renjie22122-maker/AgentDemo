@@ -10,7 +10,7 @@ function Get-AgentDemoNode {
             if ($LASTEXITCODE -eq 0 -and [int]$taskVersion -ge 24) { return $taskCandidate }
         }
     }
-    throw 'Node.js 24+ is required. Install it from https://nodejs.org or run: winget install OpenJS.NodeJS.LTS . Then reopen First-Start-AgentDemo.cmd.'
+    throw 'Node.js 24+ is required. Install it from https://nodejs.org or run: winget install OpenJS.NodeJS.LTS . Then reopen First-Start-Amadeus.cmd.'
 }
 
 # Content fingerprints detect updates even when an old dist directory is retained.

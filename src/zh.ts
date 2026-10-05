@@ -95,7 +95,7 @@ export const zh: Record<string, string> = {
   'Record inspected outcome': '记录已核实的结果',
   'Interrupted output': '已中断的输出',
   You: '你',
-  AgentDemo: 'AgentDemo',
+  Amadeus: 'Amadeus',
   Thinking: '思考中',
   'Saved · leave unchanged to keep it': '已保存 · 不修改则保留',
   'Enter key': '输入密钥',

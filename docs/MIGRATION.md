@@ -1,6 +1,6 @@
 # Migration: Windows isolation, ANN, writable subagents
 
-Implemented in AgentDemo on 2026-09-30. Agent4Learning is not imported at runtime or modified by this migration.
+Implemented in Amadeus on 2026-09-30. Agent4Learning is not imported at runtime or modified by this migration.
 
 ## Windows execution
 

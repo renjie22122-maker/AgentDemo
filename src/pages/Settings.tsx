@@ -80,7 +80,7 @@ export function SettingsPage({ settings, t, refresh, notify }: any) {
           {t('settings') !== 'Settings' ? '\u52a9\u624b\u540d\u79f0' : 'Assistant name'}
           <input
             maxLength={60}
-            value={value.agentName || 'AgentDemo'}
+            value={value.agentName || 'Amadeus'}
             onChange={(e) => setValue({ ...value, agentName: e.target.value })}
           />
         </label>

@@ -81,7 +81,7 @@ export async function fetchPublic(
         signal,
         timeout: 30000,
         headers: {
-          'User-Agent': 'AgentDemo/0.1',
+          'User-Agent': 'Amadeus/0.1',
           Accept: binaryImage
             ? 'image/png,image/jpeg,image/webp,image/gif'
             : 'text/html,text/plain,application/json',

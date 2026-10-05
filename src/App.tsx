@@ -92,8 +92,8 @@ export function App() {
     upload = useRef<HTMLInputElement>(null),
     draftRef = useRef<HTMLTextAreaElement>(null);
   const translate = translator(language);
-  const agentName = state?.settings.agentName || 'AgentDemo';
-  const t = (key: string) => (key === 'AgentDemo' ? agentName : translate(key));
+  const agentName = state?.settings.agentName || 'Amadeus';
+  const t = (key: string) => (key === 'Amadeus' ? agentName : translate(key));
   useEffect(() => {
     document.title = agentName;
   }, [agentName]);
@@ -434,7 +434,7 @@ export function App() {
       const value = (await api('/conversations/' + id)) as ConversationDetail;
       const text = conversationMarkdown(
         value,
-        state?.settings.agentName || 'AgentDemo',
+        state?.settings.agentName || 'Amadeus',
         language === 'zh',
       );
       try {
@@ -678,7 +678,7 @@ export function App() {
     return (
       <div className="loading">
         <Sparkles size={30} />
-        <p>Opening AgentDemo…</p>
+        <p>Opening Amadeus…</p>
         {toast && <p>{toast}</p>}
       </div>
     );
@@ -907,7 +907,7 @@ export function App() {
                             <span className="avatar">
                               <Sparkles size={15} />
                             </span>
-                            <strong>{t('AgentDemo')}</strong>
+                            <strong>{t('Amadeus')}</strong>
                             <span className="working-dot" />
                           </div>
                           <div className="message-body">

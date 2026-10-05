@@ -1,6 +1,6 @@
 # Tool ecosystem
 
-AgentDemo uses one audited tool runtime for direct calls, composed calls and trusted
+Amadeus uses one audited tool runtime for direct calls, composed calls and trusted
 hook commands. Capability discovery does not grant permissions. External text,
 screenshots, skill instructions and retrieved memories remain untrusted context.
 
@@ -74,7 +74,7 @@ share the private data directory.
 
 ## Windows Computer Use
 
-The adapter now builds an AgentDemo-owned C# executable using the installed Windows
+The adapter now builds an Amadeus-owned C# executable using the installed Windows
 .NET Framework compiler. It does not run an unsigned PowerShell script or change
 PowerShell execution policy. Environments blocking native executables still need
 an administrator-approved installation or a separately configured backend.
@@ -97,7 +97,7 @@ black, stale or incomplete frames. Metadata reports capture=window-print,
 contentVerified=false and these limitations. This is not Windows.Graphics.Capture. Elevated applications, secure
 desktops, every international keyboard and arbitrary GUI applications are not
 certified. Use a trusted external MCP desktop running in a separately provisioned
-VM when OS isolation is required. AgentDemo does not provision or certify that VM.
+VM when OS isolation is required. Amadeus does not provision or certify that VM.
 
 ## Skills and managed packages
 

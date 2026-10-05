@@ -106,7 +106,7 @@ const schema = z.object({
     .min(1)
     .max(60)
     .regex(/^[^\u0000-\u001f\u007f]+$/)
-    .default('AgentDemo'),
+    .default('Amadeus'),
   autoReview: z
     .object({
       profileId: z.string().default(''),
@@ -209,6 +209,8 @@ export class Configuration {
           ...restoreSettings(JSON.parse(readFileSync(path, 'utf8')), this.codec()),
         })
       : schema.parse({ profiles: [], defaultProfileId: '' });
+    // Upgrade only the former default brand; retain user-selected identities.
+    if (this.value.agentName === 'AgentDemo') this.value.agentName = 'Amadeus';
   }
   private codec() {
     return this.options.secretCodec || (process.platform === 'win32' ? windowsSecrets : undefined);

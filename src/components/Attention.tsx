@@ -30,7 +30,7 @@ export function Attention({
         localStorage.getItem('agentdemo.notifications') === 'yes'
       ) {
         try {
-          const n = new Notification('AgentDemo', {
+          const n = new Notification('Amadeus', {
             body: zh ? '有任务需要你的回答或授权' : 'A task needs your answer or approval',
             tag: q.id,
           });

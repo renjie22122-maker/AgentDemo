@@ -1,6 +1,6 @@
 # Planning and empirical routing
 
-AgentDemo separates plan proposals, host graph validation, scheduling, and verification.
+Amadeus separates plan proposals, host graph validation, scheduling, and verification.
 None of these is a proof that a program is correct.
 
 ## Plan proposals and compilation

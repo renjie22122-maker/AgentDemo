@@ -7,7 +7,7 @@ import { lockService } from '../server/services/service-lock.js';
 test('data directory refuses a second service owner and unlocks after close', () => {
   const dir = mkdtempSync(join(tmpdir(), 'service-lock-'));
   const close = lockService(dir);
-  assert.throws(() => lockService(dir), /Another AgentDemo/);
+  assert.throws(() => lockService(dir), /Another Amadeus/);
   close();
   lockService(dir)();
 });

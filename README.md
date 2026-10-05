@@ -1,4 +1,6 @@
-# AgentDemo
+# Amadeus
+
+Named after Amadeus from *Steins;Gate*. Previously named AgentDemo. Existing data and custom assistant names are preserved; old launcher filenames remain compatible.
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
@@ -32,8 +34,8 @@ Some dependencies include native modules. If installation reports a native build
 ### Install and run
 
 ```sh
-git clone https://github.com/renjie22122-maker/AgentDemo.git
-cd AgentDemo
+git clone https://github.com/renjie22122-maker/Amadeus.git
+cd Amadeus
 corepack pnpm install
 corepack pnpm build
 corepack pnpm start
@@ -43,11 +45,11 @@ If Corepack is unavailable, install pnpm and use `pnpm` in place of `corepack pn
 
 Open **http://127.0.0.1:8810**. In **Settings**, add a model connection, enter its endpoint and API key, and test the connection.
 
-On Windows, install Node.js 24+ (including npm), extract the complete repository, then double-click **First-Start-AgentDemo.cmd**. It installs locked dependencies and builds the UI before starting. You do not need to install Corepack or pnpm globally. Network access is required during setup; native build errors may require Python and Visual Studio C++ Build Tools. Rerunning First Start preserves your data. It refuses to replace dependencies while the service is running; finish your tasks and stop the service first.
+On Windows, install Node.js 24+ (including npm), extract the complete repository, then double-click **First-Start-Amadeus.cmd**. It installs locked dependencies and builds the UI before starting. You do not need to install Corepack or pnpm globally. Network access is required during setup; native build errors may require Python and Visual Studio C++ Build Tools. Rerunning First Start preserves your data. It refuses to replace dependencies while the service is running; finish your tasks and stop the service first.
 
-For later launches, double-click **Start-AgentDemo.cmd**; it also runs setup automatically when dependencies are missing or the lockfile changes, and rebuilds changed source files. It starts the local supervisor and opens the browser. If a service is already running, Quick Start opens that service and warns when the local build is outdated; it does not interrupt tasks or apply a live update. The launcher uses a process-only PowerShell execution-policy override; it does not change system policy.
+For later launches, double-click **Start-Amadeus.cmd**; it also runs setup automatically when dependencies are missing or the lockfile changes, and rebuilds changed source files. It starts the local supervisor and opens the browser. If a service is already running, Quick Start opens that service and warns when the local build is outdated; it does not interrupt tasks or apply a live update. The launcher uses a process-only PowerShell execution-policy override; it does not change system policy.
 
-## Using AgentDemo
+## Using Amadeus
 
 1. **Choose a conversation or project.** Personal chats keep their own attachments and artifacts. Add a project to work with one or more local folders.
 2. **Choose a model and access mode.** Set reasoning, collaboration and execution permissions near the composer. Available reasoning levels depend on the model.

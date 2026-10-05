@@ -1,4 +1,6 @@
-# AgentDemo
+# Amadeus
+
+名称灵感来自《命运石之门》的 Amadeus。项目原名 AgentDemo；已有数据和自定义助手名保留，旧启动文件名继续兼容。
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
@@ -32,8 +34,8 @@
 ### 安装与启动
 
 ```sh
-git clone https://github.com/renjie22122-maker/AgentDemo.git
-cd AgentDemo
+git clone https://github.com/renjie22122-maker/Amadeus.git
+cd Amadeus
 corepack pnpm install
 corepack pnpm build
 corepack pnpm start
@@ -43,7 +45,7 @@ corepack pnpm start
 
 打开 **http://127.0.0.1:8810**，进入**设置**添加模型连接，填写服务地址和 API 密钥，再测试连接。
 
-Windows 用户可直接双击 **First-Start-AgentDemo.cmd** 安装锁定依赖并构建启动，无需预装 Corepack 或 pnpm。日常双击 **Start-AgentDemo.cmd**：缺失依赖或锁文件变化时自动安装，源码变化时自动重建。服务已运行时只打开已有页面，构建过期会提示先结束任务、停止服务再启动；不会自动中断任务。首次启动器在服务运行时拒绝修改依赖。它使用的 PowerShell 执行策略覆盖仅对启动进程生效，不修改系统策略。
+Windows 用户可直接双击 **First-Start-Amadeus.cmd** 安装锁定依赖并构建启动，无需预装 Corepack 或 pnpm。日常双击 **Start-Amadeus.cmd**：缺失依赖或锁文件变化时自动安装，源码变化时自动重建。服务已运行时只打开已有页面，构建过期会提示先结束任务、停止服务再启动；不会自动中断任务。首次启动器在服务运行时拒绝修改依赖。它使用的 PowerShell 执行策略覆盖仅对启动进程生效，不修改系统策略。
 
 ## 对话排版与媒体
 
@@ -188,6 +190,6 @@ corepack pnpm build
 
 ### Windows 首次启动
 
-先安装 **Node.js 24 或更新版本（包含 npm）**，完整解压仓库后双击 **First-Start-AgentDemo.cmd**。它会安装锁定版本的项目依赖、构建界面并启动浏览器，无需自己安装 Corepack 或全局 pnpm。首次安装需要联网；如果原生模块编译失败，按提示补齐 Python 和 Visual Studio C++ Build Tools 后重试。重复运行不会清空聊天或配置。
+先安装 **Node.js 24 或更新版本（包含 npm）**，完整解压仓库后双击 **First-Start-Amadeus.cmd**。它会安装锁定版本的项目依赖、构建界面并启动浏览器，无需自己安装 Corepack 或全局 pnpm。首次安装需要联网；如果原生模块编译失败，按提示补齐 Python 和 Visual Studio C++ Build Tools 后重试。重复运行不会清空聊天或配置。
 
-以后双击 **Start-AgentDemo.cmd** 即可；它发现缺少依赖时也会自动进入初始化。尚未安装 Node.js 时，启动器会显示官方下载地址和安装命令，不会静默修改系统环境。
+以后双击 **Start-Amadeus.cmd** 即可；它发现缺少依赖时也会自动进入初始化。尚未安装 Node.js 时，启动器会显示官方下载地址和安装命令，不会静默修改系统环境。

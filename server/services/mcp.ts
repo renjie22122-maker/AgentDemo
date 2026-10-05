@@ -89,7 +89,7 @@ export class McpHub {
     });
     // Remote server stderr may contain credentials. Do not mirror it into chat or logs.
     transport.stderr?.on('data', () => {});
-    const client = new Client({ name: 'AgentDemo', version: '0.1.0' });
+    const client = new Client({ name: 'Amadeus', version: '0.1.0' });
     try {
       await client.connect(transport, { timeout: 20000 });
     } catch (error) {
