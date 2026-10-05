@@ -1,3 +1,5 @@
+import { memoryDecay } from '../../shared/memory-decay.js';
+import { memoryAccessible } from '../../shared/memory-scope.js';
 import { memoryValid } from './memory-lifecycle.js';
 import type { Memory } from '../../shared/types.js';
 export function terms(text: string) {
@@ -18,11 +20,14 @@ export function recallMemories(
   projectId: string | null,
   now = Date.now(),
   semantic = new Map<string, number>(),
+  conversationId?: string,
+  activityAges = new Map<string, number>(),
 ) {
   const queryTerms = terms(query);
   const eligible = memories.filter(
     (m) =>
       memoryValid(m, now) &&
+      memoryAccessible(m, conversationId) &&
       (m.scope === 'user' || (!!projectId && m.scope === 'project:' + projectId)),
   );
   const frequency = new Map<string, number>();
@@ -35,13 +40,15 @@ export function recallMemories(
       for (const term of queryTerms)
         if (tokens.has(term))
           relevance += Math.log(1 + eligible.length / (frequency.get(term) || 1));
+      const decay = memoryDecay(m, now, activityAges.get(m.id) || 0);
       return {
         ...m,
+        decay,
         relevance,
         score:
-          relevance / Math.sqrt(Math.max(1, tokens.size)) +
-          (m.scope.startsWith('project:') ? 0.08 : 0) +
-          0.03 / (1 + Math.max(0, now - m.createdAt) / 86400000),
+          (relevance / Math.sqrt(Math.max(1, tokens.size)) +
+            (m.scope.startsWith('project:') ? 0.08 : 0)) *
+          decay.factor,
       };
     })
     .filter((m) => m.relevance > 0)
@@ -68,6 +75,8 @@ export function recallMemories(
       attribute: m.attribute,
       evidence: m.evidence,
       conditions: m.conditions,
+      recallScope: m.recallScope,
+      decay: m.decay,
     });
     if (selected.length === 12) break;
   }

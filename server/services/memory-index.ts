@@ -1,3 +1,5 @@
+import { memoryActivity } from './memory-activity.js';
+import { memoryAccessible } from '../../shared/memory-scope.js';
 import { memoryValid, MemoryLifecycle } from './memory-lifecycle.js';
 import { createHash } from 'node:crypto';
 import type { Memory } from '../../shared/types.js';
@@ -50,12 +52,14 @@ export class MemoryIndex {
     signal: AbortSignal,
     includeUserMemory = true,
     asOf = Date.now(),
+    conversationId?: string,
   ) {
     const memories = this.store
         .list<Memory>('memory')
         .filter(
           (m) =>
             (includeUserMemory || m.scope !== 'user') &&
+            memoryAccessible(m, conversationId) &&
             new MemoryLifecycle(this.store).evidenceValid(m),
         ),
       scores = new Map<string, number>();
@@ -88,12 +92,21 @@ export class MemoryIndex {
       .filter(
         (m) =>
           (includeUserMemory || m.scope !== 'user') &&
+          memoryAccessible(m, conversationId) &&
           new MemoryLifecycle(this.store).evidenceValid(m),
       );
     for (const m of memories)
       if (!current.some((c) => c.id === m.id && hash(c) === hash(m))) scores.delete(m.id);
     return {
-      memories: recallMemories(current, query, projectId, asOf, scores),
+      memories: recallMemories(
+        current,
+        query,
+        projectId,
+        asOf,
+        scores,
+        conversationId,
+        memoryActivity(this.store, current, asOf),
+      ),
       method,
       fallback,
     };

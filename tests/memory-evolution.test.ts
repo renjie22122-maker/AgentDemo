@@ -241,3 +241,161 @@ test('consolidation is scoped and idempotent with retained source history', asyn
     s.close();
   }
 });
+
+test('bulk memory operations keep per-item scope, revision, conflict and history boundaries', async () => {
+  const s = await fixture(),
+    life = new MemoryLifecycle(s);
+  try {
+    life.create(memory('a', { active: false }));
+    life.create(memory('other', { scope: 'project:b', entityId: 'project:b', active: false }));
+    life.create(memory('stale', { active: false, content: 'unrelated', attribute: 'other' }));
+    life.update('stale', { content: 'changed' }, 1);
+    const result = life.batch(
+      'project:a',
+      'confirm',
+      ['a', 'other', 'stale'].map((id) => ({ id, revision: 1 })),
+    );
+    assert.equal(result.changed, 1);
+    assert.equal(result.failed, 2);
+    assert.equal(s.get<Memory>('memory', 'other').active, false);
+    const conflict = life.create(memory('conflict', { value: '3.12', content: 'Python 3.12' }));
+    assert.equal(life.batch('project:a', 'confirm', [{ id: conflict.id, revision: 1 }]).failed, 1);
+    assert.equal(s.get<Memory>('memory', 'conflict').active, false);
+    assert.equal(life.batch('project:a', 'deactivate', [{ id: 'a', revision: 2 }]).changed, 1);
+    assert.equal(s.get<Memory>('memory', 'a').automatic, false);
+    assert.equal(life.batch('project:a', 'forget', [{ id: 'a', revision: 3 }]).changed, 1);
+    assert.equal(s.maybe('memory', 'a'), undefined);
+  } finally {
+    s.close();
+  }
+});
+
+test('candidate duplicate consolidation reduces pending entries without activating them', async () => {
+  const s = await fixture(),
+    life = new MemoryLifecycle(s);
+  try {
+    life.create(memory('one', { active: false }));
+    life.create(memory('two', { active: false }));
+    assert.equal(life.consolidate('project:a').merged, 1);
+    assert.equal(s.list<Memory>('memory').filter((m) => m.status === 'candidate').length, 1);
+    assert.equal(
+      s.list<Memory>('memory').some((m) => m.active),
+      false,
+    );
+    assert.equal(life.consolidate('project:a').merged, 0);
+  } finally {
+    s.close();
+  }
+});
+
+test('conversation-local memories cannot leak through lexical or graph recall and never merge across chats', async () => {
+  const s = await fixture(),
+    life = new MemoryLifecycle(s);
+  try {
+    const a = life.create(
+      memory('local-a', {
+        scope: 'user',
+        entityId: 'user',
+        kind: 'episode',
+        sourceConversationId: 'a',
+        content: 'river encounter',
+        attribute: 'scene',
+        value: 'river',
+      }),
+    );
+    life.create(
+      memory('local-b', {
+        scope: 'user',
+        entityId: 'user',
+        kind: 'episode',
+        sourceConversationId: 'b',
+        content: 'river encounter',
+        attribute: 'scene',
+        value: 'river',
+      }),
+    );
+    assert.equal(recallMemories(s.list('memory'), 'river', null, Date.now()).length, 0);
+    assert.deepEqual(
+      recallMemories(s.list('memory'), 'river', null, Date.now(), undefined, 'a').map((m) => m.id),
+      ['local-a'],
+    );
+    assert.equal(life.consolidate('user').merged, 0);
+    const entity = life.saveEntity('user', 'river', []);
+    const graph = new KnowledgeGraph(s);
+    graph.put({
+      scope: 'user',
+      from: 'user',
+      to: entity.id,
+      relation: 'visited',
+      evidence: [{ type: 'memory', id: a.id, quote: 'river' }],
+      active: true,
+      validFrom: Date.now(),
+      validUntil: null,
+    });
+    assert.equal(graph.search(['user'], 'river').paths.length, 0);
+    assert.ok(graph.search(['user'], 'river', Date.now(), 2, 'a').paths.length > 0);
+  } finally {
+    s.close();
+  }
+});
+
+test('system provenance follows edits and deactivation without inventing entity relations', async () => {
+  const s = await fixture(),
+    life = new MemoryLifecycle(s);
+  try {
+    life.create(memory('source'));
+    const entity = life.saveEntity('project:a', 'memory:source', []);
+    const graph = new KnowledgeGraph(s);
+    const edge = graph.put({
+      scope: 'project:a',
+      from: 'project:a',
+      to: entity.id,
+      relation: 'has recorded memory',
+      evidence: [{ type: 'memory', id: 'source', quote: 'Python version 3.11' }],
+      active: true,
+      validFrom: Date.now(),
+      validUntil: null,
+    });
+    life.update('source', { content: 'Python version 3.11 is required' }, 1);
+    assert.equal(
+      s.get<any>('knowledge-edge', edge.id).evidence[0].quote,
+      'Python version 3.11 is required',
+    );
+    life.update('source', { active: false }, 2);
+    assert.equal(s.get<any>('knowledge-edge', edge.id).active, false);
+    life.forget('source');
+    assert.equal(s.maybe('memory-entity', entity.id), undefined);
+  } finally {
+    s.close();
+  }
+});
+
+test('distinct episodes sharing a topic are additive, not automatically contradictory', async () => {
+  const s = await fixture(),
+    life = new MemoryLifecycle(s);
+  try {
+    life.create(
+      memory('event1', {
+        kind: 'episode',
+        sourceConversationId: 'a',
+        topic: 'progress',
+        attribute: undefined,
+        value: undefined,
+        content: 'First milestone',
+      }),
+    );
+    const second = life.create(
+      memory('event2', {
+        kind: 'episode',
+        sourceConversationId: 'a',
+        topic: 'progress',
+        attribute: undefined,
+        value: undefined,
+        content: 'Second milestone',
+      }),
+    );
+    assert.equal(second.status, 'active');
+  } finally {
+    s.close();
+  }
+});

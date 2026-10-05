@@ -3670,3 +3670,15 @@ input.team-switch:checked::after {
     padding: 6px 8px;
   }
 }
+
+.memory-graph-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+.memory-graph-toggle input {
+  width: auto;
+  flex: 0 0 auto;
+}

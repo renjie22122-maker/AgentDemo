@@ -1,3 +1,4 @@
+import { memoryActivity } from '../services/memory-activity.js';
 import { relatedToolNames } from './discovery.js';
 import { installGitState } from './git-state.js';
 import { enforceActionPolicy } from '../services/action-policy.js';
@@ -844,6 +845,13 @@ export function tools() {
           a.query,
           c.conversation.projectId,
           a.asOf,
+          undefined,
+          c.conversation.id,
+          memoryActivity(
+            c.store,
+            c.store.list<Memory>('memory').filter((m) => memoryScopes(c).includes(m.scope)),
+            a.asOf,
+          ),
         ),
       ),
   });
@@ -858,7 +866,15 @@ export function tools() {
       depth: z.number().int().min(1).max(3).default(2),
     }),
     run: (a, c) =>
-      text(new KnowledgeGraph(c.store).search(memoryScopes(c), a.query, a.asOf, a.depth)),
+      text(
+        new KnowledgeGraph(c.store).search(
+          memoryScopes(c),
+          a.query,
+          a.asOf,
+          a.depth,
+          c.conversation.id,
+        ),
+      ),
   });
   registry.add({
     name: 'list_memory_entities',
@@ -1005,6 +1021,8 @@ export function tools() {
         scope: c.conversation.projectId ? 'project:' + c.conversation.projectId : 'user',
         content: a.content,
         source: a.source,
+        sourceConversationId: c.conversation.id,
+        sourceEventId: c.store.events(c.conversation.id, 0, 'user.message').at(-1)?.id,
         kind: a.kind,
         entityId: a.entityId,
         attribute: a.attribute,

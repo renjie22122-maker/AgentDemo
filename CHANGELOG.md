@@ -4,6 +4,10 @@
 
 Entries below describe repository changes, not a semantic-version release series. Historical test counts belong to their recorded runs.
 
+## 2026-10-05 — Memory management
+
+Memory management: scoped bulk actions, readable source/status filters, incremental extraction, local episodes, configurable type-based decay, and maintained provenance links.
+
 ## 2026-10-05 — Interactive component results
 
 Generic multi-result bridge with editable records, batch draft insertion, source validation and localized compact preview controls. No automatic message sending; unsent records remain local UI state.

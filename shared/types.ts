@@ -260,6 +260,10 @@ export interface Skill {
   createdAt: number;
 }
 export interface Memory {
+  decayPolicy?: 'auto' | 'stable' | 'time' | 'turns' | 'time-and-turns';
+  halfLifeDays?: number;
+  halfLifeTurns?: number;
+  recallScope?: 'conversation' | 'scope';
   topic?: string;
   automatic?: boolean;
   kind?: 'preference' | 'decision' | 'episode' | 'experience';

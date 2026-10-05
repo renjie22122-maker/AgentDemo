@@ -261,3 +261,33 @@ test('automatic mode quarantines ambiguous conflicts without activating competin
   assert.equal(f.store.list<any>('knowledge-edge').length, 0);
   await learning.close();
 });
+
+test('memory extraction advances through long chats and does not replay processed messages', async () => {
+  const f = await fixture();
+  const seen: number[][] = [];
+  for (let i = 0; i < 64; i++)
+    f.store.event('chat', 'run', 'user.message', { content: 'Message ' + i });
+  const learning = new MemoryLearning(f.store, f.config, () => ({
+    complete: async (req) => {
+      seen.push(JSON.parse(req.messages[1].content).messages.map((e: any) => e.id));
+      return response([]);
+    },
+  }));
+  try {
+    await learning.tick();
+    await learning.tick();
+    await learning.tick();
+    await learning.tick();
+    assert.deepEqual(
+      seen.map((x) => x.length),
+      [30, 30, 6],
+    );
+    assert.equal(new Set(seen.flat()).size, 66);
+    f.store.event('chat', 'run', 'user.message', { content: 'A new durable preference.' });
+    await learning.tick();
+    assert.equal(seen.at(-1)!.length, 1);
+  } finally {
+    await learning.close();
+    f.store.close();
+  }
+});

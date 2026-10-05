@@ -37,3 +37,25 @@ Automatic local memory indexing and authorized document maintenance do not requi
 Transient failures back off; configuration failures pause after three attempts. Same-destination credential changes or Recheck after repair can retry safely. Failed installs receive diagnosis through normal approval, not automatic replay.
 
 User-labelled retrieval examples can compare lexical/hybrid strategies; selection requires at least 15 cases, five held-out cases and 0.1 MRR gain. Agent labels are excluded. This does not automatically search new models, rerankers or chunk sizes. A historical four-query E5 smoke test ranked 3/4 first and exposed a cross-language error; it is not a large-corpus quality claim.
+
+## Managing a growing memory list
+
+The library defaults to current entries and separates active, candidate/inactive, disputed and historical/expired states. Search content, topic or source; pages contain 25 records. Select a page or individual records, then confirm, deactivate or forget up to 200 explicitly selected entries per request. Forgetting asks for confirmation and uses existing source-exclusion semantics. Every item checks scope and revision independently; a failed item does not undo successful items. Conflicting, expired or superseded records cannot be bulk-approved.
+
+Ambiguous conflicts have a visible count and direct review filter, with competing content and sources. They remain outside recall until resolved. No automatic interruption or automatic choice of winner is introduced.
+
+Opted-in background learning now processes new user messages after the last successful extraction, in batches of up to 30, instead of repeatedly extracting the same recent history. Existing same-scope structured attribute/value matches are reused. Exact duplicate candidates can be consolidated without activating them; source/revision history remains. Old pending entries are not all silently approved. Use the existing scope default to enable automatic management for new/inheriting chats; chat-level overrides and project/general isolation remain. No new external destination is authorized by these changes.
+
+## Recall reach and decay
+
+Storage scope, recall reach and decay are independent. Episodes and general-chat decisions default to their original conversation; preferences and project decisions default to their existing user/project scope. New suggestions record the source conversation. Structured legacy references provide a fallback. Unknown-source local entries are not recalled. Sharing a local record requires a user edit and never crosses projects. Starting a new conversation excludes another conversation's local episodes; switching tasks within the same conversation does not automatically infer scenario boundaries.
+
+Automatic decay keeps preferences, project decisions and verified experiences stable. Episodes/general-chat decisions use weight = 0.5^(ageDays/30 + laterUserTurns/100), floored at 0.05. Users may override stable, time-only, turns-only or combined policies and half-lives. Tools, token volume and memory reads neither count as turns nor refresh age. Missing activity evidence contributes no turn penalty. This affects ranking, not truth or deletion; explicit expiry still excludes records.
+
+Classification uses the extractor's generic memory kind, not topic keywords. Misclassified legacy entries may need correction. Deployment does not trigger paid historical reclassification or destructive cleanup.
+
+## Readable graph management
+
+System memory:<id> nodes represent provenance, not people or concepts. The UI hides them by default and displays memory summaries when shown. Advanced creation controls are collapsed; relations support search and pagination. Revisions update system-owned source quotations, deactivation retires those links, retrieval checks expiry, and forgetting removes unreferenced internal nodes. Unrelated domain edges are never rewritten automatically. Missing/invalid evidence is visibly marked and excluded from current traversal. Source links do not imply semantic entity resolution or factual inference.
+
+The memory list shows source conversation titles where available, dates, reach and decay rules. Raw IDs/revisions remain under technical details. Scope search without a conversation context excludes local records; these remain visible in management and recallable in their original conversation.

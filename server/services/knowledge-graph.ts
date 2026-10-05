@@ -1,3 +1,4 @@
+import { memoryAccessible } from '../../shared/memory-scope.js';
 import { Store, id } from '../storage/store.js';
 import { MemoryLifecycle, memoryValid, normalizedMemory, sourceKey } from './memory-lifecycle.js';
 import { assert } from '../core/errors.js';
@@ -100,7 +101,7 @@ export class KnowledgeGraph {
   list(scope: string) {
     return this.store.list<GraphEdge>('knowledge-edge').filter((e) => e.scope === scope);
   }
-  search(scopes: string[], query: string, at = Date.now(), depth = 2) {
+  search(scopes: string[], query: string, at = Date.now(), depth = 2, conversationId?: string) {
     const entities = this.store
       .list<any>('memory-entity')
       .filter((e) => scopes.includes(e.scope) && e.confirmed !== false);
@@ -118,7 +119,12 @@ export class KnowledgeGraph {
           e.active &&
           e.validFrom <= at &&
           (e.validUntil == null || at < e.validUntil) &&
-          e.evidence.every((x) => this.supported(e.scope, x, at)),
+          e.evidence.every(
+            (x) =>
+              this.supported(e.scope, x, at) &&
+              (x.type !== 'memory' ||
+                memoryAccessible(this.store.get('memory', x.id), conversationId)),
+          ),
       );
     const seen = new Set(seeds),
       paths: { entities: string[]; edges: GraphEdge[] }[] = seeds

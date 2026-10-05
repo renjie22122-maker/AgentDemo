@@ -722,6 +722,10 @@ export async function createApp(options: { directory: string; dist?: string; run
     memoryHooks(store, config, stage, m),
   );
   const memoryFields = {
+    decayPolicy: z.enum(['auto', 'stable', 'time', 'turns', 'time-and-turns']).optional(),
+    halfLifeDays: z.number().int().min(1).max(36500).optional(),
+    halfLifeTurns: z.number().int().min(1).max(100000).optional(),
+    recallScope: z.enum(['conversation', 'scope']).optional(),
     topic: z.string().max(80).optional(),
     entityId: z.string().max(200).optional(),
     attribute: z.string().max(80).optional(),
@@ -773,6 +777,20 @@ export async function createApp(options: { directory: string; dist?: string; run
     checkMemoryScope(scope);
     return memoryLifecycle.inspect(scope);
   });
+  app.post('/api/memories/batch', async (req) => {
+    const data = z
+      .object({
+        scope: z.string(),
+        action: z.enum(['confirm', 'deactivate', 'forget']),
+        items: z
+          .array(z.object({ id: z.string(), revision: z.number().int() }))
+          .min(1)
+          .max(200),
+      })
+      .parse(req.body);
+    checkMemoryScope(data.scope);
+    return memoryLifecycle.batch(data.scope, data.action, data.items);
+  });
   app.post('/api/memories/consolidate', async (req) => {
     const { scope } = z.object({ scope: z.string() }).parse(req.body);
     checkMemoryScope(scope);
@@ -817,7 +835,15 @@ export async function createApp(options: { directory: string; dist?: string; run
   });
   app.get<{ Querystring: { scope: string } }>('/api/knowledge-graph', async (req) => {
     checkMemoryScope(req.query.scope);
-    return graph.list(req.query.scope);
+    return graph.list(req.query.scope).map((e) => ({
+      ...e,
+      supportedNow: e.evidence.every((x) => graph.supported(e.scope, x, Date.now())),
+      current:
+        e.active &&
+        e.validFrom <= Date.now() &&
+        (e.validUntil == null || e.validUntil > Date.now()) &&
+        e.evidence.every((x) => graph.supported(e.scope, x, Date.now())),
+    }));
   });
   app.post('/api/knowledge-graph', async (req) => {
     const d = edgeInput.parse(req.body);

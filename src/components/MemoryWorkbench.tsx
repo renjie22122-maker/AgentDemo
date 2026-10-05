@@ -1,3 +1,5 @@
+import { memoryDecayPolicy, type DecayPolicy } from '../../shared/memory-decay';
+import { memoryReach, memoryConversation } from '../../shared/memory-scope';
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 export function MemoryDetails({ memory: m, go, zh }: any) {
@@ -10,6 +12,10 @@ export function MemoryDetails({ memory: m, go, zh }: any) {
   const [until, setUntil] = useState(
     m.validUntil ? new Date(m.validUntil).toISOString().slice(0, 16) : '',
   );
+  const [decay, setDecay] = useState<DecayPolicy>(m.decayPolicy || 'auto');
+  const [days, setDays] = useState(m.halfLifeDays || 30),
+    [turns, setTurns] = useState(m.halfLifeTurns || 100);
+  const [reach, setReach] = useState(memoryReach(m));
   const [history, setHistory] = useState<any[]>([]);
   return (
     <details>
@@ -29,6 +35,68 @@ export function MemoryDetails({ memory: m, go, zh }: any) {
           onChange={(e) => setContent(e.target.value)}
         />
       </label>
+      <label>
+        {zh ? '衰减规则' : 'Decay policy'}
+        <select value={decay} onChange={(e) => setDecay(e.target.value as DecayPolicy)}>
+          <option value="auto">{zh ? '自动：按记忆类型' : 'Automatic by memory kind'}</option>
+          <option value="stable">{zh ? '不衰减' : 'Stable (no decay)'}</option>
+          <option value="time">{zh ? '按时间' : 'By time'}</option>
+          <option value="turns">{zh ? '按后续用户轮次' : 'By later user turns'}</option>
+          <option value="time-and-turns">{zh ? '按时间和轮次' : 'By time and turns'}</option>
+        </select>
+      </label>
+      {decay !== 'stable' && (
+        <div className="row">
+          <label>
+            {zh ? '时间半衰期（天）' : 'Time half-life (days)'}
+            <input
+              type="number"
+              min={1}
+              max={36500}
+              value={days}
+              onChange={(e) => setDays(Number(e.target.value))}
+            />
+          </label>
+          <label>
+            {zh ? '轮次半衰期' : 'User-turn half-life'}
+            <input
+              type="number"
+              min={1}
+              max={100000}
+              value={turns}
+              onChange={(e) => setTurns(Number(e.target.value))}
+            />
+          </label>
+        </div>
+      )}
+      <p className="muted">
+        {zh
+          ? '只降低召回排序，不自动删除、不代表真实性。自动规则：稳定偏好和项目决定不衰减；情节及普通对话决定按时间和轮次衰减。'
+          : 'Ranking only, not truth or deletion. Auto: preferences/project decisions stay stable; episodes/general-chat decisions decay by time and turns.'}
+        {decay === 'auto' && ' · ' + memoryDecayPolicy({ ...m, kind, decayPolicy: 'auto' })}
+      </p>
+      <label>
+        {zh ? '召回范围' : 'Recall reach'}
+        <select
+          value={reach}
+          onChange={(e) => setReach(e.target.value as 'conversation' | 'scope')}
+        >
+          <option value="conversation">{zh ? '仅原对话' : 'Original conversation only'}</option>
+          <option value="scope">
+            {zh ? '本范围共享（普通对话或当前项目）' : 'Shared within this user/project scope'}
+          </option>
+        </select>
+      </label>
+      <p className="muted">
+        {zh
+          ? '跨场景仍适用的偏好才共享；本次情节应限于原对话。不会跨项目。'
+          : 'Share only reusable preferences; local events belong to the original conversation. Never crosses projects.'}
+        {reach === 'conversation' &&
+          !memoryConversation(m) &&
+          (zh
+            ? ' 此旧条目没有可核实的原对话，限制后不会召回。'
+            : ' This legacy entry has no identifiable source conversation and will not be recalled.')}
+      </p>
       <label>
         {zh ? '类型' : 'Kind'}
         <select value={kind} onChange={(e) => setKind(e.target.value)}>
@@ -74,6 +142,10 @@ export function MemoryDetails({ memory: m, go, zh }: any) {
               '/memories/' + m.id,
               {
                 content,
+                recallScope: reach,
+                decayPolicy: decay,
+                halfLifeDays: days,
+                halfLifeTurns: turns,
                 entityId: entity,
                 attribute,
                 value,
@@ -139,7 +211,7 @@ export function MemoryDetails({ memory: m, go, zh }: any) {
     </details>
   );
 }
-export function MemoryWorkbench({ scope, go, zh }: any) {
+export function MemoryWorkbench({ scope, go, zh, memories = [] }: any) {
   const [entities, setEntities] = useState<any[]>([]),
     [edges, setEdges] = useState<any[]>([]);
   const [name, setName] = useState(''),
@@ -168,6 +240,32 @@ export function MemoryWorkbench({ scope, go, zh }: any) {
     setIssues([]);
     void go(load);
   }, [scope]);
+  const [showInternal, setShowInternal] = useState(false),
+    [graphQuery, setGraphQuery] = useState('');
+  const [graphPage, setGraphPage] = useState(0);
+  const internal = (e: any) => /^memory:/.test(e.name || '');
+  const labelEntity = (key: string) => {
+    if (key === scope) return zh ? '当前范围' : 'Current scope';
+    const entity = entities.find((e) => e.id === key);
+    if (!entity) return key;
+    if (!internal(entity)) return entity.name;
+    const memory = memories.find((m: any) => m.id === entity.name.slice(7));
+    return (
+      (zh ? '记忆来源：' : 'Memory source: ') +
+      (memory?.content?.slice(0, 100) || (zh ? '已失效' : 'Unavailable'))
+    );
+  };
+  const visibleEntities = entities.filter((e) => showInternal || !internal(e));
+  const visibleEdges = edges.filter(
+    (e) =>
+      (showInternal || !entities.some((n) => internal(n) && (n.id === e.from || n.id === e.to))) &&
+      [labelEntity(e.from), labelEntity(e.to), e.relation, ...e.evidence.map((x: any) => x.quote)]
+        .join(' ')
+        .toLowerCase()
+        .includes(graphQuery.toLowerCase()),
+  );
+  const lastGraphPage = Math.max(0, Math.ceil(visibleEdges.length / 20) - 1);
+  const currentGraphPage = Math.min(graphPage, lastGraphPage);
   const at = date ? Date.parse(date + 'Z') : undefined;
   return (
     <section className="panel">
@@ -180,140 +278,206 @@ export function MemoryWorkbench({ scope, go, zh }: any) {
             ? '关系必须有同范围原文依据；候选确认后才参与最多三跳查询。路径连接不代表因果或事实推导。'
             : 'Relations need same-scope source quotes. Confirm candidates before querying up to three hops. A path does not establish causality or a new fact.'}
         </p>
-        <label>
-          {zh ? '实体名称' : 'Entity name'}
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <label>
-          {zh ? '别名（逗号分隔，人工确认）' : 'Aliases (comma-separated, explicitly confirmed)'}
-          <input value={aliases} onChange={(e) => setAliases(e.target.value)} />
-        </label>
-        <button
-          disabled={!name.trim()}
-          onClick={() =>
-            go(async () => {
-              await api('/memory-entities', {
-                scope,
-                name,
-                aliases: aliases
-                  .split(',')
-                  .map((x) => x.trim())
-                  .filter(Boolean),
-              });
-              setName('');
-              setAliases('');
-              await load();
-            })
-          }
-        >
-          {zh ? '创建实体' : 'Create entity'}
-        </button>
-        {entities.map((e) => (
-          <p key={e.id}>
-            <strong>{e.name}</strong> · {e.aliases.join(', ')} <code>{e.id}</code>
-            {e.confirmed === false && (
-              <button
-                onClick={() =>
-                  go(async () => {
-                    await api('/memory-entities', {
-                      id: e.id,
-                      scope,
-                      name: e.name,
-                      aliases: e.aliases,
-                    });
-                    await load();
-                  })
-                }
-              >
-                {zh ? '确认实体与别名' : 'Confirm entity and aliases'}
-              </button>
-            )}
+        <p>
+          {zh ? '实际实体' : 'Domain entities'}: {entities.filter((e) => !internal(e)).length} ·{' '}
+          {zh ? '自动来源节点' : 'Automatic source nodes'}: {entities.filter(internal).length}
+        </p>
+        {edges.some((e) => !e.supportedNow) && (
+          <p role="status">
+            {zh
+              ? '部分关系的来源已失效或缺失，不参与当前查询。请核实，不会自动确认。'
+              : 'Some relations have missing or invalid evidence and are excluded from current queries. Review is required.'}
           </p>
-        ))}
-        <div className="form-grid">
-          <label>
-            {zh ? '起点' : 'From'}
-            <select value={from} onChange={(e) => setFrom(e.target.value)}>
-              <option value="">—</option>
-              {entities.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {zh ? '终点' : 'To'}
-            <select value={to} onChange={(e) => setTo(e.target.value)}>
-              <option value="">—</option>
-              {entities.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <label>
-          {zh ? '关系（例如 depends_on）' : 'Relation (e.g. depends_on)'}
-          <input value={relation} onChange={(e) => setRelation(e.target.value)} />
-        </label>
-        <label>
-          {zh ? '证据类型' : 'Evidence type'}
-          <select value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
-            {['memory', 'document', 'event'].map((k) => (
-              <option key={k}>{k}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {zh ? '来源 ID' : 'Source ID'}
-          <input value={sourceId} onChange={(e) => setSourceId(e.target.value)} />
-        </label>
-        {sourceType === 'event' && (
-          <label>
-            {zh ? '来源对话 ID' : 'Source conversation ID'}
-            <input value={chat} onChange={(e) => setChat(e.target.value)} />
-          </label>
         )}
-        <label>
-          {zh ? '原文引用' : 'Exact source quote'}
-          <textarea value={quote} onChange={(e) => setQuote(e.target.value)} />
+        <label className="memory-graph-toggle">
+          <input
+            type="checkbox"
+            checked={showInternal}
+            onChange={(e) => {
+              setShowInternal(e.target.checked);
+              setGraphPage(0);
+            }}
+          />
+          {zh
+            ? '显示自动记忆来源节点（不是人物或概念）'
+            : 'Show automatic memory source nodes (not domain entities)'}
         </label>
-        <button
-          disabled={!from || !to || !relation || !quote || !sourceId}
-          onClick={() =>
-            go(async () => {
-              await api('/knowledge-graph', {
-                scope,
-                from,
-                to,
-                relation,
-                evidence: [
-                  { type: sourceType, id: sourceId, conversationId: chat || undefined, quote },
-                ],
-                active: false,
-              });
-              await load();
-            })
-          }
-        >
-          {zh ? '添加候选关系' : 'Add candidate relation'}
-        </button>
-        {edges.map((e) => (
+        <input
+          aria-label={zh ? '搜索关系' : 'Search relations'}
+          placeholder={zh ? '搜索实体、关系或原文' : 'Search entities, relations or quotes'}
+          value={graphQuery}
+          onChange={(e) => {
+            setGraphQuery(e.target.value);
+            setGraphPage(0);
+          }}
+        />
+        <details>
+          <summary>
+            {zh ? '高级：手工创建实体和关系' : 'Advanced: create entities and relations'}
+          </summary>
+          <label>
+            {zh ? '实体名称' : 'Entity name'}
+            <input value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
+          <label>
+            {zh ? '别名（逗号分隔，人工确认）' : 'Aliases (comma-separated, explicitly confirmed)'}
+            <input value={aliases} onChange={(e) => setAliases(e.target.value)} />
+          </label>
+          <button
+            disabled={!name.trim()}
+            onClick={() =>
+              go(async () => {
+                await api('/memory-entities', {
+                  scope,
+                  name,
+                  aliases: aliases
+                    .split(',')
+                    .map((x) => x.trim())
+                    .filter(Boolean),
+                });
+                setName('');
+                setAliases('');
+                await load();
+              })
+            }
+          >
+            {zh ? '创建实体' : 'Create entity'}
+          </button>
+          {visibleEntities.map((e) => (
+            <p key={e.id}>
+              <strong>{labelEntity(e.id)}</strong> · {e.aliases.join(', ')}{' '}
+              <details>
+                <summary>{zh ? '技术标识' : 'Technical ID'}</summary>
+                <code>{e.id}</code>
+              </details>
+              {e.confirmed === false && (
+                <button
+                  onClick={() =>
+                    go(async () => {
+                      await api('/memory-entities', {
+                        id: e.id,
+                        scope,
+                        name: e.name,
+                        aliases: e.aliases,
+                      });
+                      await load();
+                    })
+                  }
+                >
+                  {zh ? '确认实体与别名' : 'Confirm entity and aliases'}
+                </button>
+              )}
+            </p>
+          ))}
+          <div className="form-grid">
+            <label>
+              {zh ? '起点' : 'From'}
+              <select value={from} onChange={(e) => setFrom(e.target.value)}>
+                <option value="">—</option>
+                {visibleEntities.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {labelEntity(e.id)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {zh ? '终点' : 'To'}
+              <select value={to} onChange={(e) => setTo(e.target.value)}>
+                <option value="">—</option>
+                {visibleEntities.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {labelEntity(e.id)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label>
+            {zh ? '关系（例如 depends_on）' : 'Relation (e.g. depends_on)'}
+            <input value={relation} onChange={(e) => setRelation(e.target.value)} />
+          </label>
+          <label>
+            {zh ? '证据类型' : 'Evidence type'}
+            <select value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
+              {['memory', 'document', 'event'].map((k) => (
+                <option key={k}>{k}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            {zh ? '来源 ID' : 'Source ID'}
+            <input value={sourceId} onChange={(e) => setSourceId(e.target.value)} />
+          </label>
+          {sourceType === 'event' && (
+            <label>
+              {zh ? '来源对话 ID' : 'Source conversation ID'}
+              <input value={chat} onChange={(e) => setChat(e.target.value)} />
+            </label>
+          )}
+          <label>
+            {zh ? '原文引用' : 'Exact source quote'}
+            <textarea value={quote} onChange={(e) => setQuote(e.target.value)} />
+          </label>
+          <button
+            disabled={!from || !to || !relation || !quote || !sourceId}
+            onClick={() =>
+              go(async () => {
+                await api('/knowledge-graph', {
+                  scope,
+                  from,
+                  to,
+                  relation,
+                  evidence: [
+                    { type: sourceType, id: sourceId, conversationId: chat || undefined, quote },
+                  ],
+                  active: false,
+                });
+                await load();
+              })
+            }
+          >
+            {zh ? '添加候选关系' : 'Add candidate relation'}
+          </button>
+        </details>
+        {!visibleEdges.length && (
+          <p>
+            {zh
+              ? '此视图暂无关系。自动来源已单独隐藏，可勾选查看；系统不会把来源连线当作实体知识。'
+              : 'No relations in this view. Automatic source links are hidden separately and do not establish domain knowledge.'}
+          </p>
+        )}
+        {visibleEdges.slice(currentGraphPage * 20, (currentGraphPage + 1) * 20).map((e) => (
           <article className="panel" key={e.id}>
             <p>
-              {entities.find((x) => x.id === e.from)?.name || e.from} → {e.relation} →{' '}
-              {entities.find((x) => x.id === e.to)?.name || e.to} ·{' '}
-              {e.active ? (zh ? '已确认' : 'Confirmed') : zh ? '候选' : 'Candidate'}
+              {labelEntity(e.from)} →{' '}
+              {e.relation === 'has recorded memory' && zh ? '记忆来源关联' : e.relation} →{' '}
+              {labelEntity(e.to)} ·{' '}
+              {!e.supportedNow
+                ? zh
+                  ? '来源失效／缺失'
+                  : 'Invalid/missing source'
+                : e.current
+                  ? zh
+                    ? '当前有效'
+                    : 'Currently valid'
+                  : e.active
+                    ? zh
+                      ? '历史／过期'
+                      : 'Historical/expired'
+                    : zh
+                      ? '未启用'
+                      : 'Inactive'}
             </p>
             {e.evidence.map((x: any, i: number) => (
               <blockquote key={i}>
                 {x.quote}
-                <small>
-                  {' '}
-                  {x.type}:{x.id}
-                </small>
+                <details>
+                  <summary>{zh ? '来源标识' : 'Source identifier'}</summary>
+                  <small>
+                    {x.type}:{x.id}
+                  </small>
+                </details>
               </blockquote>
             ))}
             <button
@@ -342,6 +506,21 @@ export function MemoryWorkbench({ scope, go, zh }: any) {
             </button>
           </article>
         ))}
+        <div className="row">
+          <button disabled={!currentGraphPage} onClick={() => setGraphPage(currentGraphPage - 1)}>
+            {zh ? '上一页' : 'Previous'}
+          </button>
+          <span>
+            {currentGraphPage + 1}/{lastGraphPage + 1} · {visibleEdges.length}
+          </span>
+          <button
+            disabled={currentGraphPage >= lastGraphPage}
+            onClick={() => setGraphPage(currentGraphPage + 1)}
+          >
+            {zh ? '下一页' : 'Next'}
+          </button>
+          <button onClick={() => go(load)}>{zh ? '刷新关系状态' : 'Refresh relationships'}</button>
+        </div>
         <label>
           {zh ? '查询记忆或实体名称' : 'Query memories or entity names'}
           <input value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -392,10 +571,12 @@ export function MemoryWorkbench({ scope, go, zh }: any) {
                     {e.evidence.map((source: any, j: number) => (
                       <blockquote key={j}>
                         {source.quote}
-                        <small>
-                          {' '}
-                          · {source.type}:{source.id}
-                        </small>
+                        <details>
+                          <summary>{zh ? '来源标识' : 'Source identifier'}</summary>
+                          <small>
+                            {source.type}:{source.id}
+                          </small>
+                        </details>
                       </blockquote>
                     ))}
                   </div>

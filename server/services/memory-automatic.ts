@@ -1,3 +1,4 @@
+import { memoryPartition } from '../../shared/memory-scope.js';
 import type { Memory } from '../../shared/types.js';
 import { Store } from '../storage/store.js';
 import { MemoryLifecycle, memoryValid } from './memory-lifecycle.js';
@@ -7,7 +8,12 @@ import { KnowledgeGraph } from './knowledge-graph.js';
 export function manageAutomaticMemory(store: Store, memory: Memory) {
   const lifecycle = new MemoryLifecycle(store);
   let current = memory;
-  const conflicts = (memory.conflictsWith || []).map((id) => store.get<Memory>('memory', id));
+  const conflicts = (memory.conflictsWith || [])
+    .map((id) => store.maybe<Memory>('memory', id))
+    .filter(
+      (m): m is Memory =>
+        !!m && m.scope === memory.scope && memoryPartition(m) === memoryPartition(memory),
+    );
   if (conflicts.length && memory.attribute && memory.sourceEventId != null) {
     const source = store
       .events(memory.sourceConversationId!)
@@ -71,6 +77,7 @@ export function reconsiderMemoryConflicts(store: Store, scope: string) {
       if (
         old &&
         old.scope === scope &&
+        memoryPartition(old) === memoryPartition(m) &&
         memoryValid(old) &&
         !activeConflicts.some((x) => x.id === old.id)
       )

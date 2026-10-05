@@ -1,9 +1,10 @@
+import { MemoryList } from '../components/MemoryList';
 import { SkillPackagesPanel } from '../components/SkillPackagesPanel';
 import { KnowledgeScopePicker } from '../components/KnowledgeScopePicker';
 import { libraryConversations } from '../library-scopes';
 import { MemoryDefaults } from '../components/MemoryDefaults';
 import { KnowledgeAutomation } from '../components/KnowledgeAutomation';
-import { MemoryDetails, MemoryWorkbench, DocumentVersion } from '../components/MemoryWorkbench';
+import { MemoryWorkbench, DocumentVersion } from '../components/MemoryWorkbench';
 import { SkillClassificationPanel } from '../components/SkillClassificationPanel';
 import { SkillPicker } from '../components/SkillPicker';
 import { FileText, Plus, Search, Trash2, Upload } from 'lucide-react';
@@ -346,54 +347,21 @@ export function Library({ page, state, selected, t, refresh, notify }: any) {
               ))}
           </details>
           <MemoryWorkbench
+            memories={state.memories}
+            conversations={state.conversations}
             key={scope}
             scope={scope.startsWith('project:') ? scope : 'user'}
             go={go}
             zh={t('settings') !== 'Settings'}
           />
-          {state.memories
-            .filter((m: any) => m.scope === (scope.startsWith('project:') ? scope : 'user'))
-            .map((m: any) => (
-              <article className="panel" key={m.id}>
-                <div className="section-title">
-                  <span className={'pill ' + (m.active ? 'success' : '')}>
-                    {m.active
-                      ? m.automatic
-                        ? t('settings') === 'Settings'
-                          ? 'Auto-saved'
-                          : '自动保存'
-                        : t('settings') === 'Settings'
-                          ? 'Confirmed'
-                          : '已确认'
-                      : t('settings') === 'Settings'
-                        ? 'Needs confirmation'
-                        : '待确认'}
-                  </span>
-                  <div className="row">
-                    <button
-                      onClick={() =>
-                        go(() => api('/memories/' + m.id, { active: !m.active }, 'PATCH'))
-                      }
-                    >
-                      {m.active ? 'Deactivate' : 'Confirm'}
-                    </button>
-                    <button onClick={() => go(() => api('/memories/' + m.id, undefined, 'DELETE'))}>
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                </div>
-                <p>{m.content}</p>
-                <MemoryDetails
-                  key={m.id + ':' + m.revision}
-                  memory={m}
-                  go={go}
-                  zh={t('settings') !== 'Settings'}
-                />
-                <small className="muted">
-                  {m.scope} · {m.source} · rev {m.revision}
-                </small>
-              </article>
-            ))}
+          <MemoryList
+            key={scope}
+            memories={state.memories}
+            conversations={state.conversations}
+            scope={scope.startsWith('project:') ? scope : 'user'}
+            zh={t('settings') !== 'Settings'}
+            go={go}
+          />
         </>
       )}
     </div>

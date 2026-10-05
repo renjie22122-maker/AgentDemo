@@ -1,3 +1,4 @@
+import { memoryPartition } from '../../shared/memory-scope.js';
 import { createHash } from 'node:crypto';
 import { Store, id } from '../storage/store.js';
 import type { Memory } from '../../shared/types.js';
@@ -42,6 +43,36 @@ export class MemoryLifecycle {
     });
     this.store.put('memory', after);
     this.store.remove('memory-vector', after.id);
+    // Maintain only system-owned provenance links, never invent domain relationships.
+    for (const edge of this.store.list<any>('knowledge-edge')) {
+      const entity = this.store.maybe<any>('memory-entity', edge.to);
+      if (
+        edge.scope !== after.scope ||
+        edge.from !== after.scope ||
+        edge.relation !== 'has recorded memory' ||
+        entity?.name !== 'memory:' + after.id ||
+        edge.evidence.length !== 1 ||
+        edge.evidence[0].type !== 'memory' ||
+        edge.evidence[0].id !== after.id
+      )
+        continue;
+      const next = {
+        ...edge,
+        active: edge.active && memoryValid(after),
+        validUntil: after.validUntil ?? null,
+        evidence: [{ type: 'memory', id: after.id, quote: after.content }],
+        revision: edge.revision + 1,
+      };
+      this.store.put('knowledge-edge-history', {
+        id: id(),
+        edgeId: edge.id,
+        before: edge,
+        after: next,
+        at: Date.now(),
+      });
+      this.store.put('knowledge-edge', next);
+    }
+
     this.hook('afterMemoryWrite', after);
     return after;
   }
@@ -85,6 +116,7 @@ export class MemoryLifecycle {
       if (
         other &&
         other.scope === m.scope &&
+        memoryPartition(other) === memoryPartition(m) &&
         memoryValid(other) &&
         !conflicts.some((x) => x.id === key)
       )
@@ -148,12 +180,17 @@ export class MemoryLifecycle {
         (x) =>
           x.id !== m.id &&
           x.scope === m.scope &&
+          memoryPartition(x) === memoryPartition(m) &&
           memoryValid(x) &&
           ((m.entityId &&
             m.attribute &&
             x.entityId === m.entityId &&
             normalizedMemory(x.attribute || '') === normalizedMemory(m.attribute)) ||
-            (!m.attribute && m.topic && x.topic === m.topic)) &&
+            (!m.attribute &&
+              m.kind !== 'episode' &&
+              x.kind !== 'episode' &&
+              m.topic &&
+              x.topic === m.topic)) &&
           normalizedMemory(x.value || x.content) !== normalizedMemory(m.value || m.content),
       );
   }
@@ -271,6 +308,15 @@ export class MemoryLifecycle {
           for (const h of this.store.list<any>('knowledge-edge-history'))
             if (h.edgeId === edge.id) this.store.remove('knowledge-edge-history', h.id);
         }
+      for (const entity of this.store.list<any>('memory-entity'))
+        if (
+          entity.scope === m.scope &&
+          entity.name === 'memory:' + key &&
+          !this.store
+            .list<any>('knowledge-edge')
+            .some((e) => e.from === entity.id || e.to === entity.id)
+        )
+          this.store.remove('memory-entity', entity.id);
       this.store.remove('memory', key);
       this.store.remove('memory-vector', key);
       for (const h of this.store.list<any>('memory-history'))
@@ -304,13 +350,80 @@ export class MemoryLifecycle {
       return this.record(current, prior, 'undo');
     });
   }
+  batch(
+    scope: string,
+    action: 'confirm' | 'deactivate' | 'forget',
+    items: { id: string; revision: number }[],
+  ) {
+    const outcomes: { id: string; ok: boolean; reason?: string }[] = [];
+    for (const item of items) {
+      try {
+        this.store.transaction(() => {
+          const m = this.store.get<Memory>('memory', item.id);
+          assert(m.scope === scope, 'MEMORY_SCOPE', 'Memory belongs to another scope.');
+          assert(
+            m.revision === item.revision,
+            'MEMORY_CHANGED',
+            'Memory changed. Refresh before editing.',
+          );
+          assert(
+            action !== 'confirm' || m.status !== 'disputed',
+            'MEMORY_CONFLICT',
+            'Compare conflicting sources and resolve explicitly.',
+          );
+          if (action === 'forget') this.forget(m.id);
+          else {
+            assert(
+              m.status !== 'superseded' && m.status !== 'forgotten',
+              'MEMORY_HISTORY',
+              'Historical entries cannot be reactivated.',
+            );
+            assert(
+              action !== 'confirm' ||
+                ((!m.expiresAt || m.expiresAt > Date.now()) &&
+                  (m.validUntil == null || m.validUntil > Date.now())),
+              'MEMORY_EXPIRED',
+              'Update validity before confirming.',
+            );
+            this.update(m.id, { active: action === 'confirm', automatic: false }, m.revision);
+          }
+        });
+        outcomes.push({ id: item.id, ok: true });
+      } catch (error) {
+        outcomes.push({
+          id: item.id,
+          ok: false,
+          reason: error instanceof Error ? error.message : 'Failed',
+        });
+      }
+    }
+    return {
+      outcomes,
+      changed: outcomes.filter((x) => x.ok).length,
+      failed: outcomes.filter((x) => !x.ok).length,
+    };
+  }
   consolidate(scope: string) {
     return this.store.transaction(() => {
       const groups = new Map<string, Memory[]>();
       for (const m of this.store
         .list<Memory>('memory')
-        .filter((m) => m.scope === scope && memoryValid(m))) {
+        .filter(
+          (m) =>
+            m.scope === scope &&
+            (memoryValid(m) ||
+              (m.status === 'candidate' &&
+                !m.active &&
+                !m.conflictsWith?.length &&
+                (!m.expiresAt || m.expiresAt > Date.now()) &&
+                m.validUntil == null)),
+        )) {
         const key = JSON.stringify([
+          m.active ? 'active' : 'candidate',
+          memoryPartition(m),
+          m.decayPolicy || 'auto',
+          m.halfLifeDays || 30,
+          m.halfLifeTurns || 100,
           normalizedMemory(m.content),
           m.entityId || '',
           m.attribute || '',
