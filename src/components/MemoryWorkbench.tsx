@@ -289,28 +289,32 @@ export function MemoryWorkbench({ scope, go, zh, memories = [] }: any) {
               : 'Some relations have missing or invalid evidence and are excluded from current queries. Review is required.'}
           </p>
         )}
-        <label className="memory-graph-toggle">
+        <div className="memory-graph-controls">
+          <label className="memory-graph-toggle">
+            <input
+              type="checkbox"
+              checked={showInternal}
+              onChange={(e) => {
+                setShowInternal(e.target.checked);
+                setGraphPage(0);
+              }}
+            />
+            <span>
+              {zh
+                ? '显示自动记忆来源节点（不是人物或概念）'
+                : 'Show automatic memory source nodes (not domain entities)'}
+            </span>
+          </label>
           <input
-            type="checkbox"
-            checked={showInternal}
+            aria-label={zh ? '搜索关系' : 'Search relations'}
+            placeholder={zh ? '搜索实体、关系或原文' : 'Search entities, relations or quotes'}
+            value={graphQuery}
             onChange={(e) => {
-              setShowInternal(e.target.checked);
+              setGraphQuery(e.target.value);
               setGraphPage(0);
             }}
           />
-          {zh
-            ? '显示自动记忆来源节点（不是人物或概念）'
-            : 'Show automatic memory source nodes (not domain entities)'}
-        </label>
-        <input
-          aria-label={zh ? '搜索关系' : 'Search relations'}
-          placeholder={zh ? '搜索实体、关系或原文' : 'Search entities, relations or quotes'}
-          value={graphQuery}
-          onChange={(e) => {
-            setGraphQuery(e.target.value);
-            setGraphPage(0);
-          }}
-        />
+        </div>
         <details>
           <summary>
             {zh ? '高级：手工创建实体和关系' : 'Advanced: create entities and relations'}

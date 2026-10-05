@@ -1108,7 +1108,7 @@ dd {
   color: var(--muted);
   margin-bottom: 16px;
 }
-.panel details input {
+.panel details input:not([type='checkbox']):not([type='radio']) {
   width: 100%;
   margin-bottom: 12px;
 }
@@ -3678,7 +3678,27 @@ input.team-switch:checked::after {
   justify-content: flex-start;
   gap: 8px;
 }
-.memory-graph-toggle input {
-  width: auto;
-  flex: 0 0 auto;
+.memory-graph-toggle input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 2px 0 0;
+  flex: 0 0 16px;
+  accent-color: var(--accent);
+}
+.memory-graph-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+.panel .memory-graph-toggle {
+  margin: 0;
+  min-width: 0;
+  align-items: flex-start;
+}
+.memory-graph-toggle span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
