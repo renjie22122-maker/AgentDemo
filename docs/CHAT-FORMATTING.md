@@ -39,3 +39,23 @@ The microphone icon is next to **Send**. Configure a transcription connection in
 ## Validation
 
 See [verification](VERIFICATION.md) for the current regression baseline. A real headless Edge fixture verified default previews, state-preserving switches, same-sized scrolling code, two Mermaid diagrams and mobile width. TypeScript and the production build passed. No paid media service was called.
+
+## Interactive results
+
+HTML components in completed assistant messages can submit a result through the optional bridge:
+
+```js
+window.amadeus?.submitResult({
+  title: 'Scenario comparison',
+  data: { option: 'A', total: 42 },
+});
+// Alternatively: { title: 'Feedback', text: 'Your result' }
+```
+
+Each submission creates a separate record. Users can edit a record, select several records, and append the current or selected results to the existing chat draft. Only pressing the normal Send button delivers them to the model. This supports repeated simulations, games, forms and calculators; it is not specific to dice. Existing components must call the bridge to report results.
+
+The toolbar follows the selected interface language and provides Preview/Code tabs, height selection, copy and reset. Switching views or language preserves component state.
+
+The host checks the sending iframe, opaque origin, instance token and payload shape. Records are untrusted component-reported data, not verified evidence or permission grants. Titles allow 100 characters and result text 16,000; each mounted component retains at most 20 records and visibly rejects overflow. Remove a record before submitting more. Batch draft insertion may require splitting large selections.
+
+Pending records are local UI state, not durable storage: reset, reload or unmount can discard them. Results already added to a draft follow ordinary draft behavior; sent messages follow ordinary conversation persistence. Client-side buttons cannot guarantee durable once-only rolls or tamper-proof outcomes. Components cannot automatically send messages, call tools or access host storage. No new dependency or launcher change is required; existing startup scripts rebuild changed frontend sources.

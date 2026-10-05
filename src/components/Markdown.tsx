@@ -1,3 +1,4 @@
+import { PreviewContext, type PreviewInteraction } from '../preview-context';
 import { richMarkdown, localMediaKind } from '../markdown-rich';
 import { CodePreview } from './CodePreview';
 import { mathDelimiters } from '../markdown-source';
@@ -16,22 +17,29 @@ function plain(node: any): string {
   return node?.props ? plain(node.props.children) : '';
 }
 function Code({ children }: any) {
+  const interaction = React.useContext(PreviewContext);
+  const visual = /language-(html|html-preview|mermaid)(?:\s|$)/.test(
+    children?.props?.className || '',
+  );
   const [copied, setCopied] = React.useState(false);
   return (
     <div className="code-block">
-      <div className="code-bar">
-        <span>{children?.props?.className?.match(/language-([^\s]+)/)?.[1] || 'code'}</span>
-        <button
-          aria-label="Copy code"
-          onClick={async () => {
-            await navigator.clipboard.writeText(plain(children));
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          }}
-        >
-          {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
+      {!visual && (
+        <div className="code-bar">
+          <span>{children?.props?.className?.match(/language-([^\s]+)/)?.[1] || 'code'}</span>
+          <button
+            aria-label="Copy code"
+            onClick={async () => {
+              await navigator.clipboard.writeText(plain(children));
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />}{' '}
+            {copied ? (interaction.zh ? '已复制' : 'Copied') : interaction.zh ? '复制' : 'Copy'}
+          </button>
+        </div>
+      )}
       {/language-(html|html-preview|mermaid)(?:\s|$)/.test(children?.props?.className || '') ? (
         <CodePreview
           source={plain(children)}
@@ -92,9 +100,11 @@ const options = {
 export const Markdown = React.memo(function Markdown({
   text,
   live = false,
+  interaction,
 }: {
   text: string;
   live?: boolean;
+  interaction?: PreviewInteraction;
 }) {
   let tree = live ? undefined : parsed.get(text);
   if (tree) {
@@ -114,5 +124,9 @@ export const Markdown = React.memo(function Markdown({
       }
     }
   }
-  return <div className="markdown">{tree}</div>;
+  return (
+    <PreviewContext.Provider value={interaction || {}}>
+      <div className="markdown">{tree}</div>
+    </PreviewContext.Provider>
+  );
 });

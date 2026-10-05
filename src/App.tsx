@@ -592,6 +592,20 @@ export function App() {
           <Message
             key={e.id}
             event={e}
+            onPreviewResult={(text) => {
+              if (selectedRef.current !== selected) return false;
+              if (draft.length + text.length + 2 > 100000) {
+                notify(
+                  language === 'zh'
+                    ? '草稿过长，请分批发送结果。'
+                    : 'Draft too long. Send results in smaller batches.',
+                );
+                return false;
+              }
+              setDraft((current) => current + (current ? '\n\n' : '') + text);
+              draftRef.current?.focus();
+              return true;
+            }}
             t={t}
             notify={notify}
             onBranch={(eventId) =>
@@ -911,7 +925,7 @@ export function App() {
                             <span className="working-dot" />
                           </div>
                           <div className="message-body">
-                            <Markdown text={s.text} live />
+                            <Markdown text={s.text} live interaction={{ zh: language === 'zh' }} />
                           </div>
                         </article>
                       ),

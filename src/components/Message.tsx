@@ -19,7 +19,9 @@ export function Message({
   t,
   onBranch,
   notify,
+  onPreviewResult,
 }: {
+  onPreviewResult?: (text: string) => boolean | void;
   event: AgentEvent;
   t: (s: string) => string;
   onBranch: (id: number) => void;
@@ -56,7 +58,14 @@ export function Message({
         )}
       </div>
       <div className="message-body">
-        <Markdown text={event.data.text || ''} />
+        <Markdown
+          text={event.data.text || ''}
+          interaction={{
+            zh: t('settings') !== 'Settings',
+            sourceId: String(event.id),
+            onResult: user ? undefined : onPreviewResult,
+          }}
+        />
         {user && event.data.attachments?.length > 0 && (
           <div className="message-attachments">
             {event.data.attachments.map((a: { id: string; name: string; mime: string }) => (

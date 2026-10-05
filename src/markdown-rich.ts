@@ -54,13 +54,20 @@ export function localMediaKind(url: string) {
   const path = url.split(/[?#]/)[0].toLowerCase();
   return /\.(mp4|webm)$/.test(path) ? 'video' : /\.(mp3|wav|ogg|m4a)$/.test(path) ? 'audio' : null;
 }
-export function previewDocument(source: string) {
+export function previewDocument(source: string, resultToken?: string) {
+  const bridge =
+    resultToken && /^[a-z0-9-]{1,80}$/i.test(resultToken)
+      ? '<script>(()=>{const token=' +
+        JSON.stringify(resultToken) +
+        ';window.amadeus=Object.freeze({submitResult(result){try{const encoded=JSON.stringify(result);if(!encoded||encoded.length>20000)return false;parent.postMessage({type:"amadeus.preview.result",token,result},"*");return true;}catch{return false;}}});})();</script>'
+      : '';
   const policy =
     "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; media-src data:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
   return (
     '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="' +
     policy +
     '">' +
+    bridge +
     source
   );
 }
