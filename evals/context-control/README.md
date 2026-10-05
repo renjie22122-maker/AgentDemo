@@ -1,5 +1,7 @@
 # Paired context and control probes
 
+[English](README.md) | [简体中文](README.zh-CN.md) · [Documentation](../../docs/README.md)
+
 Run from the repository root:
 node --import tsx evals/context-control/run.ts --live --runs=3
 

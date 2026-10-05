@@ -1,49 +1,31 @@
-# Automatic approval design
+# Automatic approval
 
-Policy version: 2026-10-02.1.
+[English](AUTO-REVIEW.md) | [简体中文](AUTO-REVIEW.zh-CN.md) · [Documentation](README.md)
 
-## Public sources
+Reviewed: 2026-10-05; code baseline: `d663030`.
 
-- https://learn.chatgpt.com/docs/agent-approvals-security
-- https://developers.openai.com/api/docs/guides/agents/guardrails-approvals
-
-Inspired by public separation of sandbox enforcement, independent review, risk and
-authorization assessment, and failure-closed execution; not private Codex internals.
+Policy version in code: `2026-10-04.1`. This is Amadeus's implementation, not a claim to reproduce private Codex internals.
 
 ## Decision path
 
-Existing tool guards decide whether approval is needed. Only auto mode invokes this
-reviewer. Exact argument-free cd with execution metadata retains a narrow shortcut.
-Local high-risk matches and forceHuman require a person. Other requests get an
-independent, tool-free assessment with strict fields. The host permits bounded
-low-risk actions with explicit/implicit authorization and medium-risk actions with
-explicit authorization. Both require known effects, valid user-message references,
-and no sensitive-data/security-change flags. High/critical/unknown risks go to users.
+Tool guards first determine whether approval is required. Auto mode invokes a separate tool-free reviewer. Exact argument-free cd with execution metadata has a narrow shortcut. Deterministic dangerous matches, explicit ask rules and forceHuman still require a person.
 
-Changed user messages, conversation/settings or action invalidate the result.
-Malformed responses, cancellation and timeouts never grant permission. Even a
-provider ignoring cancellation cannot hold up approval indefinitely. Late results
-cannot authorize execution. There is no automatic reusable grant cache.
+The host accepts only validated bounded low-risk actions with explicit/implicit authorization, or medium-risk actions with explicit authorization, known effects, valid user-message references and no sensitive-data/security-change flags. High, critical and unknown risks go to the user. A changed operation, settings or authorization context invalidates the assessment.
 
-Audit records include policy version, assessment, rationale, duration, fingerprint
-and measured model usage. Existing human cards permit a one-time decision and
-do not change the sandbox. No additional project files are read or sent.
+## Evidence and privacy
 
-## Limits
+The same conversation profile may receive prior file observations and up to six scoped literal/package/test candidates: reads are bounded to 128,000 bytes per file and transmitted excerpts to 12,000 characters. Hashes and truncation flags accompany sources; npm pre/main/post scripts and recent same-run command observations may contribute. Imports and test discovery are not exhaustive.
 
-References establish provenance, not semantic truth. Models can misclassify actions
-or quoted text. This is not a shell parser or a safety proof. Unknown script effects
-require manual review; safe names are insufficient. High-risk handling is more
-conservative than some public Codex policies. Tests verify policy/control flow with
-fixtures, not a real-world false approval rate. The configured provider receives
-the request and selected user messages; audit records may contain command arguments.
-Never put secrets in commands. OS backend enforcement remains separate.
+A separately selected reviewer does not automatically receive code or command logs. Source text is untrusted data, never an instruction. File hashes are checked again after review; this is not a filesystem lock. Host execution is described with host network/file authority, not the native backend's restrictions.
 
-## Human clarification
+## Failure and user decisions
 
-When automatic review cannot allow, its optional clarification appears beside the
-exact operation and rationale. The user can allow this operation once, deny, or
-request an alternative with constraints. Alternative replies deny the original
-operation and return feedback to the agent for replanning. They never rewrite and
-execute a command behind the user's approval. High-risk automatic permissions were
-not broadened. A decision about unknown/high-risk actions still needs a human.
+Preparation, provider, invalid response, deadline and cancellation failures remain distinct. No failure authorizes an operation; raw provider error bodies are not exposed. Cards distinguish missing authorization, process ownership and incomplete evidence from reviewer unavailability. Broad process-name cleanup needs human scope review: cwd is not a process boundary.
+
+The user can allow once, deny or request an alternative with constraints. An alternative denies the original operation and returns feedback for replanning; it cannot rewrite and silently execute a different command. Approval waiting does not consume execution timeout.
+
+## Cache and audit
+
+Stable policy/environment fields precede changing evidence/actions. Identical in-flight reviews can share computation only under the same run/configuration/evidence/cancellation context. Completed results are evicted; each caller rechecks sources. This is not a reusable permission grant.
+
+Audit cards expose policy, rationale, duration, input/cached/output tokens and estimated cost separately from chat. Cache hits come from measured usage. Models can misclassify; zero test false approvals is not a safety proof. See [historical evaluation](APPROVAL-EVALUATION.md) and [security](SECURITY.md).

@@ -1,39 +1,35 @@
 # Security model
 
-Amadeus binds to loopback. It validates the Host header, uses an HttpOnly SameSite cookie, checks local origins and requires a CSRF token for mutations. It is a single-user desktop service, not an authenticated multi-user server.
+[English](SECURITY.md) | [简体中文](SECURITY.zh-CN.md) · [Documentation](README.md)
 
-File tools allow only authorized roots. Traversal, symlink/junction paths, hard-linked files, repository metadata and application private storage are rejected. These checks mitigate accidental escape; they are not an OS sandbox and do not eliminate filesystem TOCTOU races against a malicious concurrent local process.
+Reviewed: 2026-10-05; code baseline: `d663030`.
 
-Command execution:
+## Local service and data
 
-- Read-only conversations cannot execute commands. Isolated writable children can use an OS isolation backend, but never the host execution backend.
-- Personal chats have no project command capability.
-- Ask mode requires approval of the concrete command, directory and timeout. File-tool writes are scoped but do not require approval by default; enable **Approve file writes** in Settings to request approval for each mutation outside Trusted mode.
-- Trusted mode must be explicitly selected by the user. Isolated children of Trusted parents start in Ask mode; trust is not automatically delegated.
-- Fresh installations default to AppContainer on Windows and Docker elsewhere. Existing configurations retain their chosen backend. Missing isolation prerequisites reject commands; there is no automatic host fallback.
-- Host execution has host-user authority. Selected environment variables are passed without model API keys; this is hygiene, not isolation.
-- Docker defaults to UID:GID `1000:1000` (configurable), masks existing `.git`/`.agentdemo` directories, and rejects linked entries or metadata pointer files that cannot safely be masked. Docker mode disables network, drops capabilities, limits memory/PIDs/CPU, mounts only the chosen project folder and makes the container root filesystem read-only. Docker daemon/image availability is required. No host fallback is allowed.
+Amadeus is a single-user loopback service, not a multi-user deployment. Host/origin validation, HttpOnly SameSite cookies and CSRF checks protect its control API. Windows settings use current-user DPAPI; other platforms use restricted local files. Same-user malware or administrators can still access data. Keep .data and .diagnostics out of Git.
 
-Public web fetching resolves and pins DNS for each redirect, rejecting private, loopback, link-local and nonstandard-port destinations. It cannot reach the local Amadeus control API. Model/embedding endpoints are separately configured by the user and may be localhost services.
+FileScope checks authorized roots, traversal, symlinks/junctions, hard links, metadata and private storage. Case-normalized checks matter, but application path validation is not OS command isolation or an adversarial filesystem lock. Skills, retrieved documents, memories, screenshots and tool output are untrusted context.
 
-MCP server activation trusts the configured executable to start with host-user rights. It is disabled until enabled in Settings. Tool calls have separate interactive approvals. MCP descriptions and skill instructions do not grant permissions.
+## Approval versus isolation
 
-Document content, retrieved text, memory and skill bodies are untrusted task data. Prompt wording alone is not the security boundary.
+Read-only denies commands and writes; general chats have no project command capability. Ask requires concrete command approval. Scoped file writes are allowed by default; enable Approve file writes to approve mutations outside Trusted mode. Trusted is explicitly selected, and isolated children of Trusted parents start in Ask.
 
-A machine administrator or malicious local program with access to the user account can read local data and credentials. Windows Settings saves encrypt model, embedding and media keys with current-user DPAPI. Existing plaintext settings migrate on the next save. Encryption errors fail closed without plaintext fallback. Other platforms currently retain restricted local-file storage. DPAPI does not protect against a malicious process running as the same user. Keep `.data` and `.diagnostics` private and out of source control.
+Fresh configurations choose AppContainer on Windows and Docker elsewhere. Existing configurations retain their backend. Missing prerequisites fail closed, without host fallback. Host commands run with host-account rights; cwd does not contain their effects.
 
-Test success is not a sandbox security certification. Native AppContainer file boundaries and timeout were subsequently tested on Windows; strict offline preflight refused execution on this computer. Docker remains unverified here. See MIGRATION.md for cleanup, copy and merge limitations.
+Docker uses a non-root UID:GID (default 1000:1000), no network, dropped capabilities, resource limits, a read-only container root and a selected project mount. Metadata directories are masked; unsafe linked/metadata-pointer entries are rejected. Docker requires an installed image and running daemon; this workstation's Docker isolation has not been integration-certified.
 
-### Metadata boundary validation
+AppContainer requires an absolute Python path. File-isolation mode permits host network; strict offline additionally requires successful network-denial preflight. This workstation previously failed that preflight. Native execution refuses directories containing .git/.agentdemo: selective metadata-denial ACL testing failed, so it is not advertised as solved. Use a clean isolated copy. See [backends](MIGRATION.md).
 
-The current Windows native backend refuses command startup when the execution directory contains `.git` or `.agentdemo` (case-insensitive). A real test found that the attempted package-SID deny ACL did **not** prevent metadata reads, so that approach was withdrawn. Use a clean isolated copy for native execution; changing to host execution is an explicit loss of OS isolation. This is a fail-closed availability restriction, not a claim that selective native metadata isolation is solved. Docker masks are covered by contract tests; Docker integration has not been validated on this machine.
+## Other execution channels
 
-`resolve_effect` can present inspected evidence for an unresolved operation in the current conversation. Only a user confirmation resolves it; it never authorizes or replays the command. Known pre-start failures close their effect as `not_started`. Timeouts with uncertain execution remain unknown.
+MCP executables, browser adapters and Computer Use run with their separately configured host authority. Enabling them is not protected by the command sandbox. Public fetch_url validates/pins public DNS addresses and redirects; browser host rules are separate and are not DNS-pinned SSRF isolation. Configured model/embedding endpoints may intentionally be local.
 
-### Approval evidence and interrupted waiting
+Action restrictions can deny or require human review; they cannot grant wider authority. Source-injection warnings are heuristic, not complete taint analysis. Package signatures authenticate a supplied publisher key, not code safety.
 
-Approval waiting has no expiry and is outside command execution deadlines. A restart/stop cancels the in-memory waiter; the UI offers reassessment, never an implicit approval. File mutation effects begin after approval, so an unanswered file request is not an unknown write.
+## Effects and approval evidence
 
-Approve for me may reuse up to three prior file observations (8,000 characters each) and read up to three literal script paths referenced by the proposed command (8,000 bytes per file). Reads use the current execution folder's FileScope; no shell expansion or script execution is used. npm-family commands may supply package.json as evidence. Source sharing is limited to the conversation's same profile; a separately selected reviewer gets no source. File hashes are rechecked after review. This is bounded evidence gathering, not a full dependency audit or adversarial filesystem lock.
+Approval waits have no expiry. Effects begin only when an approved mutation is about to execute. Proven pre-start failures record not_started; timeouts may remain unknown. Exact file postimages can resolve automatically; arbitrary command outcomes require evidence and, where unresolved, user confirmation/retry authorization. No blind replay.
 
-Recovery automatically compares complete requested file contents and host-recorded edit postimage hashes before involving the user. The same checks run before a recovery model turn and before resolve_effect asks for confirmation. Mismatches, missing evidence and arbitrary command outcomes remain unresolved. Database existence alone does not prove a migration completed; no generic model-only resolver has been enabled.
+Automatic review may inspect bounded source evidence only under its authorized same-profile path; separate reviewers do not automatically receive it. Failure means human review, never allow. See [automatic approval](AUTO-REVIEW.md).
+
+Regression tests establish exercised contracts, not a security certification or correctness proof.

@@ -1,5 +1,7 @@
 # Live planning comparison
 
+[English](README.md) | [简体中文](README.zh-CN.md) · [Documentation](../../docs/README.md)
+
 This is a real API **planning-only** comparison, not an end-to-end coding benchmark or a worker-throughput claim.
 Fifteen authored tasks cover dependencies, independent branches, shared-file ordering and read-only scope. Five are development cases; ten are reserved for evaluation. The model sees task descriptions and IDs, not the expected edge set.
 

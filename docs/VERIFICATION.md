@@ -1,8 +1,14 @@
-# Verification
+# Testing and evidence
 
-## Reproduce
+[English](VERIFICATION.md) | [简体中文](VERIFICATION.zh-CN.md) · [Documentation](README.md)
 
-Use Node 24 or newer and pnpm 11.19.0:
+Reviewed: 2026-10-05; code baseline: `d663030`.
+
+## Current verification baseline
+
+On 2026-10-05, the Amadeus rename at d663030 passed 333 tests, with 2 explicitly skipped environment-dependent tests, plus TypeScript and production build. This documentation update does not constitute new paid-model or OS-isolation testing. The build still reports large chunks.
+
+Run from repository root:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -11,44 +17,32 @@ pnpm test
 pnpm build
 ```
 
-GitHub Actions runs these checks on Windows and Linux. Local passing results do not establish remote CI status.
+Use pnpm 11.19.0 and Node.js 24+. CI runs the checks on Ubuntu and Windows. A local pass is not a claim that a later remote CI job passed.
 
-## Current audit
+Optional host tests:
 
-113 local regression tests passed on Windows. Coverage includes durable follow-up delivery after model failure, interrupted merge continuation and version conflicts, recovery ownership, scheduler eligibility, provider truncation classification and bounded HTTP retries, checkpoint persistence, and exclusive service ownership. Tests use temporary stores and fake credentials. This is mechanism coverage, not an unseen-task success benchmark.
+```powershell
+$env:AGENTDEMO_BROWSER_TEST = '1'
+node --import tsx --test tests/browser-tabs.test.ts
+$env:AGENTDEMO_DESKTOP_TEST = '1'
+node --import tsx --test tests/window-capture.test.ts
+```
 
-Three previously failing reproductions now confirm: queued follow-ups reach the next model request; merged workers receive no writable assignments; changing discovery origin does not forward the saved credential.
-A real DeepSeek Flash trial read a randomized raster code and color exclusively through read_image. It validates that route, not general visual accuracy.
+The desktop fixture creates its own windows and tests covered-window capture/minimized rejection; it is not a broad application benchmark. A skip is not a pass.
 
-## Boundaries
+## What evidence means
 
-- Native AppContainer and Docker integrations require their respective host environments; unit tests do not certify OS isolation.
-- Native reparse points, including dependency junctions, remain rejected. Do not replace this with silently following links; use a supported materialized dependency layout or explicitly approved host execution.
-- Unknown command/write effects still require reconciliation. Recovery never automatically replays ambiguous side effects.
-- Team terms are audit revisions. Current-role checks and a single service lock enforce this host's authority; this is not distributed consensus.
-- Checkpoint separation reduces repeated database writes. JSON serialization still runs in-process.
-- Historical validation counts elsewhere document their revisions, not today's suite or universal capability.
-- Real Anthropic, Gemini, and Responses endpoints were not exercised in this audit; their protocol error paths were tested with fixtures.
+A tool receipt proves that an observation occurred against recorded artifacts, not semantic correctness. File coverage comes from actual matching reads; command exit zero does not check every declared file. Verification tasks require a passed observation before done; owner self-check and another-run check are distinct. A different run alone does not ensure independent reasoning.
 
-## 2026-10-01 update
+Snapshots include declared artifacts/read paths, package/config manifests and recognizable relative JS/TS imports. Bounds: 512 entries, 4 MB/file, 16 MB total. Incomplete inputs reject binding. Dynamic imports, external resolution and undeclared dependencies are not fully covered. Before/after hashes detect many stale cases, not adversarial TOCTOU.
 
-147 Windows regression tests, TypeScript checking and production build passed. Two real-model planning comparisons each used 15 tasks, 3 repetitions and 2 arms. See [the results and limitations](PLANNING-EVALUATION-20261001.md); these are planning-protocol checks, not autonomous coding or learned-scheduler benchmarks.
+Tests include negative controls, crash windows, unknown effects, startup state combinations, permissions, source scopes and replay prevention. They do not exhaust every runtime sequence or certify isolation.
 
-## Dependency-aware snapshots and dispatch shutdown
+## Benchmarks
 
-Verification snapshots include task artifacts and declared readPaths (including bounded
-directory traversal), root package/lock/config manifests, and recognizable relative JS/TS
-imports/re-exports/require calls. The lexical import recognizer is conservative, not a full
-language resolver: comments may cause false positives, dynamic imports and package resolution
-are incomplete. Declare additional inputs explicitly. Standard dependency/build/private
-directories are excluded when walking directories. Snapshots cap at 512 entries, 4 MB per file
-and 16 MB total; exceeding limits or unresolved imports marks them incomplete and rejects binding.
+- [Coding pilot](../evals/coding/README.md): production runtime on small synthetic tasks; both arms 10/10, with no reuse/compaction exercised.
+- [Planning](../evals/planning/README.md): proposal protocol and graph checks, not delivered code or worker throughput.
+- [Context/control](../evals/context-control/README.md): paired synthetic probes; no demonstrated implementation benefit.
+- [Approval history](APPROVAL-EVALUATION.md): 0 percentage-point incremental reduction on its small balanced sample.
 
-Opened-file metadata is checked before/after hashing and against the current scoped path.
-Checks reject changes during execution, manifest removal and declared directory input deletion
-before recording. This narrows stale-evidence gaps; it is not a lock or adversarial TOCTOU proof.
-A concurrent writer can still race between observations or restore earlier bytes.
-A check's zero exit code still does not establish its acceptance criterion.
-
-RunPump is tested for per-conversation fairness, queued cancellation and shutdown draining.
-Stopping acceptance prevents completed tasks from dispatching queued work during shutdown.
+API usage omissions and unconfigured prices remain unknown. Cached tokens are a subset of input, not extra tokens. Historical reports are dated and kept in [history](history/README.md); no numeric capability rating is inferred.

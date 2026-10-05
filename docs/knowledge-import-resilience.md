@@ -1,22 +1,29 @@
-# Folder import and failure isolation
+# Folder import and automatic maintenance
 
-Folder watching has no fixed byte-size, file-count, directory-entry or PDF-page-count ceiling.
-Only explicitly authorized roots are traversed. Hidden/build entries, symbolic links and unsupported formats remain excluded and counted.
+[English](knowledge-import-resilience.md) | [简体中文](knowledge-import-resilience.zh-CN.md) · [Documentation](README.md)
 
-Each changed source is hashed through a stream, parsed sequentially in a separate process, and checked again before import. PDF text is extracted page by page (including pages after 500), with page resources released. Scanned pages use OCR; there is no 50-page cutoff. Extracted text keeps page labels for citations.
+Reviewed: 2026-10-05; code baseline: `d663030`.
 
-This is not unlimited resource consumption: the parser uses a 768 MB V8 heap setting and a 120-second per-file timeout. Native-library memory is not covered by the V8 heap limit. Extraction is rejected above 5 million characters, rather than silently truncated. Large or expensive files that hit these protections need splitting; automatic resumable PDF segmentation is not implemented. The web attachment upload limit is separate and unchanged.
+## Configure
 
-Parse failures are recorded per file and do not block siblings. Unchanged failed bytes are retried at most three times; changed bytes or the existing Save sources / retry action reset attempts. Successful unchanged sources are reused. Incomplete traversal never retires unseen documents. A changed source that fails parsing retires its stale indexed version. Index/graph errors are separately reported and retain network retry/credential-recovery behavior.
+Choose All general chats / shared library, a project, or a private conversation scope. Shared general folders do not grant chat command access; projects never implicitly read the general library. Project folder sources must belong to registered project roots. Private conversation scope supports imported documents, not arbitrary host folder scans.
 
-The UI shows partial completion, individual errors and excluded-entry counts. Empty tool searches include scope-limited diagnostics distinguishing disabled knowledge, no imported documents, import failure and no matches. Chat history is not automatically a knowledge document.
+Register up to 12 source paths, choose embedding, optionally authorize graph extraction, then enable/save maintenance. The 30-second worker handles subsequent changes. Local E5 keeps embeddings local; remote embedding and graph extraction disclose their separate destinations. Adding folders does not reparse unchanged successful documents; hashes are checked, same-model vectors reused. Moved files or changed scope have new identities.
 
-Regression coverage includes corrupt-file isolation, retry/reuse, more than 1,000 sources, and a real PDF larger than 25 MB with 501 pages whose final-page text must be recovered.
+## Parsing and limits
 
-## Visible progress and incremental updates
+There is no fixed supported-file count, visited-entry count, single-source byte size or PDF-page ceiling. Hidden/build/dependency entries, links and unsupported formats remain skipped and counted.
 
-Maintenance publishes its current stage, file, elapsed time and processed counts. Scanning and retrieval evaluation have indeterminate progress; parsing and indexing use separate denominators, not an invented overall time estimate. Vector status counts persisted chunks for the currently selected model. Progress polling does not replace an edited folder draft.
+Supported documents include text, Markdown, CSV, JSON, DOCX, XLSX and text PDFs. Images/scanned pages use local Windows OCR with installed language packs. PDFs extract page by page, including beyond page 500, preserving page labels.
 
-Adding a folder within the same scope preserves source identities and content hashes. Unchanged successful documents are not reparsed and completed vector jobs for the same model are reused. Moving a file or changing scope creates a different source identity; changing embedding models requires new vectors.
+Parsing is sequential per changed source in a separate process, with a 120-second timeout, 768 MB V8 heap and 5-million-character extracted-text limit. Native memory is not bounded by V8. Excessive extraction fails visibly rather than silently truncating. Very expensive files still need splitting; resumable automatic PDF segmentation is not implemented. Attachment upload limits are independent.
 
-The scope-level batch indexing button queues a durable background job for current document versions without enabling folder watching or graph extraction. Jobs reuse existing vectors, remain scope-bound, and refuse to continue after an embedding destination change. The ordinary automatic-maintenance mode already indexes imported documents; manual batch indexing is a repair/one-shot alternative.
+## Failures and versions
+
+Each file fails independently. Unchanged failed bytes get at most three parse attempts; changed bytes or Save sources / retry resets them. Transient indexing/network failures use backoff; configuration errors pause and can resume after matching repairs. A failed changed source retires the stale indexed version. Incomplete scans never retire unseen files.
+
+Progress reports stage/file/elapsed/counts. Scan/evaluation can be indeterminate; each stage has its own denominator, not a promised ETA. The panel and progress load separately from vector statistics; edited drafts are retained.
+
+Automatic maintenance indexes imported documents. Batch fill indexes is a one-shot repair for current-scope versions, reuses completed vectors and refuses a changed destination. It does not implicitly enable watching or graph extraction.
+
+Empty searches distinguish no matches, disabled scope, no documents and import failure. Chat history itself is not a knowledge document. See [memory and retrieval](MEMORY.md).

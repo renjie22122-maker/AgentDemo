@@ -1,5 +1,7 @@
 # Rich conversation content
 
+[English](CHAT-FORMATTING.md) | [简体中文](CHAT-FORMATTING.zh-CN.md) · [Documentation](README.md)
+
 The renderer supports standard Markdown headings, lists, task lists, tables, links, images, syntax-highlighted fenced code and KaTeX math. Code blocks have copy and collapse controls. Large formulas scroll horizontally.
 
 ## Bold text and literal syntax
@@ -36,4 +38,4 @@ The microphone icon is next to **Send**. Configure a transcription connection in
 
 ## Validation
 
-332 regression tests passed, with 2 environment-dependent skips. A real headless Edge fixture verified default previews, state-preserving switches, same-sized scrolling code, two Mermaid diagrams and mobile width. TypeScript and the production build passed. No paid media service was called.
+See [verification](VERIFICATION.md) for the current regression baseline. A real headless Edge fixture verified default previews, state-preserving switches, same-sized scrolling code, two Mermaid diagrams and mobile width. TypeScript and the production build passed. No paid media service was called.

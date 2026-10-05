@@ -1,52 +1,27 @@
 # Planning and empirical routing
 
-Amadeus separates plan proposals, host graph validation, scheduling, and verification.
-None of these is a proof that a program is correct.
+[English](PLANNING-AND-ROUTING.md) | [简体中文](PLANNING-AND-ROUTING.zh-CN.md) · [Documentation](README.md)
 
-## Plan proposals and compilation
+Reviewed: 2026-10-05; code baseline: `d663030`.
 
-The model proposes tasks. Optional task kinds are inspect, implement, verify and deliver.
-preview_plan compiles the same schema used by create_plan without creating work. The compiler
-resolves provides/requires contracts, checks read-only scope and cycles, emits dependency
-layers and warns about resource overlap or missing explicit verification successors.
-A verify task must declare dependencies. The compiled graph is saved with the task board.
+## Plan before scheduling
 
-The host supplies planning policy from observed file changes and delegation. Three changed
-file paths or two delegation attempts recommend a plan. Existing plans are recognized.
-This is deterministic observation, not natural-language complexity detection; it does not
-force ordinary questions through a planner or prove the model chose a complete decomposition.
+The LLM proposes inspect/implement/verify/deliver tasks. preview_plan uses the same compiler as create_plan without creating work. The host resolves provides/requires and sourced external inputs, rejects cycles and missing/ambiguous producers, checks read-only scope and records layers/resource warnings. Verify tasks declare dependencies.
 
-## Measured feedback in routing
+Observed changes to three files or two delegation attempts can recommend a plan. This is deterministic observation, not a natural-language complexity oracle or proof of a complete task decomposition.
 
-Existing expertise, file ownership and load scores remain the cold-start baseline. Task
-attempts record start/end time, model route, project scope and successful/failed tool results.
-Estimated cost is a difference of host usage accounting, not a provider invoice. Concurrent
-tasks sharing a worker make attribution ambiguous; those attempts do not train routing.
-Cancellation, permission and connection errors are not evidence of model incompetence.
+## Assignment
 
-A bounded empirical adjustment activates after five relevant attributed samples from the
-last 30 days (up to 50 samples), restricted to the same project, model route and declared worker specialization. Ordinary
-chat history is conversation-local. Checked outcomes require the current task still have
-valid recorded verification; stale, unverified or reopened tasks are excluded. Blocked
-attempts only count when they include an observed tool failure. This is not a true failure
-probability: blocking has multiple causes.
+Eligibility checks precede scoring: dependency readiness, permissions, isolation, resource conflicts, capacity and unresolved effects. Cold-start scores use declared expertise, path ownership, lexical task relevance and load. A readonly blackboard gives task, message, artifact and evidence context without changing permissions.
 
-Routing considers smoothed check rate, median elapsed time, median estimated cost and
-observed outcomes for declared requiredTools. Null/unknown cost is never converted to zero.
-Required tool names and expertise are hints; they grant no tools or permissions. Permission,
-isolation, capacity and dependency checks still precede assignment.
+Attempts record route/scope/specialization, elapsed time, usage-derived cost and tool outcomes. Ambiguous concurrent attribution is excluded; cancellation, permission and connection errors are not model incompetence. Checked history requires still-valid verification; reopened, stale and unverified work cannot train success.
 
-This is feedback-informed heuristic routing, not global optimization, a calibrated success
-predictor, or demonstrated superiority over the previous scheduler. Offline regression verifies
-mechanisms; paired held-out real tasks are needed to establish gains in success/cost/latency.
+After five relevant attributed samples in the last 30 days (up to 50), bounded feedback considers smoothed check rate, median time/cost and required-tool outcomes. Unknown cost is not zero. Project histories do not mix; ordinary chat history is conversation-local.
 
-## Runtime boundaries and verification
+## Recovery and evaluation
 
-RunEnvironment owns workspace resolution, scoped memory recall and construction of model
-context facts. It has no provider, lifecycle, scheduler or execution-controller access.
-Runtime retains run lifecycle and tool/model iteration; this is an incremental boundary,
-not a claim that all orchestration coupling has been eliminated.
+Opt-in team automation can recover inspected read-only members, add bounded workers, retire idle host-created workers and transfer coordinator roles. Reservations and role revisions fence duplicate/stale mutations. Unknown write outcomes are not automatically reassigned.
 
-Recorded verification now distinguishes a file observation from a command check, and whether
-the checking run differs from the task owner. A separate run is not necessarily independent
-reasoning. Tests, negative controls and independent inputs remain essential.
+This remains feedback-informed heuristic routing, not a calibrated success predictor or optimal global scheduler. Role transfer is single-host coordination, not distributed consensus.
+
+The [2026-10-01 planning report](PLANNING-EVALUATION-20261001.md) measured protocol adherence only. Future gains require fresh held-out end-to-end tasks with matched resources, quality, total cost and latency. Another-run verification and exit-zero evidence do not prove semantic correctness.

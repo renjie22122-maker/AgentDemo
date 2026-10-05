@@ -1,5 +1,7 @@
 # Coding runtime pilot
 
+[English](README.md) | [简体中文](README.zh-CN.md) · [Documentation](../../docs/README.md)
+
 This is a small **synthetic coding pilot**, not SWE-bench, not an unseen real-repository benchmark, and not evidence of superiority over another agent.
 
 Uses the production Runtime with a restricted file-tool adapter. Each attempt has an empty, independent store, no memory, knowledge, skills, commands, network tools or delegation. Only the configured model endpoint receives task prompts. Credentials stay in memory. Executable submissions are graded outside the agent scope in a Node permission-restricted process with per-call VM and process deadlines; this is not a container security benchmark.
