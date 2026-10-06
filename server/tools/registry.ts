@@ -569,13 +569,14 @@ export function tools() {
   registry.add({
     name: 'run_command',
     description:
-      'Execute a command in a project folder. Host execution requires user approval unless trusted mode is explicitly selected. Host mode has no OS file isolation.',
+      'Execute a command in a project folder. Host execution requires user approval unless trusted mode is explicitly selected. Host mode has no OS file isolation. By default, after 10 seconds the SAME process continues as a background job, without changing its execution timeout. Set yieldAfterSeconds=0 for strictly synchronous dependent work. A running job is not a successful command result.',
     effect: 'execute',
     schema: z.object({
       command: z.string().min(1).max(20000),
       folder: z.number().int().min(0).default(0),
       timeoutSeconds: z.number().int().min(1).max(1800).default(120),
       background: z.boolean().default(false),
+      yieldAfterSeconds: z.number().min(0).max(60).default(10),
       readyText: z.string().min(1).max(200).optional(),
       reason: z.string().min(1),
     }),
@@ -659,6 +660,62 @@ export function tools() {
             a.readyText,
           ),
         );
+      if (a.yieldAfterSeconds > 0) {
+        // Start once under the background lifecycle, but preserve synchronous results
+        // for short commands. Only detached jobs send a completion notification.
+        const delivery = { detached: false };
+        const job = c.background.start(
+          c.run,
+          a.command,
+          c.files.roots[a.folder],
+          a.timeoutSeconds,
+          effectiveSettings(c),
+          c.signal,
+          a.readyText,
+          undefined,
+          delivery,
+        );
+        const settled = await c.background.wait(
+          c.conversation.id,
+          job.id,
+          c.signal,
+          a.yieldAfterSeconds,
+        );
+        if (settled.result)
+          return { ...text(settled.result), outcome: commandOutcome(settled.result) };
+        if (settled.notStarted) {
+          c.run.executionBlock = {
+            signature: executionSignature(c),
+            reason: settled.error || 'Execution did not start.',
+          };
+          c.store.put('run', c.run);
+          throw new NotStartedError(
+            settled.errorCode || 'EXECUTION_NOT_STARTED',
+            settled.error || 'Execution did not start.',
+          );
+        }
+        if (!['running', 'waiting_approval'].includes(settled.status))
+          return {
+            ...text(settled),
+            outcome: { status: 'unknown', code: 'COMMAND_OUTCOME_UNKNOWN' },
+          };
+        delivery.detached = true;
+        c.store.event(c.run.conversationId, c.run.id, 'command.yielded', {
+          id: job.id,
+          callId: c.callId,
+          timeoutSeconds: a.timeoutSeconds,
+          message: 'The same command continues in the background; it was not restarted.',
+        });
+        return {
+          ...text({
+            ...settled,
+            autoBackground: true,
+            instruction:
+              'Command is still running, NOT passed. Continue only independent work; do not modify its files, outputs or environment. Use wait_background_command before dependent work. Do not resubmit this command.',
+          }),
+          outcome: { status: 'succeeded', code: 'COMMAND_SCHEDULED', executionStarted: true },
+        };
+      }
       c.beforeExecution?.();
       const startedAt = Date.now();
       let pendingOutput = '';

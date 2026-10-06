@@ -41,3 +41,9 @@ Creation relationships are distinct from task dependencies. Communication counts
 ## Model request recovery
 
 Malformed tool arguments allow up to two correction requests per model step. Temporary connection failures or interrupted streams reconnect up to five times with 2/4/8/16/30-second delays; progress is visible and Stop cancels the wait. Successful responses reset these allowances. Only the failed model response is requested again: partial tool calls never execute and completed tool operations remain in context. Partial text is marked incomplete. Retries can incur additional provider charges; unavailable usage is not treated as measured zero. Credential/configuration errors are not retried automatically. After exhaustion, the run stops with a recoverable reason; an explicit model-step limit still applies.
+
+## Long commands and timeout tests
+
+A single ordinary command now waits up to 10 seconds, then returns the ID of the same still-running background process. Its execution timeout is unchanged; approval wait is excluded. The UI records the handoff and background progress. New messages wake background waits. The agent may do independent work, but must not change files, outputs or environments being used by that job. When no independent work remains, it waits for an event rather than polling the model.
+
+Short commands return their original exit code/output. A scheduled job is not passing test evidence. Set yieldAfterSeconds=0 for strict synchronous completion, or background=true for immediate scheduling. Implicit multi-call batches, sequential workflows and hooks retain synchronous defaults to preserve dependencies. This does not create a filesystem lock or guarantee that the model always chooses useful parallel work. Already-running foreground commands on an older service are not retroactively detached.

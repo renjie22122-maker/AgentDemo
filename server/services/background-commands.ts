@@ -20,6 +20,8 @@ export interface CommandJob {
   stderr: string;
   result?: CommandResult;
   error?: string;
+  errorCode?: string;
+  notStarted?: boolean;
   readyText?: string;
   readyObserved: boolean;
 }
@@ -88,6 +90,7 @@ export class BackgroundCommands {
     signal: AbortSignal,
     readyText?: string,
     approval?: { id: string; authorize: (signal: AbortSignal) => Promise<void> },
+    delivery?: { detached: boolean },
   ) {
     signal.throwIfAborted();
     const job = this.store.transaction(() => {
@@ -168,6 +171,8 @@ export class BackgroundCommands {
         this.store.endEffect(job.effectId, JSON.stringify(result).slice(0, 20000));
       } catch (error) {
         job.error = errorMessage(error);
+        job.notStarted = error instanceof NotStartedError;
+        job.errorCode = error instanceof NotStartedError ? error.code : undefined;
         job.status = !job.effectId
           ? controller.signal.aborted
             ? 'cancelled'
@@ -185,7 +190,7 @@ export class BackgroundCommands {
         save();
         this.active.delete(job.id);
         this.store.event(job.conversationId, job.runId, 'command.background', this.view(job));
-        this.notify(job);
+        if (delivery?.detached !== false) this.notify(job);
       }
     })();
     this.active.set(job.id, { controller, task });

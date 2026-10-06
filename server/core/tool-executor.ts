@@ -36,7 +36,11 @@ export class ToolExecutor {
         const paths = new TaskBoard(this.store).get(run).tasks.flatMap(verificationPaths);
         const observe = paths.length && ['read_file', 'run_command'].includes(call.name);
         const before = observe ? await stamp(ctx.files, paths) : undefined;
-        const output = await this.invoke(run, call, ctx, images, outcomes);
+        const executionCall =
+          calls.length > 1 && call.name === 'run_command' && !call.arguments.background
+            ? { ...call, arguments: { ...call.arguments, yieldAfterSeconds: 0 } }
+            : call;
+        const output = await this.invoke(run, executionCall, ctx, images, outcomes);
         const after = observe ? await stamp(ctx.files, paths) : undefined;
         let passed = call.name === 'read_file' && outcomes.get(call.id)?.status === 'succeeded';
         if (call.name === 'run_command')
@@ -161,6 +165,7 @@ export class ToolExecutor {
               timeoutSeconds,
               folder: 0,
               background: false,
+              yieldAfterSeconds: 0,
               reason: 'Configured hook ' + hookId,
             },
           };
@@ -229,7 +234,12 @@ export class ToolExecutor {
         invokeTool: async (name, args, index) => {
           if (['tool_workflow', 'batch_read_tools', 'search_capabilities'].includes(name))
             throw new NotStartedError('WORKFLOW_RECURSION', 'Nested composition is not allowed.');
-          const nested = { id: call.id + ':step:' + index, name, arguments: args };
+          const nested = {
+            id: call.id + ':step:' + index,
+            name,
+            arguments:
+              name === 'run_command' && !args.background ? { ...args, yieldAfterSeconds: 0 } : args,
+          };
           const childImages = new Map<string, string[]>(),
             childOutcomes = new Map<string, ToolOutcome>();
           const content = await this.invoke(

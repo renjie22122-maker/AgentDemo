@@ -1843,3 +1843,170 @@ test('stop cancels model reconnection waiting without another request', async ()
     f.store.close();
   }
 });
+
+test(
+  'foreground command auto-yields once, continues independent work and receives steering',
+  { timeout: 15000 },
+  async () => {
+    let calls = 0,
+      jobId = '',
+      workedWhileRunning = false;
+    const f = await setup({
+      complete: async (req) => {
+        calls++;
+        if (calls === 1)
+          return result('', [
+            {
+              id: 'start-bg',
+              name: 'run_command',
+              arguments: {
+                command:
+                  '"' +
+                  process.execPath +
+                  '" -e "console.log(123);setTimeout(()=>console.log(456),2500)"',
+                folder: 0,
+                yieldAfterSeconds: 0.15,
+                timeoutSeconds: 10,
+                reason: 'bounded background test',
+              },
+            },
+          ]);
+        if (calls === 2) {
+          jobId = JSON.parse(
+            req.messages.find((m) => m.role === 'tool' && m.callId === 'start-bg')!.content,
+          ).id;
+          workedWhileRunning = f.runtime.background.get('chat', jobId).status === 'running';
+          return result('', [
+            {
+              id: 'independent',
+              name: 'write_file',
+              arguments: { path: 'independent.txt', content: 'done while command waits' },
+            },
+          ]);
+        }
+        if (calls === 3)
+          return result('', [
+            { id: 'wait-bg', name: 'wait_background_command', arguments: { id: jobId } },
+          ]);
+        if (calls === 4) {
+          assert(req.messages.some((m) => m.role === 'user' && m.content === 'status please'));
+          assert.equal(f.runtime.background.get('chat', jobId).status, 'running');
+          return result('', [
+            { id: 'wait-again', name: 'wait_background_command', arguments: { id: jobId } },
+          ]);
+        }
+        return result('Background and independent work finished.');
+      },
+    });
+    f.store.put('project', {
+      id: 'p',
+      name: 'Fixture',
+      folders: [await mkdtemp(join(tmpdir(), 'background-work-'))],
+      createdAt: 1,
+    });
+    f.store.put('conversation', {
+      ...f.store.get<any>('conversation', 'chat'),
+      projectId: 'p',
+      permission: 'trusted',
+    });
+    try {
+      const run = f.runtime.start('chat', 'Prepare two independent outputs');
+      await until(() =>
+        f.store
+          .events('chat')
+          .some((e) => e.type === 'tool.started' && e.data.callId === 'wait-bg'),
+      );
+      await new Promise((r) => setTimeout(r, 100));
+      const before = calls;
+      await new Promise((r) => setTimeout(r, 150));
+      assert.equal(calls, before);
+      f.runtime.steer('chat', 'status please');
+      await until(() => calls >= 4);
+      await until(() => f.store.get<any>('run', run.id).status === 'completed', 7000);
+      assert(workedWhileRunning);
+      assert.equal(f.store.events('chat').filter((e) => e.type === 'command.yielded').length, 1);
+      assert.equal(f.runtime.background.list('chat').length, 1);
+      assert.equal(f.runtime.background.get('chat', jobId).timeoutSeconds, 10);
+      assert.equal(
+        f.runtime.background.get('chat', jobId).result?.stdout.replaceAll('\r', '').trim(),
+        '123\n456',
+      );
+      assert.equal(f.runtime.background.get('chat', jobId).status, 'completed');
+      assert.equal(f.store.unknownEffects('chat').length, 0);
+      assert(calls <= 6, 'waiting must not poll the model');
+      assert.equal(
+        f.store.events('chat').filter((e) => e.type === 'user.message').length,
+        2,
+        'host completion must not impersonate user input',
+      );
+    } finally {
+      await f.runtime.shutdown();
+      f.store.close();
+    }
+  },
+);
+
+test(
+  'auto-yield preserves command timeout and never treats scheduling as a passed test',
+  { timeout: 15000 },
+  async () => {
+    let calls = 0,
+      jobId = '';
+    const f = await setup({
+      complete: async (req) => {
+        calls++;
+        if (calls === 1)
+          return result('', [
+            {
+              id: 'timeout-test',
+              name: 'run_command',
+              arguments: {
+                command: '"' + process.execPath + '" -e "setTimeout(()=>console.log(999),10000)"',
+                timeoutSeconds: 1,
+                yieldAfterSeconds: 0.1,
+                reason: 'Timeout behavior test',
+              },
+            },
+          ]);
+        if (calls === 2) {
+          const output = JSON.parse(
+            req.messages.find((m) => m.role === 'tool' && m.callId === 'timeout-test')!.content,
+          );
+          jobId = output.id;
+          assert.equal(output.status, 'running');
+          assert.equal(output.autoBackground, true);
+          const event = f.store
+            .events('chat')
+            .find((e) => e.type === 'tool.completed' && e.data.callId === 'timeout-test')!;
+          const { resultSucceeded } = await import('../server/core/tool-outcome.js');
+          assert.equal(resultSucceeded(event.data), false);
+          return result('', [
+            { id: 'wait-timeout', name: 'wait_background_command', arguments: { id: jobId } },
+          ]);
+        }
+        assert.equal(f.runtime.background.get('chat', jobId).result?.timedOut, true);
+        return result('Observed actual timeout.');
+      },
+    });
+    f.store.put('project', {
+      id: 'p',
+      name: 'Fixture',
+      folders: [await mkdtemp(join(tmpdir(), 'auto-timeout-'))],
+      createdAt: 1,
+    });
+    f.store.put('conversation', {
+      ...f.store.get<any>('conversation', 'chat'),
+      projectId: 'p',
+      permission: 'trusted',
+    });
+    try {
+      const run = f.runtime.start('chat', 'Check timeout');
+      await until(() => f.store.get<any>('run', run.id).status === 'completed', 10000);
+      assert.equal(f.runtime.background.list('chat').length, 1);
+      assert.equal(f.runtime.background.get('chat', jobId).result?.stdout.includes('999'), false);
+    } finally {
+      await f.runtime.shutdown();
+      f.store.close();
+    }
+  },
+);

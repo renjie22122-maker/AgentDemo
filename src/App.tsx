@@ -666,6 +666,7 @@ export function App() {
         [
           'command.background',
           'command.progress',
+          'command.yielded',
           'tool.started',
           'tool.completed',
           'model.started',

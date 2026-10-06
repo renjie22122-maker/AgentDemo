@@ -1,7 +1,8 @@
 import type { ToolOutcome } from '../../shared/types.js';
 /** Legacy decoding is restricted to historical records lacking typed outcomes. */
 export function resultSucceeded(data: any): boolean {
-  if (data.outcome) return data.outcome.status === 'succeeded';
+  if (data.outcome)
+    return data.outcome.status === 'succeeded' && data.outcome.code !== 'COMMAND_SCHEDULED';
   if (String(data.output).startsWith('Tool error:') || String(data.output).startsWith('DENIED'))
     return false;
   if (data.name === 'run_command') {

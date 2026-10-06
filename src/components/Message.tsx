@@ -173,43 +173,47 @@ export function Activity({ events, t }: { events: AgentEvent[]; t: (s: string) =
               e.data.id +
               ' · ' +
               (e.data.stdout || e.data.error || '').slice(-160)
-            : e.type === 'command.progress'
-              ? (t('settings') === 'Settings' ? 'Command running' : '命令执行中') +
-                ' · ' +
-                e.data.elapsedSeconds +
-                's / ' +
-                e.data.timeoutSeconds +
-                's · ' +
-                (e.data.outputTail ||
-                  (t('settings') === 'Settings' ? 'Waiting for output' : '等待输出'))
-              : e.type === 'model.reconnecting'
-                ? (t('settings') === 'Settings'
-                    ? 'Connection interrupted; retrying'
-                    : '连接中断，正在重连') +
-                  ' ' +
-                  e.data.attempt +
-                  '/' +
-                  e.data.maxAttempts +
+            : e.type === 'command.yielded'
+              ? t('settings') === 'Settings'
+                ? 'Command continues in background; independent work can proceed'
+                : '命令已转后台继续，可处理独立工作'
+              : e.type === 'command.progress'
+                ? (t('settings') === 'Settings' ? 'Command running' : '命令执行中') +
                   ' · ' +
-                  e.data.delayMs / 1000 +
-                  's'
-                : e.type === 'model.protocol-repair'
-                  ? t(
-                      e.data.code === 'OUTPUT_LIMIT'
-                        ? 'Output truncated; retrying one smaller step'
-                        : 'Correcting model tool arguments',
-                    )
-                  : e.type === 'model.started'
-                    ? 'Thinking · ' + e.data.model
-                    : e.type === 'tool.started'
-                      ? e.data.name + ' · ' + JSON.stringify(e.data.arguments)
-                      : e.type === 'tool.completed'
-                        ? e.data.name + ' · ' + String(e.data.output).slice(0, 100)
-                        : e.type === 'context.compacted'
-                          ? 'Context compacted'
-                          : e.type === 'child.started'
-                            ? 'Delegated · ' + e.data.task
-                            : e.type;
+                  e.data.elapsedSeconds +
+                  's / ' +
+                  e.data.timeoutSeconds +
+                  's · ' +
+                  (e.data.outputTail ||
+                    (t('settings') === 'Settings' ? 'Waiting for output' : '等待输出'))
+                : e.type === 'model.reconnecting'
+                  ? (t('settings') === 'Settings'
+                      ? 'Connection interrupted; retrying'
+                      : '连接中断，正在重连') +
+                    ' ' +
+                    e.data.attempt +
+                    '/' +
+                    e.data.maxAttempts +
+                    ' · ' +
+                    e.data.delayMs / 1000 +
+                    's'
+                  : e.type === 'model.protocol-repair'
+                    ? t(
+                        e.data.code === 'OUTPUT_LIMIT'
+                          ? 'Output truncated; retrying one smaller step'
+                          : 'Correcting model tool arguments',
+                      )
+                    : e.type === 'model.started'
+                      ? 'Thinking · ' + e.data.model
+                      : e.type === 'tool.started'
+                        ? e.data.name + ' · ' + JSON.stringify(e.data.arguments)
+                        : e.type === 'tool.completed'
+                          ? e.data.name + ' · ' + String(e.data.output).slice(0, 100)
+                          : e.type === 'context.compacted'
+                            ? 'Context compacted'
+                            : e.type === 'child.started'
+                              ? 'Delegated · ' + e.data.task
+                              : e.type;
   return (
     <details
       className="activity"
