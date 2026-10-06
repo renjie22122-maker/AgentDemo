@@ -2,7 +2,7 @@
 
 [English](ARCHITECTURE.md) | [简体中文](ARCHITECTURE.zh-CN.md) · [Documentation](README.md)
 
-Reviewed: 2026-10-05; code baseline: `d663030`.
+Reviewed: 2026-10-06.
 
 ## Module boundaries
 
@@ -42,3 +42,5 @@ Model concurrency defaults to 3 per conversation; cumulative child executions de
 ## Limits
 
 This is a single-host runtime, not distributed consensus or exactly-once external execution. Provenance is not semantic correctness; filesystem observations are not adversarial locks. Broad held-out performance and security claims require independent evaluation.
+
+Memory, policy and graph routes now live in server/http/memory.ts with explicit Store, Configuration and MemoryIndex dependencies. The HTTP composition root retains shared authentication and lifecycle hooks; this does not finish decomposing App.tsx or the tool registry.

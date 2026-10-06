@@ -1,4 +1,4 @@
-import { approvalRisk } from './approval-risk';
+import { approvalRisk } from './approval-risk.js';
 
 // Presentation only: never use these labels to authorize execution.
 export function approvalPresentation(payload: Record<string, any>, zh: boolean) {

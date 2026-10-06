@@ -78,9 +78,13 @@ export class McpHub {
       command: server.builtin ? process.execPath : server.command,
       args: server.builtin
         ? [
-            '--import',
-            'tsx',
-            fileURLToPath(new URL('../interactive-mcp.ts', import.meta.url)),
+            ...(import.meta.url.endsWith('.ts') ? ['--import', 'tsx'] : []),
+            fileURLToPath(
+              new URL(
+                import.meta.url.endsWith('.ts') ? '../interactive-mcp.ts' : '../interactive-mcp.js',
+                import.meta.url,
+              ),
+            ),
             server.builtin,
           ]
         : server.args,

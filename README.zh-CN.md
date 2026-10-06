@@ -84,3 +84,9 @@ CI 在 Windows 和 Ubuntu 运行。公开测试已脱敏；可选桌面／浏览
 - [更新日志](CHANGELOG.zh-CN.md)
 - [历史原文与报告](docs/history/README.zh-CN.md)
 - [测试与证据边界](docs/VERIFICATION.zh-CN.md)
+
+## 构建与发布状态
+
+标准构建产出 build/ 下的服务端 JavaScript、原生适配器与工作进程资源，以及 dist/ 下的前端资源。pnpm start 和 Windows 守护进程运行编译后的后端；tsx 用于开发和测试。运行时需保留 build/、dist/、包元数据和已安装依赖；CI 产物不是独立安装包。
+
+本仓库目前未授予开源许可证（包元数据标为 UNLICENSED），维护者暂不选择许可证。0.1.0 是开发期包标识，不表示按日期记录的每次变更都是一个编号发布版本。

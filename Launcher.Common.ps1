@@ -17,8 +17,8 @@ function Get-AgentDemoNode {
 function Get-AgentDemoFingerprint([string]$Root, [switch]$DependenciesOnly) {
     $taskFiles = @('package.json', 'pnpm-lock.yaml')
     if (-not $DependenciesOnly) {
-        $taskFiles += @('index.html', 'vite.config.ts', 'tsconfig.json')
-        foreach ($taskDir in @('src', 'shared', 'server', 'public')) {
+        $taskFiles += @('index.html', 'vite.config.ts', 'tsconfig.json', 'tsconfig.server.json', 'scripts/build-server.mjs', 'scripts/supervisor.mjs')
+        foreach ($taskDir in @('src', 'shared', 'server', 'public', 'native')) {
             if (Test-Path -LiteralPath (Join-Path $Root $taskDir)) {
                 $taskFiles += Get-ChildItem -LiteralPath (Join-Path $Root $taskDir) -Recurse -File |
                     ForEach-Object { $_.FullName.Substring($Root.Length + 1) }

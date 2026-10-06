@@ -22,6 +22,8 @@ try {
     Write-Host '[2/3] Checking and building Amadeus...'
     & $taskNode node_modules/typescript/bin/tsc --noEmit
     if ($LASTEXITCODE -ne 0) { throw 'TypeScript check failed; service was not started.' }
+    & $taskNode scripts/build-server.mjs
+    if ($LASTEXITCODE -ne 0) { throw 'Server build failed; service was not started.' }
     & $taskNode node_modules/vite/bin/vite.js build
     if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed; service was not started.' }
     Set-Content -LiteralPath (Join-Path $taskRoot 'dist/.agentdemo-build') -Value (Get-AgentDemoFingerprint $taskRoot)

@@ -4,6 +4,10 @@
 
 Entries below describe repository changes, not a semantic-version release series. Historical test counts belong to their recorded runs.
 
+## 2026-10-06 — Engineering checks and preview sizing
+
+Compiled backend with runtime assets, memory-domain routes, Unicode regression, package metadata without a license grant, bilingual link checks and compiled smoke tests. Preview adds content/window fitting and SVG support.
+
 ## 2026-10-06 — Memory scope controls
 
 Separate storage and recall scopes; original-chat filtering, current-chat shortcut, searchable manual creation and bulk scope overrides/reset with revision and conflict checks.

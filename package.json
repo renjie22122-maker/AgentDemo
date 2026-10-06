@@ -9,12 +9,14 @@
   "scripts": {
     "dev": "tsx watch server/main.ts",
     "web": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
-    "start": "tsx server/main.ts",
+    "build": "tsc --noEmit && node scripts/build-server.mjs && vite build",
+    "start": "node build/server/main.js",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "build:server": "node scripts/build-server.mjs",
+    "check:docs": "node scripts/check-docs.mjs"
   },
   "dependencies": {
     "@fastify/multipart": "^9.2.0",
@@ -53,5 +55,11 @@
     "prettier": "^3.9.9",
     "typescript": "^5.9.0",
     "vite": "^7.1.0"
-  }
+  },
+  "description": "Local-first AI workspace with scoped knowledge, agent collaboration and controlled execution.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/renjie22122-maker/Amadeus.git"
+  },
+  "license": "UNLICENSED"
 }

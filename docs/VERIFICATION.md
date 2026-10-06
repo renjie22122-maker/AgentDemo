@@ -2,7 +2,7 @@
 
 [English](VERIFICATION.md) | [简体中文](VERIFICATION.zh-CN.md) · [Documentation](README.md)
 
-Reviewed: 2026-10-05; code baseline: `d663030`.
+Reviewed: 2026-10-06.
 
 ## Current verification baseline
 
@@ -46,3 +46,5 @@ Tests include negative controls, crash windows, unknown effects, startup state c
 - [Approval history](APPROVAL-EVALUATION.md): 0 percentage-point incremental reduction on its small balanced sample.
 
 API usage omissions and unconfigured prices remain unknown. Cached tokens are a subset of input, not extra tokens. Historical reports are dated and kept in [history](history/README.md); no numeric capability rating is inferred.
+
+CI also checks current bilingual guide pairs and local link targets, builds backend assets and smoke-tests compiled HTTP/isolated parsing, image codec and ONNX module loading. These checks do not prove document semantic freshness, clean-machine embedding inference or sandbox correctness.

@@ -3,11 +3,23 @@ import { fileURLToPath } from 'node:url';
 // Parse outside the server: a bad document must not block its event loop.
 export function extractIsolated(path: string, timeoutMs = 120_000): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = fork(fileURLToPath(new URL('./document-worker.ts', import.meta.url)), [], {
-      execArgv: ['--import', 'tsx', '--max-old-space-size=768'],
-      stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
-      windowsHide: true,
-    });
+    const child = fork(
+      fileURLToPath(
+        new URL(
+          import.meta.url.endsWith('.ts') ? './document-worker.ts' : './document-worker.js',
+          import.meta.url,
+        ),
+      ),
+      [],
+      {
+        execArgv: [
+          ...(import.meta.url.endsWith('.ts') ? ['--import', 'tsx'] : []),
+          '--max-old-space-size=768',
+        ],
+        stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+        windowsHide: true,
+      },
+    );
     let settled = false;
     const finish = (error?: Error, text?: string) => {
       if (settled) return;

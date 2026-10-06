@@ -18,7 +18,7 @@ function plain(node: any): string {
 }
 function Code({ children }: any) {
   const interaction = React.useContext(PreviewContext);
-  const visual = /language-(html|html-preview|mermaid)(?:\s|$)/.test(
+  const visual = /language-(html|html-preview|svg|mermaid)(?:\s|$)/.test(
     children?.props?.className || '',
   );
   const [copied, setCopied] = React.useState(false);
@@ -40,12 +40,16 @@ function Code({ children }: any) {
           </button>
         </div>
       )}
-      {/language-(html|html-preview|mermaid)(?:\s|$)/.test(children?.props?.className || '') ? (
+      {/language-(html|html-preview|svg|mermaid)(?:\s|$)/.test(children?.props?.className || '') ? (
         <CodePreview
           source={plain(children)}
           code={children}
           language={
-            /language-mermaid(?:\s|$)/.test(children?.props?.className || '') ? 'mermaid' : 'html'
+            /language-mermaid(?:\s|$)/.test(children?.props?.className || '')
+              ? 'mermaid'
+              : /language-svg(?:\s|$)/.test(children?.props?.className || '')
+                ? 'svg'
+                : 'html'
           }
         />
       ) : (

@@ -2,11 +2,11 @@
 
 [English](MIGRATION.md) | [简体中文](MIGRATION.zh-CN.md) · [Documentation](README.md)
 
-Reviewed: 2026-10-05; code baseline: `d663030`.
+Reviewed: 2026-10-06.
 
 ## Amadeus rename and startup
 
-Install Node.js 24+ including npm. First-Start-Amadeus.cmd installs locked dependencies using pnpm 11.19.0, checks TypeScript, builds the UI and starts the service. Start-Amadeus.cmd also prepares missing/changed dependencies and rebuilds changed source.
+Install Node.js 24+ including npm. First-Start-Amadeus.cmd installs locked dependencies using pnpm 11.19.0, checks TypeScript, builds backend JavaScript/runtime assets and the UI and starts the service. Start-Amadeus.cmd also prepares missing/changed dependencies and rebuilds changed source.
 
 First Start refuses dependency replacement while an existing service is running. Quick Start opens a running service, warns if local build inputs changed, and does not interrupt tasks or hot-update it. Finish tasks, stop the service and launch again to apply an update. Logs remain under .data/logs.
 

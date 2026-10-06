@@ -48,3 +48,15 @@ test('media updates retain original position even after a later user turn', () =
   assert.equal(timeline.get(1)?.status, 'completed');
   assert.equal(timeline.has(3), false);
 });
+
+test('preview sizing bridge is separate from optional result submission and keeps CSP', () => {
+  const html = previewDocument('<div>Content</div>', undefined, 'layout-token');
+  assert.match(html, /amadeus.preview.size/);
+  assert.match(html, /ResizeObserver/);
+  assert.doesNotMatch(html, /submitResult/);
+  assert.match(html, /connect-src 'none'/);
+  assert.doesNotMatch(
+    previewDocument('text', undefined, 'invalid<script>'),
+    /amadeus.preview.size/,
+  );
+});

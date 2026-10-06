@@ -20,12 +20,15 @@ if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'node_modules/tsx')) -or
     Write-Host 'First launch or dependency update detected. Preparing dependencies and frontend...'
     & (Join-Path $taskRoot 'First-Start-Amadeus.ps1') -SetupOnly -NoBrowser
 }
-if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'dist/index.html')) -or
+if (-not (Test-Path -LiteralPath (Join-Path $taskRoot 'build/server/main.js')) -or
+    -not (Test-Path -LiteralPath (Join-Path $taskRoot 'dist/index.html')) -or
     -not (Test-AgentDemoStamp (Join-Path $taskRoot 'dist/.agentdemo-build') (Get-AgentDemoFingerprint $taskRoot))) {
     Push-Location $taskRoot
     try {
         & $taskNode node_modules/typescript/bin/tsc --noEmit
         if ($LASTEXITCODE -ne 0) { throw 'TypeScript check failed.' }
+        & $taskNode scripts/build-server.mjs
+        if ($LASTEXITCODE -ne 0) { throw 'Server build failed; service was not started.' }
         & $taskNode node_modules/vite/bin/vite.js build
         if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
         Set-Content -LiteralPath (Join-Path $taskRoot 'dist/.agentdemo-build') -Value (Get-AgentDemoFingerprint $taskRoot)

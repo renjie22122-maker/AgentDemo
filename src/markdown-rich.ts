@@ -54,12 +54,18 @@ export function localMediaKind(url: string) {
   const path = url.split(/[?#]/)[0].toLowerCase();
   return /\.(mp4|webm)$/.test(path) ? 'video' : /\.(mp3|wav|ogg|m4a)$/.test(path) ? 'audio' : null;
 }
-export function previewDocument(source: string, resultToken?: string) {
+export function previewDocument(source: string, resultToken?: string, layoutToken?: string) {
   const bridge =
     resultToken && /^[a-z0-9-]{1,80}$/i.test(resultToken)
       ? '<script>(()=>{const token=' +
         JSON.stringify(resultToken) +
         ';window.amadeus=Object.freeze({submitResult(result){try{const encoded=JSON.stringify(result);if(!encoded||encoded.length>20000)return false;parent.postMessage({type:"amadeus.preview.result",token,result},"*");return true;}catch{return false;}}});})();</script>'
+      : '';
+  const layout =
+    layoutToken && /^[a-z0-9-]{1,80}$/i.test(layoutToken)
+      ? '<script>(()=>{const token=' +
+        JSON.stringify(layoutToken) +
+        ';let queued=false,last=0;function report(){queued=false;const b=document.body;if(!b||!b.getClientRects().length)return;const r=b.getBoundingClientRect(),s=getComputedStyle(b);const height=Math.ceil(Math.max(b.scrollHeight,r.height)+Math.max(0,r.top)+parseFloat(s.marginBottom||0));if(height!==last){last=height;parent.postMessage({type:"amadeus.preview.size",token,height},"*");}}function queue(){if(!queued){queued=true;requestAnimationFrame(report);}}function start(){new ResizeObserver(queue).observe(document.body);new MutationObserver(queue).observe(document.body,{subtree:true,childList:true,attributes:true,characterData:true});window.addEventListener("resize",queue);document.addEventListener("load",queue,true);document.fonts?.ready.then(queue);queue();}if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start,{once:true});else start();})();</script>'
       : '';
   const policy =
     "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; media-src data:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
@@ -68,6 +74,7 @@ export function previewDocument(source: string, resultToken?: string) {
     policy +
     '">' +
     bridge +
-    source
+    source +
+    layout
   );
 }

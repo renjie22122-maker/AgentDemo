@@ -3,7 +3,10 @@ import { lockService } from './services/service-lock.js';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './http/app.js';
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const root = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  import.meta.url.endsWith('.ts') ? '..' : '../..',
+);
 secureDirectory(process.env.AGENTDEMO_DATA_DIR || join(root, '.data'));
 const release = lockService(process.env.AGENTDEMO_DATA_DIR || join(root, '.data'));
 process.on('exit', release);

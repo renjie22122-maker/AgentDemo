@@ -59,3 +59,9 @@ The toolbar follows the selected interface language and provides Preview/Code ta
 The host checks the sending iframe, opaque origin, instance token and payload shape. Records are untrusted component-reported data, not verified evidence or permission grants. Titles allow 100 characters and result text 16,000; each mounted component retains at most 20 records and visibly rejects overflow. Remove a record before submitting more. Batch draft insertion may require splitting large selections.
 
 Pending records are local UI state, not durable storage: reset, reload or unmount can discard them. Results already added to a draft follow ordinary draft behavior; sent messages follow ordinary conversation persistence. Client-side buttons cannot guarantee durable once-only rolls or tamper-proof outcomes. Components cannot automatically send messages, call tools or access host storage. No new dependency or launcher change is required; existing startup scripts rebuild changed frontend sources.
+
+## Preview sizing
+
+HTML and SVG previews default to Fit content. Height follows content changes, image loads and available width without resetting component state; source view remains scrollable. Fit window, Compact, Standard and Tall remain available. Long content is capped at 2400px with an explicit hint so an untrusted component cannot expand the chat indefinitely. Viewport-relative layouts or internally scrolling widgets may still scroll.
+
+Size messages are accepted only from the current sandbox iframe with the current token; the preview retains its opaque origin and restrictive CSP. A size message cannot submit a result or access host tools.

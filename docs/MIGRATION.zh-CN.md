@@ -2,11 +2,11 @@
 
 [English](MIGRATION.md) | [简体中文](MIGRATION.zh-CN.md) · [文档目录](README.zh-CN.md)
 
-当前说明核对日期：2026-10-05；代码基线: `d663030`.
+当前说明核对日期：2026-10-06。
 
 ## Amadeus 改名与启动
 
-安装包含 npm 的 Node.js 24+。First-Start-Amadeus.cmd 使用 pnpm 11.19.0 安装锁定依赖，检查类型、构建界面并启动。Start-Amadeus.cmd 也会补齐缺失／变化的依赖，源码变化时重建。
+安装包含 npm 的 Node.js 24+。First-Start-Amadeus.cmd 使用 pnpm 11.19.0 安装锁定依赖，检查类型、构建后端 JavaScript／运行资源和界面并启动。Start-Amadeus.cmd 也会补齐缺失／变化的依赖，源码变化时重建。
 
 服务运行时首次启动拒绝覆盖依赖；快速启动打开已有服务，构建输入变化时提示，不中断任务或热更新。结束任务、停止服务后再启动以应用更新，日志保留在 .data/logs。
 

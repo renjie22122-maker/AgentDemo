@@ -17,7 +17,8 @@ export function CodePreview({
   const label = (en: string, cn: string) => (zh ? cn : en);
   const [mode, setMode] = useState<'preview' | 'code'>('preview');
   const [version, setVersion] = useState(0);
-  const [size, setSize] = useState('440');
+  const [size, setSize] = useState('auto');
+  const [contentHeight, setContentHeight] = useState(440);
   const [ready, setReady] = useState('');
   const [diagram, setDiagram] = useState('');
   const [error, setError] = useState(false);
@@ -103,6 +104,23 @@ export function CodePreview({
       cancelled = true;
     };
   }, [isDiagram, ready, version]);
+  useEffect(() => {
+    setContentHeight(440);
+    const receive = (event: MessageEvent) => {
+      if (
+        event.source !== frame.current?.contentWindow ||
+        event.origin !== 'null' ||
+        event.data?.type !== 'amadeus.preview.size' ||
+        event.data?.token !== token
+      )
+        return;
+      const height = event.data.height;
+      if (typeof height === 'number' && Number.isFinite(height) && height > 0)
+        setContentHeight(Math.max(160, Math.min(2400, Math.ceil(height))));
+    };
+    window.addEventListener('message', receive);
+    return () => window.removeEventListener('message', receive);
+  }, [token]);
   const chosen = results.filter(
     (item) => selectedIds.includes(item.id) && !item.added && item.text.trim(),
   );
@@ -154,7 +172,7 @@ export function CodePreview({
           title={label('Isolated preview; no host access', '隔离预览，不能访问宿主页面')}
         >
           <ShieldCheck size={13} />
-          {isDiagram ? 'Mermaid' : 'HTML'}
+          {isDiagram ? 'Mermaid' : language === 'svg' ? 'SVG' : 'HTML'}
         </span>
         <div className="preview-utilities">
           <select
@@ -162,6 +180,8 @@ export function CodePreview({
             value={size}
             onChange={(e) => setSize(e.target.value)}
           >
+            <option value="auto">{label('Fit content', '适应内容')}</option>
+            <option value="viewport">{label('Fit window', '适应窗口')}</option>
             <option value="300">{label('Compact', '紧凑')}</option>
             <option value="440">{label('Standard', '标准')}</option>
             <option value="640">{label('Tall', '宽敞')}</option>
@@ -194,7 +214,12 @@ export function CodePreview({
           </button>
         </div>
       </div>
-      <div className="preview-stage" style={{ height: Number(size) }}>
+      <div
+        className={'preview-stage' + (size === 'auto' ? ' preview-auto' : '')}
+        style={{
+          height: size === 'auto' ? contentHeight : size === 'viewport' ? '75vh' : Number(size),
+        }}
+      >
         <div className="preview-pane" hidden={mode !== 'preview'}>
           {isDiagram ? (
             error ? (
@@ -205,7 +230,24 @@ export function CodePreview({
                 )}
               </p>
             ) : diagram ? (
-              <img className="diagram-image" src={diagram} alt={label('Diagram', '关系图')} />
+              <img
+                className="diagram-image"
+                src={diagram}
+                alt={label('Diagram', '关系图')}
+                onLoad={(e) => {
+                  const image = e.currentTarget;
+                  if (image.naturalWidth)
+                    setContentHeight(
+                      Math.max(
+                        160,
+                        Math.min(
+                          2400,
+                          (image.clientWidth * image.naturalHeight) / image.naturalWidth + 32,
+                        ),
+                      ),
+                    );
+                }}
+              />
             ) : (
               <p role="status">{label('Rendering…', '正在绘制…')}</p>
             )
@@ -216,7 +258,13 @@ export function CodePreview({
               title="Interactive HTML preview"
               sandbox="allow-scripts"
               referrerPolicy="no-referrer"
-              srcDoc={previewDocument(ready, onResult ? token : undefined)}
+              srcDoc={previewDocument(
+                language === 'svg'
+                  ? '<style>svg{max-width:100%;height:auto;display:block}</style>' + ready
+                  : ready,
+                onResult ? token : undefined,
+                token,
+              )}
             />
           ) : (
             <p>{label('Preparing preview…', '正在准备预览…')}</p>
@@ -226,6 +274,14 @@ export function CodePreview({
           <pre>{code || <code>{source}</code>}</pre>
         </div>
       </div>
+      {size === 'auto' && contentHeight >= 2400 && (
+        <small className="muted">
+          {label(
+            'Long content is capped at 2400px; scroll inside or use Fit window.',
+            '长内容最多展开至 2400px；可在内部滚动或选择适应窗口。',
+          )}
+        </small>
+      )}
       {full && (
         <p className="preview-result-limit" role="status">
           {label(

@@ -2,7 +2,7 @@
 
 [English](VERIFICATION.md) | [简体中文](VERIFICATION.zh-CN.md) · [文档目录](README.zh-CN.md)
 
-当前说明核对日期：2026-10-05；代码基线: `d663030`.
+当前说明核对日期：2026-10-06。
 
 ## 当前验证基线
 
@@ -46,3 +46,5 @@ node --import tsx --test tests/window-capture.test.ts
 - [审批历史](APPROVAL-EVALUATION.zh-CN.md)：小型平衡样本上人工率增量下降为 0 个百分点。
 
 API 用量缺失、价格未配置保持未知。缓存 tokens 属于输入子集，不能额外相加。[历史目录](history/README.zh-CN.md)按日期保留结果，不据此给能力打分。
+
+CI 新增当前双语文档配对与本地链接检查，构建后端产物并冒烟验证编译后的 HTTP／独立解析进程、图像编解码及 ONNX 模块加载。这不等于证明文档语义实时正确、干净装机 embedding 推理或沙箱正确性。

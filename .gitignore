@@ -15,3 +15,8 @@ __pycache__/
 *.sqlite
 *.sqlite-*
 *.zip
+
+build/
+!/scripts/build-server.mjs
+!/scripts/check-docs.mjs
+!/scripts/smoke-server.mjs

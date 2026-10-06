@@ -36,7 +36,7 @@ const status = (state, extra = {}) =>
 function launch() {
   const output = openSync(join(logs, 'server.log'), 'a'),
     errors = openSync(join(logs, 'server-errors.log'), 'a');
-  child = spawn(process.execPath, ['--import', 'tsx', join(root, 'server/main.ts')], {
+  child = spawn(process.execPath, [join(root, 'build/server/main.js')], {
     cwd: root,
     windowsHide: true,
     stdio: ['ignore', output, errors],

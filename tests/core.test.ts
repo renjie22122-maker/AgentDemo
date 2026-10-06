@@ -24,7 +24,7 @@ test('strict tool arguments reject malformed JSON and arrays', () => {
 });
 test('SSE handles every byte boundary including CRLF and Chinese UTF-8', async () => {
   const bytes = new TextEncoder().encode(
-    'event: delta\r\ndata: {"text":"浣犲ソ"}\r\n\r\ndata: [DONE]\r\n\r\n',
+    'event: delta\r\ndata: {"text":"你好🌍"}\r\n\r\ndata: [DONE]\r\n\r\n',
   );
   const response = new Response(
     new ReadableStream({
@@ -36,7 +36,7 @@ test('SSE handles every byte boundary including CRLF and Chinese UTF-8', async (
   );
   const out = [];
   for await (const e of sse(response)) out.push(e);
-  assert.deepEqual(out, [{ text: '浣犲ソ' }]);
+  assert.deepEqual(out, [{ text: String.fromCodePoint(0x4f60, 0x597d, 0x1f30d) }]);
 });
 test('SSE rejects an interrupted JSON frame', async () => {
   await assert.rejects(async () => {

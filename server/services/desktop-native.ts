@@ -13,7 +13,16 @@ async function compile() {
   const hash = createHash('sha256')
     .update(await readFile(source))
     .digest('hex');
-  const dir = fileURLToPath(new URL('../../.data/native-tools/', import.meta.url));
+  const dir = join(
+    process.env.AGENTDEMO_DATA_DIR ||
+      fileURLToPath(
+        new URL(
+          import.meta.url.endsWith('.ts') ? '../../.data/' : '../../../.data/',
+          import.meta.url,
+        ),
+      ),
+    'native-tools',
+  );
   await mkdir(dir, { recursive: true });
   const target = join(dir, 'desktop-' + hash + '.exe');
   if (existsSync(target)) return target;

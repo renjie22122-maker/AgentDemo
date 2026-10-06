@@ -84,3 +84,9 @@ For failures, include OS, Node version, backend, reproduction and sanitized erro
 - [Changelog](CHANGELOG.md)
 - [History and original reports](docs/history/README.md)
 - [Testing and evidence boundaries](docs/VERIFICATION.md)
+
+## Build and distribution status
+
+The standard build emits backend JavaScript plus native/worker assets in build/ and browser assets in dist/. pnpm start and the Windows supervisor run the compiled backend; tsx is retained for development and tests. Keep build/, dist/, package metadata and installed dependencies together; the CI artifact is not a standalone installer.
+
+This repository currently grants no open-source license (package metadata: UNLICENSED). The maintainer has deliberately deferred selecting a license. Version 0.1.0 is a development package identifier, not a promise that dated changelog entries are numbered releases.

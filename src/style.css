@@ -3718,3 +3718,12 @@ input.team-switch:checked::after {
   max-width: 100%;
   text-overflow: ellipsis;
 }
+
+.preview-stage.preview-auto {
+  min-height: 160px;
+  max-height: none;
+  resize: none;
+}
+.preview-stage .diagram-image {
+  margin: 0;
+}
