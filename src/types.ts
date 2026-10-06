@@ -43,7 +43,7 @@ export interface ConversationDetail {
     roles: Record<string, string>;
     blockers: string[];
     closed: Record<string, string>;
-    messages: { id: string; sender: string; text: string }[];
+    messages: { id: string; sender: string; recipients?: string[]; text: string; at?: number }[];
   } | null;
   teamScheduling?: {
     enabled: boolean;

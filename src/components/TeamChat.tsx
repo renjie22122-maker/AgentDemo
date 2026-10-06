@@ -1,3 +1,5 @@
+import { TeamRelations } from './TeamRelations';
+import { relatedRuns } from '../team-relations';
 import { useEffect, useState } from 'react';
 import { Users } from 'lucide-react';
 import { api } from '../api';
@@ -5,28 +7,105 @@ import type { ConversationDetail, UiState } from '../types';
 import { Markdown } from './Markdown';
 import { Activity, InputCard } from './Message';
 
-export function TeamChat({
+export function TeamChat(props: Parameters<typeof TeamRound>[0]) {
+  const { state, detail, zh, runId } = props;
+  const latest = state.runs.filter((r) => r.conversationId === detail.conversation.id).at(-1);
+  const selected = runId || latest?.id;
+  const related = relatedRuns(state.runs, selected ? [selected] : []);
+  const members = related.filter((r) => r.conversationId !== detail.conversation.id);
+  const [open, setOpen] = useState(
+    detail.teamSpace?.mode === 'creative' && selected === latest?.id,
+  );
+  const [snapshot, setSnapshot] = useState<{ id: string; value: ConversationDetail } | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const attention = members
+    .filter((r) => r.status === 'waiting_approval' || r.status === 'waiting_user')
+    .map((r) => r.id + ':' + r.status)
+    .sort()
+    .join(',');
+  useEffect(() => {
+    if (attention) setOpen(true);
+  }, [attention]);
+  useEffect(() => {
+    if (!open || !selected || selected === latest?.id) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const update = async () => {
+      try {
+        const value = await api<ConversationDetail>(
+          '/conversations/' + detail.conversation.id + '?runId=' + encodeURIComponent(selected),
+        );
+        if (!disposed) {
+          setSnapshot({ id: selected, value });
+          setLoadError('');
+        }
+      } catch {
+        if (!disposed)
+          setLoadError(zh ? '记录加载失败，正在重试' : 'Could not load records. Retrying.');
+      }
+      if (!disposed) timer = setTimeout(update, 5000);
+    };
+    void update();
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+    };
+  }, [open, selected, latest?.id, detail.conversation.id, zh]);
+  if (!members.length) return null;
+  const chosen =
+    selected === latest?.id ? detail : snapshot && snapshot.id === selected ? snapshot.value : null;
+  return (
+    <details
+      className="team-chat team-round-relations"
+      open={open}
+      onToggle={(e) => {
+        if (e.target === e.currentTarget) setOpen(e.currentTarget.open);
+      }}
+    >
+      <summary>
+        <Users size={17} />
+        <strong>{zh ? '协作关系与成员' : 'Collaboration & members'}</strong>
+        <span>
+          {members.length} {zh ? '位成员' : 'members'} · {zh ? '本轮' : 'This round'}
+          {attention ? (zh ? ' · 等待你处理' : ' · Needs your attention') : ''}
+        </span>
+      </summary>
+      {open && (
+        <>
+          {loadError && <p role="status">{loadError}</p>}
+          {chosen ? (
+            <TeamRound {...props} detail={chosen} runId={selected} />
+          ) : (
+            <p role="status">{zh ? '正在加载本轮记录…' : 'Loading this round…'}</p>
+          )}
+        </>
+      )}
+    </details>
+  );
+}
+
+function TeamRound({
   state,
+  runId,
   detail,
   zh,
   t,
   notify,
 }: {
   state: UiState;
+  runId?: string;
   detail: ConversationDetail;
   zh: boolean;
   t: (s: string) => string;
   notify: (s: string) => void;
 }) {
-  const own = state.runs.filter((r) => r.conversationId === detail.conversation.id).at(-1);
+  const own = runId
+    ? state.runs.find((r) => r.id === runId)
+    : state.runs.filter((r) => r.conversationId === detail.conversation.id).at(-1);
   const ids = new Set(detail.teamMembers?.map((m) => m.runId) || []);
   if (own) ids.add(own.id);
-  // Include descendants for ordinary delegation as well as enrolled peer teams.
-  for (let i = 0; i < state.runs.length; i++)
-    for (const r of state.runs) if (r.parentRunId && ids.has(r.parentRunId)) ids.add(r.id);
-  const members = state.runs.filter(
-    (r) => ids.has(r.id) && r.conversationId !== detail.conversation.id,
-  );
+  const related = relatedRuns(state.runs, [...ids]);
+  const members = related.filter((r) => r.conversationId !== detail.conversation.id);
   const key = members
     .map((r) => r.conversationId)
     .sort()
@@ -82,37 +161,15 @@ export function TeamChat({
     .sort((a, b) => a.createdAt - b.createdAt || a.id - b.id);
   return (
     <section className="team-chat" aria-label={zh ? '团队群聊' : 'Team chat'}>
-      <details
-        className="team-chat-content"
-        ref={(el) => {
-          if (el && !el.dataset.initialized) {
-            el.open = detail.teamSpace?.mode === 'creative';
-            el.dataset.initialized = 'true';
-          }
-        }}
-      >
-        <summary>
-          <Users size={18} />
-          <strong>
-            {zh
-              ? detail.teamSpace?.mode === 'creative'
-                ? '团队群聊'
-                : '团队进度'
-              : detail.teamSpace?.mode === 'creative'
-                ? 'Team chat'
-                : 'Team progress'}
-          </strong>
-          <span>
-            {
-              members.filter((m) => !['completed', 'failed', 'interrupted'].includes(m.status))
-                .length
-            }{' '}
-            {zh ? '执行中' : 'active'} · {members.length} {zh ? '位成员' : 'members'}
-            {members.some((m) =>
-              ['failed', 'interrupted', 'waiting_user', 'waiting_approval'].includes(m.status),
-            ) && (zh ? ' · 需要关注' : ' · Needs attention')}
-          </span>
-        </summary>
+      <div className="team-chat-content">
+        <TeamRelations
+          runs={related}
+          state={state}
+          detail={detail}
+          views={views}
+          zh={zh}
+          onMember={(id) => setFilter(id === detail.conversation.id ? '' : id)}
+        />
         <div className="team-chat-members" aria-label={zh ? '筛选成员' : 'Filter members'}>
           <button aria-pressed={!filter} onClick={() => setFilter('')}>
             {zh ? '全部' : 'All'}
@@ -195,7 +252,7 @@ export function TeamChat({
             </details>
           </div>
         ))}
-      </details>
+      </div>
       {members.map((m) =>
         (views[m.conversationId]?.inputs || [])
           .filter((q) => q.runId === m.id && q.status === 'pending')

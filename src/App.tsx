@@ -563,6 +563,7 @@ export function App() {
     };
     const all = detail?.events || [];
     const mediaAt = mediaTimeline(all);
+    const lastByRun = new Map(all.filter((e) => e.runId).map((e) => [e.runId, e.id]));
     const starts = all.map((e, i) => (e.type === 'user.message' ? i : -1)).filter((i) => i >= 0);
     const offset = starts.length > visibleTurns ? starts[starts.length - visibleTurns] : 0;
     if (offset > 0)
@@ -682,6 +683,20 @@ export function App() {
           <div key={e.id} className="notice error">
             {e.data.error}
           </div>,
+        );
+      }
+      if (e.runId && lastByRun.get(e.runId) === e.id && detail) {
+        flush();
+        nodes.push(
+          <TeamChat
+            key={'team-' + e.runId}
+            runId={e.runId}
+            state={state!}
+            detail={detail}
+            zh={language === 'zh'}
+            t={t}
+            notify={notify}
+          />,
         );
       }
     }
@@ -929,16 +944,6 @@ export function App() {
                           </div>
                         </article>
                       ),
-                  )}
-                  {detail && (
-                    <TeamChat
-                      key={detail.conversation.id}
-                      state={state}
-                      detail={detail}
-                      zh={language === 'zh'}
-                      t={t}
-                      notify={notify}
-                    />
                   )}
                   {detail?.teamSpace && (
                     <details className="team-panel">

@@ -31,3 +31,9 @@ Approval waits have no expiry and do not consume command execution time. Stop/re
 Markdown supports tables, math, code, attributed quotations and embedded media. HTML and Mermaid default to preview with a same-sized scrollable code view. See [formatting](CHAT-FORMATTING.md).
 
 Workspace HTML preview can inline up to 40 scoped local resources, with a browser sandbox/CSP and no host-page access. It is not arbitrary Python execution, a dependency installer or a full development server. See [tool boundaries](TOOL-ECOSYSTEM.md).
+
+## Collaboration in each round
+
+Each round retains its own expandable collaboration panel when a new turn starts. Expand it to view member hierarchy, declared task dependencies and recorded communication arrows; select a node to inspect the corresponding work. Historical details load on demand. New member approval or question waits open the panel for attention.
+
+Creation relationships are distinct from task dependencies. Communication counts represent submitted messages, not read receipts; older messages without structured records are not inferred. Graphs show up to 60 nodes, with all members available in the accompanying list.

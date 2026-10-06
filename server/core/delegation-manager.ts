@@ -450,5 +450,9 @@ export class DelegationManager {
     assert(this.root(target) === this.root(parent), 'TEAM_SCOPE', 'Cannot message unrelated tasks');
     assert(!terminal(target.status), 'TASK_FINISHED', 'Task already finished');
     this.host.steer(target.conversationId, '[Team message from ' + parent.id + '] ' + message);
+    this.store.event(parent.conversationId, parent.id, 'agent.message.submitted', {
+      sender: parent.id,
+      recipient: target.id,
+    });
   }
 }

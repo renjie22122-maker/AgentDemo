@@ -149,67 +149,74 @@ export async function createApp(options: { directory: string; dist?: string; run
     settings: config.public(),
   });
   app.get('/api/state', async () => state());
-  app.get<{ Params: { id: string } }>('/api/conversations/:id', async (req) => {
-    const c = store.get<Conversation>('conversation', req.params.id);
-    const latest = store.runMetadata(c.id).at(-1);
-    const deliveries = new Map(
-      store
-        .list<any>('user-inbox')
-        .filter((m) => m.conversationId === c.id)
-        .map((m) => [Number(m.id), m.state]),
-    );
-    return {
-      conversation: c,
-      events: store
-        .events(c.id)
-        .map((e) =>
-          e.type === 'user.message' && deliveries.has(e.id)
-            ? { ...e, data: { ...e.data, delivery: deliveries.get(e.id) } }
-            : e,
-        ),
-      inputs: store.list<any>('input').filter((q) => q.conversationId === c.id),
-      attachments: store
-        .list<Attachment>('attachment')
-        .filter((a) => a.conversationId === c.id)
-        .map(({ path, text, ...a }) => a),
-      teamAutomation: latest ? store.maybe('team-automation', rootRun(store, latest!)) : null,
-      teamRecovery: latest
-        ? (new Teams(store).get(latest!)?.members || []).map((key) =>
-            runtime.teamAutomation.plan(store.runHeader(key)),
-          )
-        : [],
-      teamControlEvents: latest
-        ? store
-            .list<any>('team-control-event')
-            .filter((e) => e.root === rootRun(store, latest!))
-            .slice(-20)
-        : [],
-      teamSpace: latest ? new Teams(store).project(latest!) : null,
-      teamMembers: latest ? new TaskBoard(store).members(latest!) : [],
-      teamScheduling: latest
-        ? {
-            ...(store.maybe<any>('team-scheduling', rootRun(store, latest!)) || {}),
-            blocked:
-              store.maybe<any>('team-scheduler-diagnostics', rootRun(store, latest!))?.blocked ||
-              [],
-            loads: new TaskBoard(store).members(latest!).map((m) => ({
-              runId: m.runId,
-              load: new TaskBoard(store)
-                .get(latest!)
-                .tasks.filter(
-                  (t) => t.owner === m.runId && ['running', 'blocked'].includes(t.status),
-                )
-                .reduce((n, t) => n + (t.weight || 1), 0),
-            })),
-          }
-        : null,
-      taskBoard: latest ? new TaskBoard(store).get(latest!) : null,
-      unknownEffects: store.unknownEffects(c.id),
-      streams: [...runtime.streams.entries()]
-        .filter(([, v]) => v.conversationId === c.id)
-        .map(([runId, v]) => ({ runId, ...v })),
-    };
-  });
+  app.get<{ Params: { id: string }; Querystring: { runId?: string } }>(
+    '/api/conversations/:id',
+    async (req) => {
+      const c = store.get<Conversation>('conversation', req.params.id);
+      const history = store.runMetadata(c.id);
+      const latest = req.query.runId
+        ? history.find((r) => r.id === req.query.runId)
+        : history.at(-1);
+      assert(!req.query.runId || latest, 'RUN_SCOPE', 'Run does not belong to this conversation.');
+      const deliveries = new Map(
+        store
+          .list<any>('user-inbox')
+          .filter((m) => m.conversationId === c.id)
+          .map((m) => [Number(m.id), m.state]),
+      );
+      return {
+        conversation: c,
+        events: store
+          .events(c.id)
+          .map((e) =>
+            e.type === 'user.message' && deliveries.has(e.id)
+              ? { ...e, data: { ...e.data, delivery: deliveries.get(e.id) } }
+              : e,
+          ),
+        inputs: store.list<any>('input').filter((q) => q.conversationId === c.id),
+        attachments: store
+          .list<Attachment>('attachment')
+          .filter((a) => a.conversationId === c.id)
+          .map(({ path, text, ...a }) => a),
+        teamAutomation: latest ? store.maybe('team-automation', rootRun(store, latest!)) : null,
+        teamRecovery: latest
+          ? (new Teams(store).get(latest!)?.members || []).map((key) =>
+              runtime.teamAutomation.plan(store.runHeader(key)),
+            )
+          : [],
+        teamControlEvents: latest
+          ? store
+              .list<any>('team-control-event')
+              .filter((e) => e.root === rootRun(store, latest!))
+              .slice(-20)
+          : [],
+        teamSpace: latest ? new Teams(store).project(latest!) : null,
+        teamMembers: latest ? new TaskBoard(store).members(latest!) : [],
+        teamScheduling: latest
+          ? {
+              ...(store.maybe<any>('team-scheduling', rootRun(store, latest!)) || {}),
+              blocked:
+                store.maybe<any>('team-scheduler-diagnostics', rootRun(store, latest!))?.blocked ||
+                [],
+              loads: new TaskBoard(store).members(latest!).map((m) => ({
+                runId: m.runId,
+                load: new TaskBoard(store)
+                  .get(latest!)
+                  .tasks.filter(
+                    (t) => t.owner === m.runId && ['running', 'blocked'].includes(t.status),
+                  )
+                  .reduce((n, t) => n + (t.weight || 1), 0),
+              })),
+            }
+          : null,
+        taskBoard: latest ? new TaskBoard(store).get(latest!) : null,
+        unknownEffects: store.unknownEffects(c.id),
+        streams: [...runtime.streams.entries()]
+          .filter(([, v]) => v.conversationId === c.id)
+          .map(([runId, v]) => ({ runId, ...v })),
+      };
+    },
+  );
   inspectionRoutes(app, runtime);
   app.post<{ Params: { id: string } }>('/api/conversations/:id/recovery/check', async (req) => {
     const c = store.get<Conversation>('conversation', req.params.id);

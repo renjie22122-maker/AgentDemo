@@ -1732,3 +1732,37 @@ test('unresolved effect resolution asks the user and never retries the command',
     f.store.close();
   }
 });
+
+test('historical collaboration endpoint selects the original round and rejects unrelated run IDs', async () => {
+  const f = await setup({ complete: async () => result('done') });
+  const { app } = await createApp({ directory: f.dir, runtime: f.runtime });
+  try {
+    const first = f.runtime.start('chat', 'first round');
+    await until(() => f.store.get<any>('run', first.id).status === 'completed');
+    f.store.put('task-board', { id: first.id, revision: 7, tasks: [] });
+    const second = f.runtime.start('chat', 'second round');
+    await until(() => f.store.get<any>('run', second.id).status === 'completed');
+    const boot = await app.inject({ url: '/api/bootstrap', headers: { host: '127.0.0.1:8810' } });
+    const headers = {
+      host: '127.0.0.1:8810',
+      cookie: String(boot.headers['set-cookie']).split(';')[0],
+    };
+    const current = await app.inject({ url: '/api/conversations/chat', headers });
+    const history = await app.inject({ url: '/api/conversations/chat?runId=' + first.id, headers });
+    assert.equal(current.statusCode, 200);
+    assert.equal(history.statusCode, 200);
+    assert.equal(current.json().taskBoard.id, second.id);
+    assert.equal(history.json().taskBoard.id, first.id);
+    assert.equal(history.json().taskBoard.revision, 7);
+    const other = { ...second, id: 'foreign-round', conversationId: 'other-chat' };
+    f.store.put('run', other);
+    const rejected = await app.inject({
+      url: '/api/conversations/chat?runId=foreign-round',
+      headers,
+    });
+    assert.notEqual(rejected.statusCode, 200);
+    assert.match(rejected.body, /Run does not belong/);
+  } finally {
+    await app.close();
+  }
+});

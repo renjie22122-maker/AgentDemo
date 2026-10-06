@@ -3727,3 +3727,155 @@ input.team-switch:checked::after {
 .preview-stage .diagram-image {
   margin: 0;
 }
+
+.team-relations {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  min-width: 0;
+}
+.team-relation-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.team-relation-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 20px;
+}
+.team-relation-tabs button[aria-pressed='true'] {
+  background: var(--accent-soft, #6366f11a);
+  border-color: var(--accent, #818cf8);
+}
+.team-relation-tabs span {
+  opacity: 0.65;
+  font-size: 0.85em;
+}
+.team-relation-node {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 80px);
+  min-width: 0;
+  margin-bottom: 6px;
+  text-align: start;
+  border-radius: 10px;
+}
+.team-relation-name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  text-align: start;
+}
+.team-relation-name strong,
+.team-relation-message button {
+  overflow-wrap: anywhere;
+}
+.team-relation-name small {
+  color: var(--muted);
+}
+.team-relation-branch {
+  color: var(--accent, #818cf8);
+}
+.team-relation-task {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1.5fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.team-relation-prereqs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.team-relation-prereqs button {
+  text-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.team-relation-inspect {
+  border-inline-start: 3px solid var(--accent, #818cf8);
+  padding: 10px;
+  margin-top: 10px;
+}
+.team-relation-message {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+}
+.team-relation-message button {
+  max-width: 40%;
+  white-space: normal;
+  text-align: start;
+}
+
+.relation-graph-scroll {
+  overflow: auto;
+  max-height: 480px;
+  border-radius: 12px;
+  background: var(--bg);
+  margin: 8px 0;
+}
+.relation-graph-scroll svg {
+  display: block;
+}
+.relation-graph-node {
+  cursor: pointer;
+  outline: none;
+}
+.relation-graph-node rect {
+  fill: var(--surface);
+  stroke: var(--border, #64748b);
+  stroke-width: 1.3;
+}
+.relation-graph-node:hover rect,
+.relation-graph-node:focus rect {
+  stroke: var(--accent, #818cf8);
+  stroke-width: 2.5;
+}
+.relation-graph-node text {
+  fill: var(--text, #cbd5e1);
+  font: 600 13px system-ui;
+  pointer-events: none;
+}
+.relation-graph-node .relation-graph-subtitle {
+  fill: var(--muted, #94a3b8);
+  font: 11px system-ui;
+}
+.relation-graph-edge {
+  color: var(--accent, #818cf8);
+}
+.relation-graph-edge path {
+  stroke: currentColor;
+  stroke-width: 1.5;
+  opacity: 0.65;
+}
+.relation-graph-edge text {
+  fill: var(--muted, #94a3b8);
+  font: 11px system-ui;
+}
+
+.team-round-relations > summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  cursor: pointer;
+  padding: 12px;
+}
+.team-round-relations > summary span {
+  color: var(--muted);
+  font-size: 0.85em;
+}
