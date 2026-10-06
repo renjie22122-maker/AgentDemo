@@ -785,8 +785,8 @@ test('malformed responses are not retried indefinitely', async () => {
   });
   try {
     const r = f.runtime.start('chat', 'Hello');
-    await until(() => f.store.get<any>('run', r.id).status === 'failed');
-    assert.equal(calls, 2);
+    await until(() => f.store.get<any>('run', r.id).status === 'interrupted');
+    assert.equal(calls, 3);
   } finally {
     await f.runtime.shutdown();
     f.store.close();
@@ -957,7 +957,7 @@ test('output truncation retries once, records both costs and preserves completed
     f.store.close();
   }
 });
-test('repeated length failures stop after one recovery, missing finish never retries', async () => {
+test('length failures stop after one correction; disconnect recovery is bounded to five retries', async () => {
   for (const finishReason of ['length', '']) {
     let n = 0;
     const f = await setup({
@@ -968,8 +968,13 @@ test('repeated length failures stop after one recovery, missing finish never ret
     });
     try {
       const run = f.runtime.start('chat', 'Hello');
-      await until(() => f.store.get<any>('run', run.id).status === 'interrupted');
-      assert.equal(n, finishReason === 'length' ? 2 : 1);
+      await until(() => f.store.get<any>('run', run.id).status === 'interrupted', 75000);
+      assert.equal(n, finishReason === 'length' ? 2 : 6);
+      assert.equal(
+        f.store.events('chat').filter((e) => e.type === 'model.reconnecting').length,
+        finishReason === 'length' ? 0 : 5,
+      );
+      assert.equal(f.store.events('chat').filter((e) => e.type === 'tool.started').length, 0);
     } finally {
       await f.runtime.shutdown();
       f.store.close();
@@ -1764,5 +1769,77 @@ test('historical collaboration endpoint selects the original round and rejects u
     assert.match(rejected.body, /Run does not belong/);
   } finally {
     await app.close();
+  }
+});
+
+test('connection reset after partial output reconnects without executing partial tools', async () => {
+  let calls = 0;
+  const f = await setup({
+    complete: async (req) => {
+      if (++calls === 1) {
+        req.onText('unfinished output');
+        throw new TypeError('fetch failed', {
+          cause: Object.assign(new Error('reset'), { code: 'ECONNRESET' }),
+        });
+      }
+      return result('Connected again');
+    },
+  });
+  try {
+    const r = f.runtime.start('chat', 'hello');
+    await until(() => f.store.get<any>('run', r.id).status === 'completed', 6000);
+    assert.equal(calls, 2);
+    const events = f.store.events('chat');
+    assert.equal(events.filter((e) => e.type === 'model.reconnecting').length, 1);
+    assert.equal(events.filter((e) => e.type === 'tool.started').length, 0);
+    assert(events.some((e) => e.type === 'assistant.message' && e.data.incomplete));
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});
+
+test('a fresh successful model step resets the malformed response repair allowance', async () => {
+  let calls = 0;
+  const f = await setup({
+    complete: async () => {
+      calls++;
+      if ([1, 2, 4, 5].includes(calls)) throw new AppError('INVALID_ARGUMENTS', 'bad JSON', 502);
+      if (calls === 3)
+        return result('', [{ id: 'read-once', name: 'list_files', arguments: { path: '.' } }]);
+      return result('done');
+    },
+  });
+  try {
+    const r = f.runtime.start('chat', 'inspect');
+    await until(() => f.store.get<any>('run', r.id).status === 'completed', 6000);
+    assert.equal(calls, 6);
+    assert.equal(f.store.events('chat').filter((e) => e.type === 'tool.started').length, 1);
+    assert.equal(
+      f.store.events('chat').filter((e) => e.type === 'model.protocol-repair').length,
+      4,
+    );
+  } finally {
+    await f.runtime.shutdown();
+    f.store.close();
+  }
+});
+
+test('stop cancels model reconnection waiting without another request', async () => {
+  let calls = 0;
+  const f = await setup({
+    complete: async () => {
+      calls++;
+      throw Object.assign(new Error('reset'), { code: 'ECONNRESET' });
+    },
+  });
+  try {
+    const r = f.runtime.start('chat', 'hello');
+    await until(() => f.store.events('chat').some((e) => e.type === 'model.reconnecting'));
+    await f.runtime.shutdown();
+    assert.equal(calls, 1);
+    assert.equal(f.store.get<any>('run', r.id).status, 'interrupted');
+  } finally {
+    f.store.close();
   }
 });

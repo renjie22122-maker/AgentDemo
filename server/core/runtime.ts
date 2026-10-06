@@ -1,3 +1,5 @@
+import { setTimeout as recoveryDelay } from 'node:timers/promises';
+import { transientModelFailure, modelReconnectDelay } from './model-recovery.js';
 import { join } from 'node:path';
 import { toolHooks } from '../services/tool-hooks.js';
 import { inspectEffects } from '../services/recovery.js';
@@ -540,7 +542,8 @@ export class Runtime implements TeamPort {
       run.checkpoints.push(...facts);
       let steps = 0,
         protocolRepairs = 0,
-        lengthRepairs = 0;
+        lengthRepairs = 0,
+        networkRepairs = 0;
       const cognitive = new CognitiveController(this.store);
       while (!signal.aborted) {
         await this.dispatchTeam(run);
@@ -636,6 +639,27 @@ export class Runtime implements TeamPort {
             this.executionScope(run),
           );
         } catch (error) {
+          if (!signal.aborted && transientModelFailure(error) && networkRepairs < 5) {
+            const attempt = ++networkRepairs;
+            const delayMs = modelReconnectDelay(attempt);
+            const partial = this.streams.get(key);
+            if (partial?.text)
+              this.store.event(run.conversationId, key, 'assistant.message', {
+                messageId,
+                text: partial.text,
+                final: false,
+                incomplete: true,
+              });
+            this.streams.delete(key);
+            this.store.event(run.conversationId, key, 'model.reconnecting', {
+              attempt,
+              maxAttempts: 5,
+              delayMs,
+              toolsExecuted: false,
+            });
+            await recoveryDelay(delayMs, undefined, { signal });
+            continue;
+          }
           if (
             !signal.aborted &&
             error instanceof AppError &&
@@ -671,7 +695,7 @@ export class Runtime implements TeamPort {
             !signal.aborted &&
             error instanceof AppError &&
             ['INVALID_ARGUMENTS', 'DUPLICATE_CALL'].includes(error.code) &&
-            protocolRepairs++ < 1
+            protocolRepairs++ < 2
           ) {
             const partial = this.streams.get(key);
             if (partial?.text)
@@ -684,18 +708,21 @@ export class Runtime implements TeamPort {
             this.streams.delete(key);
             this.store.event(run.conversationId, key, 'model.protocol-repair', {
               code: error.code,
-              attempt: 1,
+              attempt: protocolRepairs,
               toolsExecuted: false,
             });
             run.checkpoints.push({
               role: 'user',
               content:
-                'Runtime protocol feedback: the previous response was rejected before any of its tools executed. Return valid JSON objects for tool arguments and unique call IDs. Correct that response once; do not replay earlier completed operations.',
+                'Runtime protocol feedback: the previous response was rejected before any of its tools executed. Return valid JSON objects for tool arguments and unique call IDs. Correct that response using one small tool call with a complete JSON object; do not replay earlier completed operations.',
             });
             continue;
           }
           throw error;
         }
+        protocolRepairs = 0;
+        lengthRepairs = 0;
+        networkRepairs = 0;
         if (signal.aborted) throw abortError();
         run.checkpoints.push(result.message);
         this.store.put('run', run);

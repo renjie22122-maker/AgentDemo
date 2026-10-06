@@ -38,6 +38,13 @@ export function validateCalls(calls: ToolCall[]) {
   const ids = new Set<string>();
   for (const c of calls) {
     assert(
+      c.arguments && typeof c.arguments === 'object' && !Array.isArray(c.arguments),
+      'INVALID_ARGUMENTS',
+      'Tool arguments must be an object. No tools were executed.',
+      502,
+    );
+
+    assert(
       c.id && !ids.has(c.id),
       'DUPLICATE_CALL',
       'Ambiguous tool-call identity; no calls executed.',

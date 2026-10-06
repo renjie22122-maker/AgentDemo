@@ -673,6 +673,7 @@ export function App() {
           'context.compacted',
           'cognitive.intervention',
           'model.protocol-repair',
+          'model.reconnecting',
           'child.started',
         ].includes(e.type)
       )

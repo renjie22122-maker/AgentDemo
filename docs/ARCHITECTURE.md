@@ -21,7 +21,7 @@ Runs use queued, running, waiting_user, waiting_approval, waiting_children, comp
 
 Tool intent and results are journaled. Pre-start failures are not_started; ambiguous external effects remain unknown. Startup reconciliation atomically interrupts old runs and cancels orphaned inputs. Opt-in team recovery can start an inspected new turn; arbitrary commands are never replayed merely because the service restarted. See [recovery](INTERACTION.md).
 
-SSE carries persisted event IDs with up to 1,000 replayed events; larger gaps request an authoritative snapshot. Token deltas are ephemeral, finalized content durable. Provider streams have request and byte-idle deadlines. Partial streams are not automatically retried.
+SSE carries persisted event IDs with up to 1,000 replayed events; larger gaps request an authoritative snapshot. Token deltas are ephemeral, finalized content durable. Provider streams have request and byte-idle deadlines. The model loop retries transient failed or partial responses up to five times before any tool execution, with cancellable backoff. Completed tool results remain in checkpoints; no tool is replayed. Invalid argument repair is bounded per successful model step.
 
 ## Context and control
 

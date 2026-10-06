@@ -37,3 +37,7 @@ Workspace HTML preview can inline up to 40 scoped local resources, with a browse
 Each round retains its own expandable collaboration panel when a new turn starts. Expand it to view member hierarchy, declared task dependencies and recorded communication arrows; select a node to inspect the corresponding work. Historical details load on demand. New member approval or question waits open the panel for attention.
 
 Creation relationships are distinct from task dependencies. Communication counts represent submitted messages, not read receipts; older messages without structured records are not inferred. Graphs show up to 60 nodes, with all members available in the accompanying list.
+
+## Model request recovery
+
+Malformed tool arguments allow up to two correction requests per model step. Temporary connection failures or interrupted streams reconnect up to five times with 2/4/8/16/30-second delays; progress is visible and Stop cancels the wait. Successful responses reset these allowances. Only the failed model response is requested again: partial tool calls never execute and completed tool operations remain in context. Partial text is marked incomplete. Retries can incur additional provider charges; unavailable usage is not treated as measured zero. Credential/configuration errors are not retried automatically. After exhaustion, the run stops with a recoverable reason; an explicit model-step limit still applies.

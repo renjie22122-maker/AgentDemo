@@ -95,6 +95,12 @@ export class ResponsesProvider implements ModelProvider {
         if (e.type.includes('reasoning')) input.onThinking?.();
         if (e.type === 'response.completed' || e.type === 'response.incomplete') final = e.response;
       }
+      assert(
+        final,
+        'TRUNCATED_STREAM',
+        'Responses stream disconnected before its final event.',
+        502,
+      );
       if (final?.incomplete_details?.reason === 'max_output_tokens')
         throw Object.assign(
           new LimitError(

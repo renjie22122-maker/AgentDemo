@@ -102,6 +102,7 @@ export class GeminiProvider implements ModelProvider {
           };
         }
       }
+      assert(finish, 'TRUNCATED_STREAM', 'Gemini stream disconnected before its final event.', 502);
       if (finish === 'MAX_TOKENS')
         throw Object.assign(
           new LimitError(

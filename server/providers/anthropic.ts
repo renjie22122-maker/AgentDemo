@@ -109,6 +109,12 @@ export class AnthropicProvider implements ModelProvider {
         }
         if (e.type === 'message_stop') completed = true;
       }
+      assert(
+        completed,
+        'TRUNCATED_STREAM',
+        'Anthropic stream disconnected before its final event.',
+        502,
+      );
       if (stop === 'max_tokens')
         throw Object.assign(
           new LimitError(

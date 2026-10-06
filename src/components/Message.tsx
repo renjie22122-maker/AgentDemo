@@ -182,23 +182,34 @@ export function Activity({ events, t }: { events: AgentEvent[]; t: (s: string) =
                 's · ' +
                 (e.data.outputTail ||
                   (t('settings') === 'Settings' ? 'Waiting for output' : '等待输出'))
-              : e.type === 'model.protocol-repair'
-                ? t(
-                    e.data.code === 'OUTPUT_LIMIT'
-                      ? 'Output truncated; retrying one smaller step'
-                      : 'Correcting model tool arguments',
-                  )
-                : e.type === 'model.started'
-                  ? 'Thinking · ' + e.data.model
-                  : e.type === 'tool.started'
-                    ? e.data.name + ' · ' + JSON.stringify(e.data.arguments)
-                    : e.type === 'tool.completed'
-                      ? e.data.name + ' · ' + String(e.data.output).slice(0, 100)
-                      : e.type === 'context.compacted'
-                        ? 'Context compacted'
-                        : e.type === 'child.started'
-                          ? 'Delegated · ' + e.data.task
-                          : e.type;
+              : e.type === 'model.reconnecting'
+                ? (t('settings') === 'Settings'
+                    ? 'Connection interrupted; retrying'
+                    : '连接中断，正在重连') +
+                  ' ' +
+                  e.data.attempt +
+                  '/' +
+                  e.data.maxAttempts +
+                  ' · ' +
+                  e.data.delayMs / 1000 +
+                  's'
+                : e.type === 'model.protocol-repair'
+                  ? t(
+                      e.data.code === 'OUTPUT_LIMIT'
+                        ? 'Output truncated; retrying one smaller step'
+                        : 'Correcting model tool arguments',
+                    )
+                  : e.type === 'model.started'
+                    ? 'Thinking · ' + e.data.model
+                    : e.type === 'tool.started'
+                      ? e.data.name + ' · ' + JSON.stringify(e.data.arguments)
+                      : e.type === 'tool.completed'
+                        ? e.data.name + ' · ' + String(e.data.output).slice(0, 100)
+                        : e.type === 'context.compacted'
+                          ? 'Context compacted'
+                          : e.type === 'child.started'
+                            ? 'Delegated · ' + e.data.task
+                            : e.type;
   return (
     <details
       className="activity"
