@@ -1240,3 +1240,48 @@ test('world-changing recovery uses real audited tools, checks postcondition and 
   );
   await assert.rejects(f.registry.invoke('prepare_recovery_action', spec, f.ctx), /three recovery/);
 });
+
+test('recovery outcomes change subsequent strategy eligibility without claiming causality', async (t) => {
+  const f = fixture(t);
+  writeFileSync(join(f.dir, 'strategy.txt'), 'before');
+  const input = {
+    reason: 'attempt',
+    expected: 'after marker',
+    paths: ['strategy.txt'],
+    action: { name: 'write_file', arguments: { path: 'strategy.txt', content: 'before' } },
+    check: { name: 'read_file', arguments: { path: 'strategy.txt' }, contains: 'after-marker' },
+  };
+  const first = JSON.parse(
+    (await f.registry.invoke('prepare_recovery_action', input, f.ctx)).content,
+  );
+  const executor = new ToolExecutor(f.store, f.registry, f.dir);
+  const result = JSON.parse(
+    (
+      await executor.batch(
+        f.run,
+        [{ id: 'attempt', name: 'execute_recovery_action', arguments: { id: first.id } }],
+        f.ctx,
+      )
+    )[0],
+  );
+  assert.equal(result.status, 'ineffective');
+  await assert.rejects(
+    f.registry.invoke(
+      'prepare_recovery_action',
+      { ...input, reason: 'different wording', check: { ...input.check, contains: 'before' } },
+      f.ctx,
+    ),
+    /unchanged declared conditions/,
+  );
+  const { recoveryPolicyFeedback } = await import('../server/services/recovery-policy.js');
+  const feedback = recoveryPolicyFeedback(f.store, f.run);
+  assert.equal(feedback[0].grounded, true);
+  assert.equal(feedback[0].causalClaim, false);
+  assert.equal(feedback[0].counterfactual, 'unobserved');
+  assert.equal(recoveryPolicyFeedback(f.store, { ...f.run, id: 'other' }).length, 0);
+  writeFileSync(join(f.dir, 'strategy.txt'), 'new condition');
+  const changed = JSON.parse(
+    (await f.registry.invoke('prepare_recovery_action', input, f.ctx)).content,
+  );
+  assert.equal(changed.status, 'prepared');
+});

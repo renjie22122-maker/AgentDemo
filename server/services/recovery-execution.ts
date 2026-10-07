@@ -1,3 +1,4 @@
+import { recoveryPolicyFeedback, recoveryStrategyKey } from './recovery-policy.js';
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import type { ToolContext } from '../tools/registry.js';
@@ -80,6 +81,25 @@ export async function prepareRecovery(c: ToolContext, input: z.infer<typeof reco
     status: 'prepared',
     resolved: false,
   };
+  const feedback = recoveryPolicyFeedback(c.store, c.run);
+  const prior = feedback.find(
+    (f) =>
+      f.grounded &&
+      ['ineffective', 'regressed'].includes(f.status) &&
+      f.strategyKey === recoveryStrategyKey(record),
+  );
+  if (prior)
+    c.store.event(c.run.conversationId, c.run.id, 'recovery.strategy_rejected', {
+      priorId: prior.id,
+      reason:
+        'Same operation and declared preconditions previously yielded no verified improvement.',
+      causalClaim: false,
+    });
+  assert(
+    !prior,
+    'RECOVERY_STRATEGY_REPEAT',
+    'The same recovery operation under unchanged declared conditions already failed or regressed. Choose another strategy or establish changed preconditions; changing the explanation or weakening the check is not a new strategy.',
+  );
   c.store.put('recovery-action', record);
   c.store.event(c.run.conversationId, c.run.id, 'recovery.action_prepared', record);
   return record;

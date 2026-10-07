@@ -198,3 +198,26 @@ cancel a started job. Unknown jobs stop the chain and block delivery, as do pend
 recovery phases. The model resumes from background completion notifications; this is
 not an independent scheduler that runs verification while the model is offline.
 No startup script changes: existing source fingerprint rebuilding applies.
+
+
+### Outcome-informed recovery selection
+
+Recovery results now produce run-local policy feedback, grounded in matching executed
+tool events or terminal background results. Denials, missing receipts and unknown
+outcomes do not become learned failure evidence. Productive observations remain
+options, never permission grants or calibrated success predictions.
+
+Preparing an identical action under the same declared artifact/scope preconditions
+after a grounded ineffective/regressed outcome is rejected and audited. Argument
+object ordering and command explanation wording do not create a new strategy;
+weakening the verification predicate does not bypass this restriction. Changed
+operations or declared preconditions can be considered within the existing attempt
+budget. These restrictions apply to the recovery-contract path, not all ordinary
+tools. Feedback is injected into current-run context and does not cross conversations
+or projects, activate memory, or automatically select an alternative command.
+
+This is outcome-informed anti-repetition, not causal/counterfactual inference.
+Counterfactuals are explicitly unobserved. Environment changes outside declared
+preconditions, check inadequacy and confounders remain limitations; there is no
+estimated uplift, automatic rollback or global learned policy. No new dependencies
+or startup changes; restart is required to load the backend revision.

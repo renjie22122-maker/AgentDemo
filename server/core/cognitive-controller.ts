@@ -1,3 +1,4 @@
+import { recoveryPolicyFeedback } from '../services/recovery-policy.js';
 import { deliveryEvidence } from '../services/delivery-evidence.js';
 import { MemoryChecks } from '../services/memory-checks.js';
 import { automaticSecurityReview } from '../services/security-review.js';
@@ -81,6 +82,7 @@ export class CognitiveController {
         JSON.stringify({
           ...shared,
           cognitiveFeedback: feedback,
+          recoveryPolicy: recoveryPolicyFeedback(this.store, run),
           recoveryActions: this.store
             .list<any>('recovery-action')
             .filter((r) => r.runId === run.id)
