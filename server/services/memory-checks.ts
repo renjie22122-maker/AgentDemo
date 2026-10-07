@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Run, Memory } from '../../shared/types.js';
 import { Store } from '../storage/store.js';
 import { assert } from '../core/errors.js';
@@ -17,6 +18,26 @@ export interface MemoryCheck {
   taskId?: string;
   eventId?: number;
   reason?: string;
+  assessedContract?: string;
+}
+function contractOf(store: Store, run: Run) {
+  const tasks = new TaskBoard(store)
+    .get(run)
+    .tasks.map((t) => ({
+      id: t.id,
+      kind: t.kind,
+      title: t.title,
+      acceptance: t.acceptance,
+      dependsOn: [...t.dependsOn].sort(),
+      artifacts: [...(t.artifacts || [])].sort(),
+      readPaths: [...(t.readPaths || [])].sort(),
+      writePaths: [...(t.writePaths || [])].sort(),
+      provides: [...(t.provides || [])].sort(),
+      requires: [...(t.requires || [])].sort(),
+      externalInputs: t.externalInputs || [],
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  return createHash('sha256').update(JSON.stringify(tasks)).digest('hex');
 }
 /** Recalled experience creates a fresh obligation, never a fresh success claim. */
 export class MemoryChecks {
@@ -60,6 +81,13 @@ export class MemoryChecks {
         );
       })
       .map((c) => {
+        if (c.status !== 'pending' && c.assessedContract !== contractOf(this.store, run))
+          return {
+            ...c,
+            status: 'pending' as const,
+            reason:
+              'Acceptance contract changed or was not recorded; reassess applicability and checks.',
+          };
         const t = new TaskBoard(this.store).get(run).tasks.find((t) => t.id === c.taskId);
         return c.status === 'checked' &&
           (t?.verification?.status !== 'checked' || t.verification.eventId !== c.eventId)
@@ -104,11 +132,20 @@ export class MemoryChecks {
         'Use a check executed by this run, not historical evidence.',
       );
     }
-    const next = { ...row, status, reason, taskId, eventId };
+    const next = {
+      ...row,
+      status,
+      reason,
+      taskId,
+      eventId,
+      assessedContract: contractOf(this.store, run),
+    };
     this.store.put('memory-check', next);
     this.store.event(run.conversationId, run.id, 'memory.check-outcome', {
       id,
       memoryId: row.memoryId,
+      memoryRevision: row.memoryRevision,
+      assessedContract: next.assessedContract,
       status,
       taskId,
       eventId,

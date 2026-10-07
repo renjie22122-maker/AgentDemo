@@ -1,3 +1,8 @@
+import {
+  proposeExperience,
+  compareContracts,
+  learningOutcomes,
+} from '../services/learning-review.js';
 import { MemoryChecks } from '../services/memory-checks.js';
 import { prepareSecurityReview, securitySurfaces } from '../services/security-review.js';
 import { TaskChallenges } from '../services/task-challenges.js';
@@ -13,6 +18,43 @@ import { z } from 'zod';
 import type { ToolRegistry } from './registry.js';
 import { TaskBoard, taskInput, rootRun } from '../services/task-board.js';
 export function installPlanning(registry: ToolRegistry) {
+  registry.add({
+    name: 'propose_verified_experience',
+    effect: 'coordinate',
+    description:
+      'Form an inactive, conversation-local candidate from this run executed failure and subsequent current verify task. Cause and generalization stay hypotheses. Never activates or shares memory.',
+    schema: z.object({
+      failureEventId: z.number().int(),
+      taskId: z.string(),
+      lesson: z.string().trim().min(1).max(1200),
+      conditions: z.string().trim().min(1).max(1200),
+      expected: z.string().trim().min(1).max(2000),
+      observed: z.string().trim().min(1).max(2000),
+      causeHypothesis: z.string().trim().min(1).max(2000),
+    }),
+    run: async (a, c) => ({
+      content: JSON.stringify(await proposeExperience(c.store, c.run, c.files, a)),
+    }),
+  });
+  registry.add({
+    name: 'compare_acceptance_contracts',
+    effect: 'read',
+    parallelSafe: true,
+    description:
+      'Compare this plan against an earlier root run in the same conversation. Reports removed, added and changed task contracts; not semantic proof or authorization to reduce scope.',
+    schema: z.object({ baselineRunId: z.string() }),
+    run: (a, c) => ({ content: JSON.stringify(compareContracts(c.store, c.run, a.baselineRunId)) }),
+  });
+  registry.add({
+    name: 'inspect_learning_outcomes',
+    effect: 'read',
+    parallelSafe: true,
+    description:
+      'Inspect eligible memory-check dispositions and intervention observations in this conversation, up to 100 runs. Counts are not causal benefit, defect detection rate or confidence.',
+    schema: z.object({}),
+    run: (_a, c) => ({ content: JSON.stringify(learningOutcomes(c.store, c.run)) }),
+  });
+
   registry.add({
     name: 'resolve_memory_check',
     effect: 'coordinate',

@@ -4,6 +4,10 @@
 
 Entries below describe repository changes, not a semantic-version release series. Historical test counts belong to their recorded runs.
 
+## 2026-10-07 — Learning review and contract comparison
+
+Evidence-backed inactive experience candidates, same-conversation contract comparison, bounded outcome reporting and acceptance-bound applicability invalidation. No claim of calibrated learning or causal improvement.
+
 ## 2026-10-07 — Experience-to-verification workflow
 
 Recalled active experiences create run-local verification items. Completion requires current version-bound checks or an explicit non-applicability reason. Disabled, changed or out-of-scope memories are excluded; outcomes do not automatically promote confidence or sharing. Generic review guidance adds unknown-value rejection, operation-key/content conflicts and multi-page coverage. Cross-version contract comparison and measured defect-rate improvements remain future work.

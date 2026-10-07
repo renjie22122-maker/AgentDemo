@@ -97,3 +97,12 @@ Pending recalled-experience checks block final completion until checked or expli
 ### Installing this update
 
 No new dependency, model download or database migration is required. Existing launcher source fingerprints include this backend change. Stop the running service after tasks finish and run Start-Amadeus.cmd; new installations continue to use First-Start-Amadeus.cmd. Opening an existing process does not activate updated backend code. Existing memory records are retained; verification items are created only when eligible experiences are recalled.
+
+Experience dispositions now record a fingerprint of the declared task contract (acceptance, dependencies, artifacts and input/output declarations). Adding/removing/changing that contract reopens old applicability/check decisions; progress-only status changes do not. Legacy decisions without a fingerprint also require reassessment. This detects structural changes within a run, not semantic weakening or cross-session contract loss. Outcome events retain the memory revision and contract fingerprint for audit; they do not establish causal improvement.
+
+### Evidence-backed learning review
+
+- `propose_verified_experience` requires an executed typed failure and a later successful, current version-bound verify task from the same run. It records expected/observed behavior and a cause hypothesis alongside artifact and event references. It creates an inactive conversation-local candidate, never a proven causal law or automatic shared memory. Reported behavior and causality still require review.
+- `compare_acceptance_contracts` compares an earlier root run in the same conversation with the current plan. Added, removed and changed contracts are explicit. Stable task IDs are required for matching; renames appear removed/added. It is structural comparison, not semantic weakening detection or permission to remove requirements.
+- `inspect_learning_outcomes` reports current eligible experience dispositions and existing intervention assessments for up to the latest 100 runs in this conversation. Changed trajectory, cleared errors and recorded progress remain distinct. Disabled memory returns no metrics. The report does not calculate defect prevention, calibrated confidence or causal improvement, nor automatically change routing or permissions.
+  Automatic tool choice remains model-driven. No new dependency or launcher change is needed; restart the stopped service to load the compiled backend. Retrospective reports do not execute tests or replay operations.
