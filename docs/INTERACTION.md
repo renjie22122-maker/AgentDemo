@@ -47,3 +47,15 @@ Malformed tool arguments allow up to two correction requests per model step. Tem
 A single ordinary command now waits up to 10 seconds, then returns the ID of the same still-running background process. Its execution timeout is unchanged; approval wait is excluded. The UI records the handoff and background progress. New messages wake background waits. The agent may do independent work, but must not change files, outputs or environments being used by that job. When no independent work remains, it waits for an event rather than polling the model.
 
 Short commands return their original exit code/output. A scheduled job is not passing test evidence. Set yieldAfterSeconds=0 for strict synchronous completion, or background=true for immediate scheduling. Implicit multi-call batches, sequential workflows and hooks retain synchronous defaults to preserve dependencies. This does not create a filesystem lock or guarantee that the model always chooses useful parallel work. Already-running foreground commands on an older service are not retroactively detached.
+
+## Pasted text and draft preview
+
+Pasting at least 8,000 characters or 100 lines creates a Markdown text attachment using the existing upload path. It stays in the draft until sent, can be removed like other attachments, and does not become knowledge or memory automatically. Sending is disabled during that upload. Upload errors retain the source for retry or restoration to the draft.
+
+Short Markdown/formula pastes open Preview; Edit returns to the unchanged source. Tables, fenced code and KaTeX math are supported. This is a source/preview editor, not a rich-text WYSIWYG editor. Draft previews do not execute HTML or fetch remote images. Existing attachment limits still apply.
+
+### Updates and argument repair
+
+Quick Start checks source fingerprints and rebuilds when the service is stopped. An already running service is only reopened; rebuilding files does not reload its in-memory code. Finish tasks and stop the service before running Start-Amadeus.cmd again. First-Start-Amadeus.cmd prepares locked dependencies and builds; it refuses to replace dependencies underneath a running service.
+
+Malformed tool arguments get at most two consecutive repair attempts, reset after each successful model response. Exhaustion is a recoverable interruption; incomplete calls are never executed. Network reconnection is separate. Historical failures do not describe the currently installed implementation. Security review designs are untested suggestions, not evidence of vulnerability discovery or remediation.

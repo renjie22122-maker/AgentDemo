@@ -23,6 +23,7 @@ export interface CognitiveState {
   };
   pendingAdvice?: { action: Intervention; step: number; digest: string; errors: number };
   signals: {
+    convergence?: 'productive' | 'waiting' | 'repetitive' | 'blocked' | 'unassessed';
     repeated: boolean;
     toolErrors: number;
     blockedTasks: number;
@@ -96,7 +97,7 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
   state.verifiedEvidence = verified;
   const advanced = completed.filter((id) => !state.completedTasks.includes(id)).length;
   state.completedTasks = completed;
-  if (advanced) {
+  if (advanced || newEvidence) {
     state.window = [];
     state.warnedCycle = undefined;
   }
@@ -119,6 +120,7 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
     state.warnedCycle = undefined;
     state.signals = {
       ...state.signals,
+      convergence: 'waiting',
       repeated: false,
       toolErrors: 0,
       completedTaskDelta: advanced,
@@ -184,6 +186,14 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
     }
   }
   state.signals = {
+    convergence:
+      advanced || newEvidence
+        ? 'productive'
+        : cycle
+          ? 'repetitive'
+          : blocked.length || errors
+            ? 'blocked'
+            : 'unassessed',
     repeated: !!cycle,
     toolErrors: errors,
     blockedTasks: blocked.length,

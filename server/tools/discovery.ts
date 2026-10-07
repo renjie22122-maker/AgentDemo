@@ -8,6 +8,7 @@ export const coreTools = new Set([
   'batch_read_tools',
   'list_files',
   'read_file',
+  'read_attachment',
   'read_json',
   'write_file',
   'edit_file',

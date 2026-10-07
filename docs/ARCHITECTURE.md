@@ -44,3 +44,35 @@ Model concurrency defaults to 3 per conversation; cumulative child executions de
 This is a single-host runtime, not distributed consensus or exactly-once external execution. Provenance is not semantic correctness; filesystem observations are not adversarial locks. Broad held-out performance and security claims require independent evaluation.
 
 Memory, policy and graph routes now live in server/http/memory.ts with explicit Store, Configuration and MemoryIndex dependencies. The HTTP composition root retains shared authentication and lifecycle hooks; this does not finish decomposing App.tsx or the tool registry.
+
+## Evidence-driven reflection
+
+Task snapshots include a bounded deterministic critique: declared goal completion, source-valid tool evidence, recorded checks, independent checks, stale checks, blockers and unknown effects. Evidence must belong to the same task tree; scheduled commands do not count as passing evidence. Suggested next checks target acceptance counterexamples. No correctness probability is fabricated, and missing undeclared requirements remain unknown. This extends the advisory controller; it does not add an autonomous critic model, force an adversarial team for every task, or establish learned optimal routing. Existing full/reference/delta context reuse remains unchanged.
+
+### Security review and evidence-bound challenges
+
+For software with trust boundaries, the assistant can discover `prepare_security_review`.
+It produces **untested** counterexample designs for identity, authorization, untrusted
+input, shared-state transitions, external events, secrets, and file/network access.
+The assistant selects applicable surfaces and adds verification tasks to its plan.
+Negative tests should have positive controls and inspect durable state. Execution
+approval is permission to run a check, not a security review of the delivered application.
+
+Concrete concerns can be persisted with `record_task_challenge`. Open challenges
+block finalization of affected tasks. `resolve_task_challenge` requires the current
+task verification event, generated after the challenge, with a successful receipt and
+matching artifact stamps. Earlier green tests cannot close a new concern. Changed
+contracts or stale artifact verification reopen resolved concerns. Author checks remain
+distinguished from independent checks. Review-design and challenge tools cannot count
+as completion evidence. The delivery loop allows two corrective attempts; it does not
+retry uncertain effects or create an unlimited review loop.
+
+These controls prove recorded check provenance, not that a test logically refutes a
+concern. Selecting all relevant surfaces and discovering vulnerabilities still depend
+on the model and available evidence. Static inspection may be recorded as such; it
+must not be presented as an executed exploit test. There is no calibrated security
+score, mandatory reviewer on every chat, or claim of vulnerability-free output.
+Reflection exposes separate fact/plan/tool/evidence/memory/answer uncertainty states,
+not fabricated probabilities. No new dependency or launcher change is required.
+
+The host also injects review designs into task snapshots when declared task text matches risk surfaces or declared artifacts are source files. This heuristic does not require a user review request or a tool invocation. It does not cover absent plans, undeclared changes or every risk; checklist execution remains model-driven, while recorded open challenges are host-gated.

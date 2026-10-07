@@ -1,3 +1,6 @@
+import { useState, useRef, useEffect } from 'react';
+import { DraftPreview } from './DraftPreview';
+import { shouldAttachPaste, hasMarkdown, insertPaste } from '../composer-paste';
 import { TaskProgress } from './TaskProgress';
 import { SecurityControl } from './SecurityControl';
 import { VoiceInput } from './VoiceInput';
@@ -60,6 +63,36 @@ export function Composer({
   bottom,
   sending,
 }: ComposerProps) {
+  const zh = t('settings') !== 'Settings';
+  const [preview, setPreview] = useState(false);
+  const [pasting, setPasting] = useState(false);
+  useEffect(() => {
+    if (!draft) setPreview(false);
+  }, [draft]);
+  const pasteBusy = useRef(false);
+  const [pasteFailure, setPasteFailure] = useState('');
+  const [pasteError, setPasteError] = useState('');
+  async function attachText(text: string) {
+    if (pasteBusy.current) return;
+    pasteBusy.current = true;
+    setPasting(true);
+    setPasteError('');
+    setPasteFailure('');
+    try {
+      await addFiles([
+        new File([text], 'Pasted-text-' + Date.now() + '.md', { type: 'text/markdown' }),
+      ]);
+    } catch (error) {
+      setPasteFailure(text);
+      setPasteError(error instanceof Error ? error.message : String(error));
+    } finally {
+      pasteBusy.current = false;
+      setPasting(false);
+    }
+  }
+  const sendReady = (text?: string) => {
+    if (!pasteBusy.current) void send(text);
+  };
   return (
     <div className="composer-area">
       <div className="composer-width">
@@ -84,7 +117,7 @@ export function Composer({
         {run && ['interrupted', 'failed'].includes(run.status) && (
           <button
             className="resume-button"
-            disabled={sending}
+            disabled={sending || pasting}
             onClick={() =>
               void send(
                 'Continue the unfinished task. Inspect existing results first. Do not replay completed or unknown side effects.',
@@ -128,7 +161,7 @@ export function Composer({
                     </a>
                     <button
                       type="button"
-                      disabled={sending}
+                      disabled={sending || pasting}
                       aria-label={
                         (t('settings') === 'Settings' ? 'Remove attachment: ' : '删除附件：') +
                         a.name
@@ -141,7 +174,56 @@ export function Composer({
                 ))}
             </div>
           )}
+          <div className="draft-mode" role="group" aria-label={zh ? '草稿显示' : 'Draft display'}>
+            <button
+              type="button"
+              aria-pressed={!preview}
+              onClick={() => {
+                setPreview(false);
+                requestAnimationFrame(() => draftRef.current?.focus());
+              }}
+            >
+              {zh ? '编辑' : 'Edit'}
+            </button>
+            <button type="button" aria-pressed={preview} onClick={() => setPreview(true)}>
+              {zh ? '预览' : 'Preview'}
+            </button>
+            {pasting && (
+              <span role="status">{zh ? '正在保存粘贴文本…' : 'Saving pasted text…'}</span>
+            )}
+          </div>
+          {pasteFailure && (
+            <div className="draft-paste-error" role="alert">
+              <p>
+                {zh ? '附件保存失败，原文已保留：' : 'Attachment failed; original text retained: '}
+                {pasteError}
+              </p>
+              <button
+                type="button"
+                disabled={pasting}
+                onClick={() => void attachText(pasteFailure)}
+              >
+                {zh ? '重试' : 'Retry'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraft((d) => d + pasteFailure);
+                  setPasteFailure('');
+                  setPreview(false);
+                }}
+              >
+                {zh ? '放回草稿' : 'Restore to draft'}
+              </button>
+              <details>
+                <summary>{zh ? '查看原文' : 'View original'}</summary>
+                <pre>{pasteFailure}</pre>
+              </details>
+            </div>
+          )}
+          {preview && <DraftPreview text={draft} />}
           <textarea
+            hidden={preview}
             ref={draftRef}
             aria-label="Message"
             value={draft}
@@ -152,12 +234,33 @@ export function Composer({
               if (images.length) {
                 e.preventDefault();
                 void action(() => addFiles(images));
+                return;
+              }
+              const text = e.clipboardData.getData('text/plain');
+              if (shouldAttachPaste(text)) {
+                e.preventDefault();
+                if (pasteBusy.current) {
+                  setDraft((d) => d + text);
+                  return;
+                }
+                void attachText(text);
+              } else if (hasMarkdown(text)) {
+                e.preventDefault();
+                setDraft(
+                  insertPaste(
+                    draft,
+                    text,
+                    e.currentTarget.selectionStart,
+                    e.currentTarget.selectionEnd,
+                  ),
+                );
+                setPreview(true);
               }
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
-                void send();
+                sendReady();
               }
             }}
           />
@@ -269,10 +372,11 @@ export function Composer({
                 }
                 disabled={
                   sending ||
+                  pasting ||
                   (!draft.trim() && !detail?.attachments.some((a) => !a.messageEventId)) ||
                   !state.settings.profiles.length
                 }
-                onClick={() => void send()}
+                onClick={() => sendReady()}
               >
                 {sending ? (
                   <LoaderCircle size={19} className="send-progress-icon" />

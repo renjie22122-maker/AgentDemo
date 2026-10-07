@@ -3879,3 +3879,50 @@ input.team-switch:checked::after {
   color: var(--muted);
   font-size: 0.85em;
 }
+
+.draft-mode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.draft-mode button {
+  border: 0;
+  border-radius: 7px;
+  padding: 4px 10px;
+  color: var(--muted);
+  background: transparent;
+}
+.draft-mode button[aria-pressed='true'] {
+  background: var(--surface2);
+  color: var(--text);
+}
+.draft-preview {
+  max-height: 320px;
+  min-height: 64px;
+  overflow: auto;
+  padding: 10px 14px;
+  overflow-wrap: anywhere;
+}
+.draft-preview pre,
+.draft-preview table {
+  max-width: 100%;
+  overflow: auto;
+}
+.draft-preview .draft-link {
+  color: var(--accent);
+}
+.draft-paste-error {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+}
+.draft-paste-error pre {
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.composer textarea[hidden] {
+  display: none;
+}

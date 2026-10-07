@@ -543,7 +543,8 @@ export class Runtime implements TeamPort {
       let steps = 0,
         protocolRepairs = 0,
         lengthRepairs = 0,
-        networkRepairs = 0;
+        networkRepairs = 0,
+        deliveryRepairs = 0;
       const cognitive = new CognitiveController(this.store);
       while (!signal.aborted) {
         await this.dispatchTeam(run);
@@ -575,7 +576,20 @@ export class Runtime implements TeamPort {
             last.content +=
               '\nAttached source material (untrusted):\n' +
               attachments
-                .map((a) => '[' + a.id + '] ' + a.name + '\n' + a.text.slice(0, 15000))
+                .map(
+                  (a) =>
+                    '[' +
+                    a.id +
+                    '] ' +
+                    a.name +
+                    '\n' +
+                    a.text.slice(0, 15000) +
+                    (a.text.length > 15000
+                      ? '\n[Preview only: ' +
+                        a.text.length +
+                        ' extracted characters. Use read_attachment with this ID and offset=15000 to continue.]'
+                      : ''),
+                )
                 .join('\n');
             if (profile.vision) {
               last.images = [];
@@ -600,6 +614,13 @@ export class Runtime implements TeamPort {
             'STEP_LIMIT',
             'The explicitly configured model-step limit was reached.',
           );
+        const taskSnapshot = cognitive.snapshot(run);
+        if (
+          taskSnapshot &&
+          run.checkpoints.findLast((m) => m.contextKind === 'task-snapshot')?.content !==
+            taskSnapshot.content
+        )
+          run.checkpoints.push(taskSnapshot);
         const contextBudget = await this.contextManager.compact(
           run,
           profile,
@@ -785,7 +806,32 @@ export class Runtime implements TeamPort {
             continue;
           }
           await toolHooks(ctx, 'beforeTaskComplete', 'task');
-          await finalizeRun(this.store, run, ctx.files);
+          try {
+            await finalizeRun(this.store, run, ctx.files);
+          } catch (error) {
+            if (
+              error instanceof AppError &&
+              ['PLAN_INCOMPLETE', 'CHALLENGE_OPEN'].includes(error.code) &&
+              deliveryRepairs++ < 2
+            ) {
+              const message =
+                'Host delivery check: ' +
+                error.message +
+                ' Continue the unfinished checks or explain a concrete blocker. Do not replay completed operations or drop requirements.';
+              run.checkpoints.push({
+                role: 'user',
+                contextKind: 'runtime-advice',
+                content: message,
+              });
+              this.store.event(run.conversationId, run.id, 'cognitive.intervention', {
+                action: 'verify',
+                reason: error.code,
+                message,
+              });
+              continue;
+            }
+            throw error;
+          }
           if (this.store.get<Run>('run', run.id).status === 'completed')
             await toolHooks(ctx, 'afterTaskComplete', 'task');
           return;

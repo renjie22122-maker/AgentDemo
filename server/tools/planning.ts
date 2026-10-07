@@ -1,3 +1,5 @@
+import { prepareSecurityReview, securitySurfaces } from '../services/security-review.js';
+import { TaskChallenges } from '../services/task-challenges.js';
 import { createHash } from 'node:crypto';
 import { teamBlackboard } from '../services/team-blackboard.js';
 import { compilePlan } from '../services/plan-compiler.js';
@@ -10,6 +12,68 @@ import { z } from 'zod';
 import type { ToolRegistry } from './registry.js';
 import { TaskBoard, taskInput, rootRun } from '../services/task-board.js';
 export function installPlanning(registry: ToolRegistry) {
+  registry.add({
+    name: 'prepare_security_review',
+    effect: 'read',
+    parallelSafe: true,
+    description:
+      'Design adversarial security checks from applicable trust boundaries for any software task. Returns untested hypotheses and positive/negative controls, not a security verdict. No scanning, execution or permission changes.',
+    schema: z.object({ surfaces: z.array(z.enum(securitySurfaces)).min(1).max(7) }),
+    run: (a) => ({ content: JSON.stringify(prepareSecurityReview(a.surfaces)) }),
+  });
+
+  registry.add({
+    name: 'inspect_task_challenges',
+    effect: 'read',
+    parallelSafe: true,
+    description:
+      'Read scoped counterexample hypotheses and their evidence-bound resolutions. Open challenges block delivery of affected tasks; a recorded resolution is not proof of semantic correctness.',
+    schema: z.object({}),
+    run: (_a, c) => ({ content: JSON.stringify(new TaskChallenges(c.store).list(c.run)) }),
+  });
+  registry.add({
+    name: 'record_task_challenge',
+    effect: 'coordinate',
+    atomic: true,
+    description:
+      'Record a concrete falsifiable counterexample to a declared task, not vague disagreement. Any member may challenge; this grants no permissions. Reuse open challenges instead of duplicating them.',
+    schema: z.object({
+      taskId: z.string(),
+      revision: z.number().int(),
+      claim: z.string().min(1).max(1500),
+      counterexample: z.string().min(1).max(3000),
+    }),
+    run: (a, c) => ({
+      content: JSON.stringify(
+        new TaskChallenges(c.store).raise(c.run, a.taskId, a.revision, a.claim, a.counterexample),
+      ),
+    }),
+  });
+  registry.add({
+    name: 'resolve_task_challenge',
+    effect: 'coordinate',
+    description:
+      'Resolve an open challenge only with a successful version-matching observed check already included in task evidence and current artifact verification. Explain how the check addresses the counterexample. Self-check and independent check remain distinguished; no vote can resolve a finding.',
+    schema: z.object({
+      id: z.string(),
+      revision: z.number().int(),
+      eventId: z.number().int(),
+      note: z.string().min(1).max(3000),
+    }),
+    run: async (a, c) => ({
+      content: JSON.stringify(
+        await new TaskChallenges(c.store).resolve(
+          c.run,
+          c.files,
+          a.id,
+          a.revision,
+          a.eventId,
+          a.note,
+        ),
+      ),
+    }),
+  });
+
   registry.add({
     name: 'await_team_message',
     effect: 'coordinate',

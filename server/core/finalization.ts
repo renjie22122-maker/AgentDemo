@@ -1,3 +1,4 @@
+import { TaskChallenges } from '../services/task-challenges.js';
 import type { Run } from '../../shared/types.js';
 import type { Store } from '../storage/store.js';
 import type { FileScope } from '../services/paths.js';
@@ -35,6 +36,20 @@ export async function finalizeRun(store: Store, run: Run, files: FileScope) {
     'Declared plan has unfinished tasks: ' +
       unfinished.map((t) => t.id).join(', ') +
       '. Inspect the board and continue or explain blockers.',
+  );
+  const unresolved = new TaskChallenges(store)
+    .list(run)
+    .filter(
+      (c) =>
+        c.status === 'open' &&
+        (run.id === plan.id || plan.tasks.some((t) => t.id === c.taskId && t.owner === run.id)),
+    );
+  assert(
+    !unresolved.length,
+    'CHALLENGE_OPEN',
+    'Unresolved task challenges: ' +
+      unresolved.map((c) => c.id).join(', ') +
+      '. Inspect counterexamples, check current artifacts, and resolve with evidence.',
   );
   store.transition(run.id, 'completed');
 }

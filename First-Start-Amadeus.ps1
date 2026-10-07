@@ -27,6 +27,7 @@ try {
     & $taskNode node_modules/vite/bin/vite.js build
     if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed; service was not started.' }
     Set-Content -LiteralPath (Join-Path $taskRoot 'dist/.agentdemo-build') -Value (Get-AgentDemoFingerprint $taskRoot)
-    Write-Host '[3/3] Setup complete.'
+    Write-Host '[3/3] Setup complete: backend and frontend rebuilt. Existing conversations are preserved.'
+    if ($SetupOnly) { Write-Host 'SetupOnly: no service was started. Run Start-Amadeus.cmd to load this build.' }
 } finally { Pop-Location }
 if (-not $SetupOnly) { & (Join-Path $taskRoot 'Start-Amadeus.ps1') -NoBrowser:$NoBrowser }

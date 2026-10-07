@@ -35,7 +35,7 @@ export function recallMemories(
     for (const term of terms(m.content)) frequency.set(term, (frequency.get(term) || 0) + 1);
   const ranked = eligible
     .map((m) => {
-      const tokens = terms(m.content);
+      const tokens = terms(m.content + ' ' + (m.conditions || ''));
       let relevance = 3 * (semantic.get(m.id) || 0);
       for (const term of queryTerms)
         if (tokens.has(term))
@@ -53,10 +53,27 @@ export function recallMemories(
     })
     .filter((m) => m.relevance > 0)
     .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+  // Specific structured facts override broader facts only for the same entity,
+  // attribute and applicability condition. Original memories are never mutated.
+  const specificity = (m: Memory) =>
+    (m.recallScope === 'conversation' ? 2 : 0) + (m.scope.startsWith('project:') ? 1 : 0);
+  const factKey = (m: Memory) =>
+    m.entityId && m.attribute
+      ? JSON.stringify([m.entityId, m.attribute, (m.conditions || '').trim().toLowerCase()])
+      : null;
+  const winners = new Map<string, number>();
+  for (const m of ranked) {
+    const key = factKey(m);
+    if (key) winners.set(key, Math.max(winners.get(key) || 0, specificity(m)));
+  }
+  const applicable = ranked.filter((m) => {
+    const key = factKey(m);
+    return !key || specificity(m) === winners.get(key);
+  });
   const seen = new Set<string>(),
     selected = [];
   let size = 0;
-  for (const m of ranked) {
+  for (const m of applicable) {
     const key = m.content.trim().toLowerCase().replace(/\s+/g, ' ');
     if (seen.has(key) || size + m.content.length > 8000) continue;
     seen.add(key);
@@ -73,8 +90,28 @@ export function recallMemories(
       validUntil: m.validUntil,
       entityId: m.entityId,
       attribute: m.attribute,
+      value: m.value,
       evidence: m.evidence,
       conditions: m.conditions,
+      applicability: m.conditions?.trim()
+        ? 'check-conditions-before-use'
+        : 'within-authorized-scope',
+      relevance: { lexicalOrSemanticMatch: m.relevance, calibratedConfidence: null },
+      broaderMemoryIds: ranked
+        .filter(
+          (other) =>
+            factKey(m) && factKey(other) === factKey(m) && specificity(other) < specificity(m),
+        )
+        .map((other) => other.id),
+      conflictingMemoryIds: applicable
+        .filter(
+          (other) =>
+            other.id !== m.id &&
+            factKey(m) &&
+            factKey(other) === factKey(m) &&
+            other.value !== m.value,
+        )
+        .map((other) => other.id),
       recallScope: m.recallScope,
       decay: m.decay,
     });

@@ -10,7 +10,7 @@ if ($taskHealth.application -in @('Amadeus', 'AgentDemo')) {
             Write-Warning 'Local files have changed since the last build. Stop the running service when your tasks are finished, then run this launcher again to apply updates. Opening the existing service does not reload it.'
         }
         if (-not $NoBrowser) { Start-Process $taskUrl }
-        Write-Host "Amadeus is already running at $taskUrl"
+        Write-Host "Amadeus is already running at $taskUrl. This opens the existing process; it does not restart or upgrade it."
         exit 0
 }
 $taskNode = Get-AgentDemoNode

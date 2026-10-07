@@ -4,6 +4,12 @@
 
 Entries below describe repository changes, not a semantic-version release series. Historical test counts belong to their recorded runs.
 
+## 2026-10-07 — Draft previews and evidence-driven context
+
+Long pasted text becomes an attachment; safe Markdown/math draft preview. Task reflection exposes evidence gaps without fabricated confidence. Structured memory exceptions preserve broader preferences and report conflicts.
+
+Generic security review is triggered from declared tasks; unresolved challenges block delivery and old evidence cannot close new concerns. Check provenance does not establish semantic correctness. No new dependencies.
+
 ## 2026-10-06 — Engineering checks and preview sizing
 
 Compiled backend with runtime assets, memory-domain routes, Unicode regression, package metadata without a license grant, bilingual link checks and compiled smoke tests. Preview adds content/window fitting and SVG support.
