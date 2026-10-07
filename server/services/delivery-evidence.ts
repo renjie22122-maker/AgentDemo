@@ -22,7 +22,7 @@ export function deliveryEvidence(store: Store, run: Run) {
       (t.requireIndependent === true &&
         (t.verification?.status !== 'checked' || t.verification.independent !== true)) ||
       t.verification?.status === 'stale' ||
-      (!!team && !!t.artifacts?.length && t.verification?.status !== 'checked'),
+      (!!t.artifacts?.length && t.verification?.status !== 'checked'),
   );
   const challenges = new TaskChallenges(store)
     .list(run)

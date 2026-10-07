@@ -4,6 +4,10 @@
 
 Entries below describe repository changes, not a semantic-version release series. Historical test counts belong to their recorded runs.
 
+## 2026-10-07 — Artifact delivery gates and copy coverage
+
+Unverified declared artifacts now block single-agent delivery too. Isolated copies preserve allowlisted hidden configurations, exclude key/certificate files and report copy coverage and actionable limit errors. Resource limits remain bounded.
+
 ## 2026-10-07 — Capability admission and independent review contracts
 
 Unified registered-tool admission with post-wait checks; optional independent-evidence delivery requirements; bounded team interface and acceptance projections. Provider transport enforcement remains separate.

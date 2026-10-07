@@ -14,16 +14,56 @@ export interface Isolation {
   state: 'ready' | 'merging' | 'merged' | 'uncertain';
   mergePlan?: { path: string; before: string | null; after: string | null }[];
   applied?: string[];
+  copyReport?: {
+    files: number;
+    bytes: number;
+    excludedEntries: number;
+    excludedSample: string[];
+    maxFiles: number;
+    maxBytes: number;
+  };
 }
-const excluded = (name: string) =>
-  name.startsWith('.') || ['node_modules', '__pycache__', 'dist', 'build'].includes(name);
+const safeHiddenFiles = new Set([
+  '.editorconfig',
+  '.gitignore',
+  '.gitattributes',
+  '.prettierignore',
+  '.prettierrc',
+  '.prettierrc.json',
+  '.prettierrc.yaml',
+  '.prettierrc.yml',
+  '.eslintrc',
+  '.eslintrc.json',
+  '.eslintignore',
+  '.dockerignore',
+]);
+const excluded = (name: string, isFile: boolean) => {
+  const lower = name.toLowerCase();
+  return (
+    (lower.startsWith('.') && !(isFile && safeHiddenFiles.has(lower))) ||
+    ['node_modules', '__pycache__', 'dist', 'build'].includes(lower) ||
+    /\.(pem|key|p12|pfx)$/i.test(name)
+  );
+};
 const hash = (b: Buffer) => createHash('sha256').update(b).digest('hex');
 async function scan(scope: FileScope) {
   const files = new Map<string, Buffer>();
-  let bytes = 0;
+  let bytes = 0,
+    excludedEntries = 0;
+  const excludedSample: string[] = [];
   async function walk(root: number, dir: string) {
     for (const item of await readdir(dir, { withFileTypes: true })) {
-      if (excluded(item.name)) continue;
+      if (excluded(item.name, item.isFile())) {
+        excludedEntries++;
+        if (excludedSample.length < 40)
+          excludedSample.push(
+            '@' +
+              root +
+              '/' +
+              relative(scope.roots[root], join(dir, item.name)).replaceAll('\\', '/'),
+          );
+        continue;
+      }
       const path = join(dir, item.name),
         key = '@' + root + '/' + relative(scope.roots[root], path).replaceAll('\\', '/');
       await scope.resolve(key);
@@ -34,14 +74,30 @@ async function scan(scope: FileScope) {
         assert(
           files.size < 10000 && bytes <= 64 * 1024 * 1024,
           'ISOLATION_SIZE',
-          'Isolated copies support 10,000 files / 64 MB. Narrow the project before delegation.',
+          'Isolated copy exceeds 10,000 files / 64 MiB at ' +
+            key +
+            ' (observed ' +
+            (files.size + 1) +
+            ' files, ' +
+            bytes +
+            ' bytes). No usable copy was created; narrow the project before delegation.',
         );
         files.set(key, await readFile(path));
       }
     }
   }
   for (let i = 0; i < scope.roots.length; i++) await walk(i, scope.roots[i]);
-  return files;
+  return {
+    files,
+    report: {
+      files: files.size,
+      bytes,
+      excludedEntries,
+      excludedSample,
+      maxFiles: 10000,
+      maxBytes: 64 * 1024 * 1024,
+    },
+  };
 }
 export class Isolations {
   private static merging = false;
@@ -52,7 +108,7 @@ export class Isolations {
   async create(parentRunId: string, source: FileScope): Promise<Isolation> {
     const key = id(),
       roots = source.roots.map((_, i) => join(this.directory, 'isolated', key, String(i)));
-    const sourceFiles = await scan(source),
+    const { files: sourceFiles, report: copyReport } = await scan(source),
       base: Record<string, string> = {};
     for (const root of roots) await mkdir(root, { recursive: true });
     const target = new FileScope(roots);
@@ -74,6 +130,7 @@ export class Isolations {
       originals: source.roots,
       base,
       state: 'ready',
+      copyReport,
     } as Isolation);
   }
   get(key: string) {
@@ -81,7 +138,8 @@ export class Isolations {
   }
   async inspect(key: string) {
     const record = this.get(key),
-      files = await scan(new FileScope(record.roots));
+      scanResult = await scan(new FileScope(record.roots)),
+      files = scanResult.files;
     const originals = new FileScope(record.originals);
     const changes = [];
     for (const name of new Set([...Object.keys(record.base), ...files.keys()])) {
@@ -142,7 +200,10 @@ export class Isolations {
       state: record.state,
       version,
       changes,
-      excluded: 'Hidden files, dependency and build directories are not copied or merged.',
+      copyReport: record.copyReport ?? null,
+      currentCopyReport: scanResult.report,
+      excluded:
+        'Only allowlisted hidden configuration files are copied and merged. Other hidden entries, dependency/build directories and key/certificate files are excluded. Counts refer to excluded entries, not descendants of excluded directories.',
     };
   }
   async merge(key: string, expectedVersion: string) {

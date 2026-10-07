@@ -41,9 +41,10 @@ test('delivery projection distinguishes no assessment, blockers, and unverified 
     });
     board.update(run, 'a', 1, 'done', [event.id], '');
     const report = deliveryEvidence(store, run);
-    assert.equal(report.verdict, 'yellow');
+    assert.equal(report.verdict, 'red');
     assert.equal(report.impact[0].coverage, 'unknown');
-    assert.deepEqual(report.blockers.tasks, []);
+    assert.deepEqual(report.blockers.tasks, ['a']);
+    await assert.rejects(finalizeRun(store, run, new FileScope([dir])), /unfinished tasks/);
     assert.match(report.limitations, /no complete semantic impact/);
   } finally {
     store.db.close();

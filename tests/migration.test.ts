@@ -256,3 +256,43 @@ test('partial merge records progress and resumes only remaining approved writes'
     f.store.close();
   }
 });
+
+test('isolated copies retain ordinary hidden configuration but exclude secrets and report omissions', async () => {
+  const f = await fixture();
+  try {
+    await writeFile(join(f.root, '.editorconfig'), 'root = true');
+    await writeFile(join(f.root, '.gitignore'), 'build/');
+    await writeFile(join(f.root, '.env'), 'secret');
+    await writeFile(join(f.root, 'private.key'), 'secret');
+    await mkdir(join(f.root, '.git'));
+    const child = await f.service.create('parent', new FileScope([f.root]));
+    assert.equal(await readFile(join(child.roots[0], '.editorconfig'), 'utf8'), 'root = true');
+    await assert.rejects(readFile(join(child.roots[0], 'private.key')));
+    assert.equal(child.copyReport?.files, 2);
+    assert.equal(child.copyReport?.excludedEntries, 3);
+    await writeFile(join(child.roots[0], '.editorconfig'), 'root = false');
+    const review = await f.service.inspect(child.id);
+    assert.equal(review.changes[0].path, '@0/.editorconfig');
+    await f.service.merge(child.id, review.version);
+    assert.equal(await readFile(join(f.root, '.editorconfig'), 'utf8'), 'root = false');
+    assert.equal(await readFile(join(f.root, '.env'), 'utf8'), 'secret');
+  } finally {
+    f.store.close();
+  }
+});
+
+test('oversized copies fail explicitly without a usable partial isolation', async () => {
+  const f = await fixture();
+  try {
+    const handle = await (await import('node:fs/promises')).open(join(f.root, 'large.bin'), 'w');
+    await handle.truncate(65 * 1024 * 1024);
+    await handle.close();
+    await assert.rejects(
+      f.service.create('parent', new FileScope([f.root])),
+      /large.bin.*No usable copy/,
+    );
+    assert.equal(f.store.list('isolation').length, 0);
+  } finally {
+    f.store.close();
+  }
+});

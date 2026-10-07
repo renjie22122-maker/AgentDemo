@@ -26,7 +26,7 @@ Docker needs the engine and a preinstalled image (pull=never), uses a non-root u
 
 ## Writable workers
 
-Isolated workers copy authorized folders without hard links; copies are bounded to 10,000 regular files/64 MB and exclude hidden/dependency/build/link/private entries. Missing copied dependencies do not prove the host installation is broken. Child commands require OS isolation; host command execution and external MCP are unavailable.
+Isolated workers copy authorized folders without hard links; copies are bounded to 10,000 regular files/64 MiB. Allowlisted hidden configuration files (such as .editorconfig and .gitignore) are included; other hidden entries, dependency/build directories and key/certificate files are excluded. Links/private paths remain rejected. Copy reports expose file/byte totals and a bounded excluded-entry sample; excluded directory descendants are not counted. Limit failures identify the triggering path and do not create a usable partial copy. Missing copied dependencies do not prove the host installation is broken. Child commands require OS isolation; host command execution and external MCP are unavailable.
 
 Review changes returns diffs/conflicts and a version. Merge needs explicit approval and unchanged parent/version hashes; binary conflicts need manual handling. Per-file journaling exposes partial results, not an atomic multi-file transaction. Merged copies cannot continue writing.
 

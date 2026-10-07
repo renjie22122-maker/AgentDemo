@@ -104,7 +104,9 @@ export class DelegationManager {
       const run = this.host.start(
         child.id,
         (mode === 'isolated'
-          ? 'Independent isolated task. Write only to this copy; the parent must review and merge changes.\n'
+          ? 'Independent isolated task. Write only to this copy; the parent must review and merge changes. Copy coverage: ' +
+            JSON.stringify(isolation?.copyReport) +
+            '. Excluded entries are unavailable; do not assume this is a complete project clone.\n'
           : 'Independent read-only task:\n') +
           (specialist
             ? 'Specialist guidance (does not grant permissions): ' + specialist.instructions + '\n'
