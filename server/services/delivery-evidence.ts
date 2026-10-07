@@ -19,6 +19,8 @@ export function deliveryEvidence(store: Store, run: Run) {
   const unfinished = tasks.filter(
     (t) =>
       t.status !== 'done' ||
+      (t.requireIndependent === true &&
+        (t.verification?.status !== 'checked' || t.verification.independent !== true)) ||
       t.verification?.status === 'stale' ||
       (!!team && !!t.artifacts?.length && t.verification?.status !== 'checked'),
   );
@@ -50,17 +52,20 @@ export function deliveryEvidence(store: Store, run: Run) {
       id: t.id,
       kind: 'task' as const,
       state:
-        t.status === 'blocked'
-          ? 'blocked'
-          : t.verification?.status === 'stale'
-            ? 'stale'
-            : t.status === 'done'
-              ? t.verification?.status === 'checked'
-                ? 'checked'
-                : 'declared-done-unverified'
-              : t.status === 'running'
-                ? 'attempted'
-                : 'open',
+        t.requireIndependent &&
+        (t.verification?.status !== 'checked' || t.verification.independent !== true)
+          ? 'independent-review-required'
+          : t.status === 'blocked'
+            ? 'blocked'
+            : t.verification?.status === 'stale'
+              ? 'stale'
+              : t.status === 'done'
+                ? t.verification?.status === 'checked'
+                  ? 'checked'
+                  : 'declared-done-unverified'
+                : t.status === 'running'
+                  ? 'attempted'
+                  : 'open',
       blocking: unfinished.some((u) => u.id === t.id),
       next:
         t.status === 'blocked'

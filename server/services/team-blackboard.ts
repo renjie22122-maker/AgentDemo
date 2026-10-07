@@ -23,6 +23,18 @@ export function teamBlackboard(store: Store, run: Run) {
       status: t.status,
       owner: t.owner,
       dependsOn: t.dependsOn,
+      acceptance: (t.acceptance || '').slice(0, 800),
+      acceptanceTruncated: (t.acceptance || '').length > 800,
+      provides: t.provides || [],
+      requires: t.requires || [],
+      requireIndependent: t.requireIndependent === true,
+      independent: t.verification?.independent === true,
+      missingDependencies: t.dependsOn.filter(
+        (id) =>
+          !board.tasks.some(
+            (d) => d.id === id && d.status === 'done' && d.verification?.status !== 'stale',
+          ),
+      ),
       verification: t.verification?.status ?? 'not-recorded',
       evidenceEventIds: (t.evidence || []).slice(-8),
     })),
@@ -35,16 +47,14 @@ export function teamBlackboard(store: Store, run: Run) {
         stampAvailable: !!t.verification?.stamp,
       })),
     ),
-    messages: messages
-      .slice(-12)
-      .map((m) => ({
-        id: m.id,
-        sender: m.sender,
-        sequence: m.sequence,
-        text: String(m.text).slice(0, 1600),
-        truncated: String(m.text).length > 1600,
-        trust: 'untrusted-member-content',
-      })),
+    messages: messages.slice(-12).map((m) => ({
+      id: m.id,
+      sender: m.sender,
+      sequence: m.sequence,
+      text: String(m.text).slice(0, 1600),
+      truncated: String(m.text).length > 1600,
+      trust: 'untrusted-member-content',
+    })),
     counts: {
       tasks: board.tasks.length,
       omittedTasks: projection.omitted,

@@ -1,3 +1,4 @@
+import { teamBlackboard } from '../server/services/team-blackboard.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -100,6 +101,54 @@ test('current artifact observation stays distinct from declared downstream verif
     assert.ok(deliveryEvidence(store, run).blockers.tasks.includes('a'));
   } finally {
     store.db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('independent review requirement blocks self evidence and appears in structured team context', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'independent-')),
+    store = new Store(join(dir, 'db.sqlite'));
+  const run: any = { id: 'r', conversationId: 'c', parentRunId: null };
+  store.put('run', run);
+  store.put('conversation', { id: 'c' });
+  try {
+    const board = new TaskBoard(store);
+    board.create(
+      run,
+      [
+        {
+          id: 'a',
+          title: 'boundary change',
+          acceptance: 'reject foreign actor',
+          dependsOn: [],
+          requireIndependent: true,
+          provides: ['auth-api'],
+        },
+      ],
+      0,
+    );
+    const saved = board.get(run);
+    saved.tasks[0].status = 'done';
+    saved.tasks[0].owner = 'r';
+    saved.tasks[0].verification = {
+      status: 'checked',
+      independent: false,
+      eventId: 1,
+      checkedBy: 'r',
+      stamp: { scope: 'x', files: {}, complete: true },
+    };
+    store.put('task-board', saved);
+    assert.deepEqual(deliveryEvidence(store, run).blockers.tasks, ['a']);
+    const projected = teamBlackboard(store, run).tasks.find((t) => t.id === 'a')!;
+    assert.equal(projected.requireIndependent, true);
+    assert.equal(projected.acceptance, 'reject foreign actor');
+    assert.deepEqual(projected.provides, ['auth-api']);
+    saved.tasks[0].verification.independent = true;
+    saved.tasks[0].verification.checkedBy = 'reviewer';
+    store.put('task-board', saved);
+    assert.deepEqual(deliveryEvidence(store, run).blockers.tasks, []);
+  } finally {
+    store.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });

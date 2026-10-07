@@ -29,7 +29,15 @@ export interface TaskChallenge {
 }
 const contract = (t: BoardTask) =>
   createHash('sha256')
-    .update(JSON.stringify([t.title, t.acceptance, verificationPaths(t), t.dependsOn]))
+    .update(
+      JSON.stringify([
+        t.title,
+        t.acceptance,
+        verificationPaths(t),
+        t.dependsOn,
+        t.requireIndependent,
+      ]),
+    )
     .digest('hex');
 export class TaskChallenges {
   constructor(private store: Store) {}

@@ -106,6 +106,7 @@ const contract = (t: any) =>
     t.kind,
     t.title,
     t.acceptance,
+    t.requireIndependent,
     [...(t.dependsOn || [])].sort(),
     [...(t.artifacts || [])].sort(),
     [...(t.readPaths || [])].sort(),

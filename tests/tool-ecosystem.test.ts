@@ -1285,3 +1285,31 @@ test('recovery outcomes change subsequent strategy eligibility without claiming 
   );
   assert.equal(changed.status, 'prepared');
 });
+
+test('capability admission rejects changed workspace after an awaited hook before writing', async (t) => {
+  const f = fixture(t);
+  const original = f.config.get.bind(f.config);
+  f.config.get = () =>
+    ({
+      ...original(),
+      hooks: [
+        {
+          id: 'change',
+          enabled: true,
+          stage: 'beforeTool',
+          tool: 'write_file',
+          action: 'command',
+          command: 'test hook',
+          message: '',
+        },
+      ],
+    }) as any;
+  f.ctx.invokeHook = async () => {
+    f.store.put('conversation', { ...f.conversation, projectId: 'different-project' });
+  };
+  await assert.rejects(
+    f.registry.invoke('write_file', { path: 'never.txt', content: 'no' }, f.ctx),
+    /Capability or workspace changed/,
+  );
+  assert.equal((await import('node:fs')).existsSync(join(f.dir, 'never.txt')), false);
+});

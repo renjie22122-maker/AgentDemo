@@ -28,6 +28,7 @@ function contractOf(store: Store, run: Run) {
       kind: t.kind,
       title: t.title,
       acceptance: t.acceptance,
+      requireIndependent: t.requireIndependent,
       dependsOn: [...t.dependsOn].sort(),
       artifacts: [...(t.artifacts || [])].sort(),
       readPaths: [...(t.readPaths || [])].sort(),

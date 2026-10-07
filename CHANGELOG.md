@@ -4,6 +4,10 @@
 
 Entries below describe repository changes, not a semantic-version release series. Historical test counts belong to their recorded runs.
 
+## 2026-10-07 — Capability admission and independent review contracts
+
+Unified registered-tool admission with post-wait checks; optional independent-evidence delivery requirements; bounded team interface and acceptance projections. Provider transport enforcement remains separate.
+
 ## 2026-10-07 — Outcome-informed recovery selection
 
 Grounded run-local results guide strategy choice; repeated ineffective operations under unchanged declared preconditions are rejected. No causal claims or automatic permission changes.

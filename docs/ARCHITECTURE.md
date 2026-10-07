@@ -221,3 +221,11 @@ Counterfactuals are explicitly unobserved. Environment changes outside declared
 preconditions, check inadequacy and confounders remain limitations; there is no
 estimated uplift, automatic rollback or global learned policy. No new dependencies
 or startup changes; restart is required to load the backend revision.
+
+## Capability admission and independent delivery contracts
+
+Registered tools share one capability admission function for discovery and invocation. After policy, hooks and approvals, invocation rechecks persisted permissions, workspace/isolation identity, execution settings and deny rules before entering the tool. Adapter-level approval, isolation and effect handling remain mandatory; provider HTTP calls are not routed through this tool kernel. This is not an OS isolation replacement or an atomic filesystem lock.
+
+An implementation task can declare `requireIndependent: true`. Delivery and team closure require current checked evidence marked independent by the existing verifier, rather than the author's self-check alone. The requirement participates in contract revisions. Counterexample challenges remain separate and must be resolved with current evidence. Independence describes recorded authorship, not guaranteed semantic correctness, different-model consensus or an automatic reviewer launch.
+
+The bounded team blackboard now includes acceptance text (800 characters with truncation notice), provided/required interfaces, missing task dependencies and independence status. Original contracts remain authoritative; this projection avoids requiring the lead to read every member's full plan. Interface declarations are not an automatic compatibility proof. No dependency, migration or launcher change is needed.

@@ -14,6 +14,7 @@ export const taskInput = z.object({
   title: z.string().min(1).max(300),
   dependsOn: z.array(z.string()).max(50).default([]),
   acceptance: z.string().min(1).max(2000),
+  requireIndependent: z.boolean().optional(),
   execution: z.enum(['read-only', 'isolated']).optional(),
   weight: z.number().int().min(1).max(8).optional(),
   priority: z.number().int().min(0).max(10).optional(),
@@ -41,6 +42,7 @@ export interface BoardTask {
   title: string;
   dependsOn: string[];
   acceptance: string;
+  requireIndependent?: boolean;
   status: 'pending' | 'running' | 'done' | 'blocked';
   owner: string | null;
   evidence: number[];

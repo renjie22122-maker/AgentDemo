@@ -1,7 +1,8 @@
+import { capabilityDecision } from '../services/capability-kernel.js';
 import { memoryActivity } from '../services/memory-activity.js';
 import { relatedToolNames } from './discovery.js';
 import { installGitState } from './git-state.js';
-import { enforceActionPolicy } from '../services/action-policy.js';
+import { enforceActionPolicy, matchingRules } from '../services/action-policy.js';
 import { installPatch } from './patch.js';
 import { installDataTransform } from './data-transform.js';
 import { capabilityReport } from '../providers/capabilities.js';
@@ -150,48 +151,7 @@ export class ToolRegistry {
   specs(ctx: ToolContext): ToolSpec[] {
     return [...this.definitions.values()]
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-      .filter(
-        (d) =>
-          (!ctx.conversation.allowedTools || ctx.conversation.allowedTools.includes(d.name)) &&
-          !(
-            ['mcp_tools', 'mcp_call'].includes(d.name) &&
-            (ctx.run.depth > 0 ||
-              ctx.run.recoveryOnly ||
-              ctx.conversation.permission === 'read-only')
-          ) &&
-          !(
-            d.name === 'bash' &&
-            process.platform === 'win32' &&
-            effectiveSettings(ctx).commandBackend !== 'docker'
-          ) &&
-          !(
-            d.effect === 'execute' && ctx.run.executionBlock?.signature === executionSignature(ctx)
-          ) &&
-          !(d.effect === 'network' && ctx.config.get().web?.enabled === false) &&
-          !(
-            ctx.run.recoveryOnly &&
-            !['read', 'network'].includes(d.effect) &&
-            !['ask_user', 'resolve_effect'].includes(d.name)
-          ) &&
-          !(
-            ['spawn_agent', 'continue_agent'].includes(d.name) &&
-            ctx.conversation.teamStrategy === 'off'
-          ) &&
-          !(
-            ctx.run.depth > 0 &&
-            !ctx.conversation.isolationId &&
-            ['write', 'execute'].includes(d.effect)
-          ) &&
-          !(
-            ctx.run.depth > 0 &&
-            d.effect === 'execute' &&
-            effectiveSettings(ctx).commandBackend === 'approval-host'
-          ) &&
-          !(
-            ctx.conversation.permission === 'read-only' && ['write', 'execute'].includes(d.effect)
-          ) &&
-          !(d.effect === 'execute' && !ctx.conversation.projectId),
-      )
+      .filter((d) => capabilityDecision(ctx, d.name, d.effect).allowed)
       .map((d) => ({
         name: d.name,
         description: d.description,
@@ -208,6 +168,11 @@ export class ToolRegistry {
     return all.filter((t) => coreTools.has(t.name) || selected.includes(t.name));
   }
   async invoke(name: string, args: Record<string, unknown>, ctx: ToolContext) {
+    const admittedConversation =
+      ctx.store.maybe<Conversation>('conversation', ctx.conversation.id) ?? ctx.conversation;
+    const admittedSettings = JSON.stringify(
+      executionSettings(ctx.config.get(), admittedConversation),
+    );
     const def = this.definitions.get(name);
     if (def?.effect === 'execute' && ctx.run.executionBlock?.signature === executionSignature(ctx))
       throw new NotStartedError(
@@ -274,6 +239,24 @@ export class ToolRegistry {
       )
         throw new NotStartedError('PERMISSION_CHANGED', 'Permissions changed while waiting.');
     }
+    const currentConversation =
+      ctx.store.maybe<Conversation>('conversation', ctx.conversation.id) ?? ctx.conversation;
+    const currentContext = { ...ctx, conversation: currentConversation };
+    const admission = capabilityDecision(currentContext, name, def.effect);
+    if (
+      !admission.allowed ||
+      currentConversation.permission !== admittedConversation.permission ||
+      JSON.stringify(executionSettings(ctx.config.get(), currentConversation)) !==
+        admittedSettings ||
+      currentConversation.projectId !== admittedConversation.projectId ||
+      currentConversation.isolationId !== admittedConversation.isolationId
+    )
+      throw new NotStartedError(
+        'CAPABILITY_CHANGED',
+        'Capability or workspace changed during policy, hooks or approval: ' + admission.reason,
+      );
+    if ((await matchingRules(currentContext, name, parsed)).some((r) => r.decision === 'deny'))
+      throw new NotStartedError('POLICY_CHANGED', 'Action became denied before execution.');
     const observe = ['write', 'execute'].includes(def.effect);
     const before = observe
       ? await snapshot(

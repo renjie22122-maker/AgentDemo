@@ -172,6 +172,8 @@ export class Teams {
           (x) =>
             x.owner === run.id &&
             (x.status !== 'done' ||
+              (x.requireIndependent &&
+                (x.verification?.status !== 'checked' || x.verification.independent !== true)) ||
               x.verification?.status === 'stale' ||
               (x.artifacts?.length && x.verification?.status !== 'checked')),
         ),
@@ -200,6 +202,8 @@ export class Teams {
     for (const task of tasks)
       if (
         task.status !== 'done' ||
+        (task.requireIndependent &&
+          (task.verification?.status !== 'checked' || task.verification.independent !== true)) ||
         task.verification?.status === 'stale' ||
         (task.artifacts?.length && task.verification?.status !== 'checked')
       )
