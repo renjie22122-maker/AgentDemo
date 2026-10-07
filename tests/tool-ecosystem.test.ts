@@ -1189,3 +1189,54 @@ test('tool completion invalidates changed checked artifacts before cognitive obs
   assert.equal(decision.action, 'verify');
   assert.equal(decision.state.signals.lostVerificationCount, 1);
 });
+
+test('world-changing recovery uses real audited tools, checks postcondition and never replays', async (t) => {
+  const f = fixture(t);
+  writeFileSync(join(f.dir, 'recover.txt'), 'before');
+  const spec = {
+    reason: 'repair fixture',
+    expected: 'file contains repaired marker',
+    paths: ['recover.txt'],
+    action: { name: 'write_file', arguments: { path: 'recover.txt', content: 'repaired-marker' } },
+    check: { name: 'read_file', arguments: { path: 'recover.txt' }, contains: 'repaired-marker' },
+  };
+  const prepared = JSON.parse(
+    (await f.registry.invoke('prepare_recovery_action', spec, f.ctx)).content,
+  );
+  const executor = new ToolExecutor(f.store, f.registry, f.dir);
+  const call = {
+    id: 'recover-call',
+    name: 'execute_recovery_action',
+    arguments: { id: prepared.id },
+  };
+  const first = JSON.parse((await executor.batch(f.run, [call], f.ctx))[0]);
+  assert.equal(first.status, 'productive');
+  assert.equal(first.postconditionObserved, true);
+  assert.equal(first.resolved, false);
+  assert.ok(first.actionEventId);
+  assert.ok(first.checkEventId > first.actionEventId);
+  const repeated = JSON.parse((await executor.batch(f.run, [{ ...call, id: 'repeat' }], f.ctx))[0]);
+  assert.equal(repeated.reused, true);
+  assert.equal(repeated.actionEventId, first.actionEventId);
+  const stale = JSON.parse(
+    (await f.registry.invoke('prepare_recovery_action', spec, f.ctx)).content,
+  );
+  writeFileSync(join(f.dir, 'recover.txt'), 'external-change');
+  const rejected = (
+    await executor.batch(
+      f.run,
+      [{ id: 'stale', name: 'execute_recovery_action', arguments: { id: stale.id } }],
+      f.ctx,
+    )
+  )[0];
+  assert.match(rejected, /Precondition files changed/);
+  const denied = JSON.parse(
+    (await f.registry.invoke('prepare_recovery_action', spec, f.ctx)).content,
+  );
+  const readonly = { ...f.ctx, conversation: { ...f.conversation, permission: 'read-only' } };
+  await assert.rejects(
+    f.registry.invoke('execute_recovery_action', { id: denied.id }, readonly),
+    /unavailable/,
+  );
+  await assert.rejects(f.registry.invoke('prepare_recovery_action', spec, f.ctx), /three recovery/);
+});

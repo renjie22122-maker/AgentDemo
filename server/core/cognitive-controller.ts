@@ -81,6 +81,19 @@ export class CognitiveController {
         JSON.stringify({
           ...shared,
           cognitiveFeedback: feedback,
+          recoveryActions: this.store
+            .list<any>('recovery-action')
+            .filter((r) => r.runId === run.id)
+            .slice(-3)
+            .map((r) => ({
+              id: r.id,
+              status: r.status,
+              expected: r.expected,
+              actionEventId: r.actionEventId,
+              checkEventId: r.checkEventId,
+              postconditionObserved: r.postconditionObserved,
+              resolved: false,
+            })),
           deliveryEvidence: deliveryEvidence(this.store, run),
           memoryChecks,
           securityReview: automaticSecurityReview(new TaskBoard(this.store).get(run).tasks),

@@ -188,6 +188,8 @@ export class TaskBoard {
               'inspect_learning_outcomes',
               'inspect_delivery_evidence',
               'inspect_recovery_step',
+              'prepare_recovery_action',
+              'execute_recovery_action',
               'record_task_challenge',
               'resolve_task_challenge',
               'inspect_task_challenges',

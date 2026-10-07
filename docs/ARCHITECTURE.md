@@ -156,3 +156,34 @@ does not resolve unknown effects, and cannot satisfy task completion evidence.
 The existing outcome assessment still distinguishes verified progress from a changed
 strategy. This is bounded diagnostic dispatch, not autonomous arbitrary recovery or
 a learned policy optimizer. No dependencies, migrations or launcher changes.
+
+
+### World-changing recovery contracts
+
+`prepare_recovery_action` captures a reason, expected result, declared existing paths,
+artifact/dependency stamps, workspace identity, plan revision, one action and one
+check. `execute_recovery_action` dispatches the action and check through the normal
+audited tool executor, preserving per-tool permissions, approval, sandbox, hooks and
+effect records. Actions support write/edit/command; checks support read with an explicit
+expected substring or a foreground command (optionally an expected output substring).
+A zero command exit is an observed check result, not semantic proof.
+
+Contracts expire after ten minutes; each run can prepare at most three. Each command
+is foreground and limited to 120 seconds. Scope/plan/path changes and unresolved
+effects reject execution. A contract is claimed once before dispatch: duplicates
+return its receipt, including executing/unknown receipts after interruption. There is
+no automatic retry or rollback. New actions cannot run concurrently with another
+recovery in the same run. Existing approval may wait independently of command time.
+
+Results distinguish productive (declared predicate observed), ineffective, regressed
+(previously checked tasks became stale), and unknown. Child event IDs bind action and
+check observations; receipts return to cognitive context. Neither the wrapper nor
+preparation counts as completion evidence, and no result resolves unknown effects or
+activates memory. Final verification/challenge/memory gates remain authoritative.
+The current policy does not autonomously optimize strategies or automatically run a
+new proposal after failure; the model selects subsequent guarded work.
+
+Declared paths must already exist. These snapshots are pre-dispatch checks, not an
+OS lock: external writes during approval/execution and undeclared dependencies remain
+limitations. Command-only checks must be designed to test the stated expectation;
+the host does not infer test adequacy. No new dependency or launcher change is needed.

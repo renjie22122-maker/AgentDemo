@@ -1,3 +1,8 @@
+import {
+  recoveryContract,
+  prepareRecovery,
+  executeRecovery,
+} from '../services/recovery-execution.js';
 import { inspectRecovery } from '../services/recovery-actions.js';
 import { deliveryEvidence } from '../services/delivery-evidence.js';
 import {
@@ -20,6 +25,23 @@ import { z } from 'zod';
 import type { ToolRegistry } from './registry.js';
 import { TaskBoard, taskInput, rootRun } from '../services/task-board.js';
 export function installPlanning(registry: ToolRegistry) {
+  registry.add({
+    name: 'prepare_recovery_action',
+    effect: 'coordinate',
+    description:
+      'Prepare one bounded recovery action with explicit precondition paths and expected verification. Maximum three contracts per run. Not authorization. Paths must already exist; command checks observe exit status, not semantic proof.',
+    schema: recoveryContract,
+    run: async (a, c) => ({ content: JSON.stringify(await prepareRecovery(c, a)) }),
+  });
+  registry.add({
+    name: 'execute_recovery_action',
+    effect: 'execute',
+    description:
+      'Execute a prepared recovery once through normal guarded tools, then its check. No unknown-effect replay. At most 120 seconds per command. Repeated calls return receipt; productive only means declared predicate observed.',
+    schema: z.object({ id: z.string().min(1) }),
+    run: async (a, c) => ({ content: JSON.stringify(await executeRecovery(c, a.id)) }),
+  });
+
   registry.add({
     name: 'inspect_recovery_step',
     effect: 'coordinate',
