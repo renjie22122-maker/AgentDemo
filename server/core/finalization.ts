@@ -1,10 +1,8 @@
-import { MemoryChecks } from '../services/memory-checks.js';
-import { TaskChallenges } from '../services/task-challenges.js';
+import { deliveryEvidence } from '../services/delivery-evidence.js';
 import type { Run } from '../../shared/types.js';
 import type { Store } from '../storage/store.js';
 import type { FileScope } from '../services/paths.js';
 import { Verification } from '../services/verification.js';
-import { Teams } from '../services/team-space.js';
 import { assert } from './errors.js';
 // Host completion authority. No model calls, scheduling or command execution.
 export async function finalizeRun(store: Store, run: Run, files: FileScope) {
@@ -21,46 +19,29 @@ export async function finalizeRun(store: Store, run: Run, files: FileScope) {
     'OUTCOME_UNKNOWN',
     'An operation has an unknown outcome. Inspect it before treating the task as complete.',
   );
-  const plan = await new Verification(store).refresh(run, files);
-  const unfinished = plan.tasks.filter(
-    (t) =>
-      (t.status !== 'done' ||
-        t.verification?.status === 'stale' ||
-        (!!new Teams(store).get(run) &&
-          !!t.artifacts?.length &&
-          t.verification?.status !== 'checked')) &&
-      ((run.id === plan.id && !new Teams(store).get(run)) || t.owner === run.id),
-  );
+  await new Verification(store).refresh(run, files);
+  const report = deliveryEvidence(store, run);
+  store.event(run.conversationId, run.id, 'delivery.assessed', report);
   assert(
-    !unfinished.length,
+    !report.blockers.tasks.length,
     'PLAN_INCOMPLETE',
     'Declared plan has unfinished tasks: ' +
-      unfinished.map((t) => t.id).join(', ') +
+      report.blockers.tasks.join(', ') +
       '. Inspect the board and continue or explain blockers.',
   );
-  const unresolved = new TaskChallenges(store)
-    .list(run)
-    .filter(
-      (c) =>
-        c.status === 'open' &&
-        (run.id === plan.id || plan.tasks.some((t) => t.id === c.taskId && t.owner === run.id)),
-    );
   assert(
-    !unresolved.length,
+    !report.blockers.challenges.length,
     'CHALLENGE_OPEN',
     'Unresolved task challenges: ' +
-      unresolved.map((c) => c.id).join(', ') +
-      '. Inspect counterexamples, check current artifacts, and resolve with evidence.',
+      report.blockers.challenges.join(', ') +
+      '. Inspect counterexamples and resolve with current evidence.',
   );
-  const pendingMemoryChecks = new MemoryChecks(store)
-    .list(run)
-    .filter((c) => c.status === 'pending');
   assert(
-    !pendingMemoryChecks.length,
+    !report.blockers.memories.length,
     'MEMORY_CHECK_PENDING',
     'Recalled experience checks remain pending: ' +
-      pendingMemoryChecks.map((c) => c.id).join(', ') +
-      '. Verify applicable lessons against current artifacts, or record a concrete non-applicability reason with resolve_memory_check.',
+      report.blockers.memories.join(', ') +
+      '. Verify applicability or record a concrete reason with resolve_memory_check.',
   );
   store.transition(run.id, 'completed');
 }

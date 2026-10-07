@@ -1,3 +1,4 @@
+import { deliveryEvidence } from '../services/delivery-evidence.js';
 import {
   proposeExperience,
   compareContracts,
@@ -18,6 +19,18 @@ import { z } from 'zod';
 import type { ToolRegistry } from './registry.js';
 import { TaskBoard, taskInput, rootRun } from '../services/task-board.js';
 export function installPlanning(registry: ToolRegistry) {
+  registry.add({
+    name: 'inspect_delivery_evidence',
+    effect: 'coordinate',
+    description:
+      'Refresh declared artifact verification and inspect unified task, challenge, memory and unknown-effect obligations. Red blocks delivery, yellow discloses gaps, green only means recorded gates satisfied. No semantic correctness guarantee.',
+    schema: z.object({}),
+    run: async (_a, c) => {
+      await new Verification(c.store).refresh(c.run, c.files);
+      return { content: JSON.stringify(deliveryEvidence(c.store, c.run)) };
+    },
+  });
+
   registry.add({
     name: 'propose_verified_experience',
     effect: 'coordinate',

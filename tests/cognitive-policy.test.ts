@@ -23,13 +23,13 @@ test('policy is deterministic, bounded and grants one corrective cycle before st
   assert.equal(state.signals.confidence, null);
   assert.equal(state.signals.semanticDrift, null);
 });
-test('new evidence and task completion do not falsely trigger repeated-trajectory stop', () => {
+test('changing output may prompt review but never implies a repeated-trajectory stop', () => {
   let state = initialCognitiveState();
   for (let i = 0; i < 4; i++) state = cognitivePolicy(state, observation).state;
   for (let i = 0; i < 16; i++) {
     const d = cognitivePolicy(state, { ...observation, outputs: ['new-' + i] });
     state = d.state;
-    assert.equal(d.action, 'none');
+    assert.ok(d.action === 'none' || d.action === 'review-plan');
   }
   assert.ok(state.window.length <= 12);
   const d = cognitivePolicy(state, { ...observation, tasks: [{ id: 'work', status: 'done' }] });
@@ -140,4 +140,33 @@ test('new host verification is distinguished from a changed tool trajectory', ()
     tasks: [{ id: 'verify', status: 'done', verification: { status: 'checked', eventId: 71 } }],
   });
   assert.equal(decision.state.lastAdviceOutcome?.result, 'verification-recorded');
+});
+
+test('changing targets remain exploration; changing timestamps on one target get bounded advice', () => {
+  let state = initialCognitiveState(),
+    advice = 0;
+  for (let i = 0; i < 32; i++) {
+    const d = cognitivePolicy(state, { ...observation, outputs: ['timestamp ' + i] });
+    state = d.state;
+    assert.notEqual(d.action, 'stop');
+    if (d.action === 'review-plan') advice++;
+  }
+  assert.equal(advice, 3);
+  assert.equal(state.signals.variableOutputLoop, true);
+  for (let i = 0; i < 32; i++) {
+    const d = cognitivePolicy(state, {
+      ...observation,
+      calls: [['read_file', { path: 'file-' + i }]],
+      outputs: ['text ' + i],
+    });
+    state = d.state;
+    assert.equal(d.action, 'none');
+  }
+  assert.equal(state.signals.targetNovelty, 1);
+  const waiting = cognitivePolicy(state, {
+    ...observation,
+    calls: [['wait_background_command', { id: 'job' }]],
+  });
+  assert.equal(waiting.state.signals.variableOutputLoop, false);
+  assert.deepEqual(waiting.state.targetWindow, []);
 });

@@ -76,3 +76,36 @@ Reflection exposes separate fact/plan/tool/evidence/memory/answer uncertainty st
 not fabricated probabilities. No new dependency or launcher change is required.
 
 The host also injects review designs into task snapshots when declared task text matches risk surfaces or declared artifacts are source files. This heuristic does not require a user review request or a tool invocation. It does not cover absent plans, undeclared changes or every risk; checklist execution remains model-driven, while recorded open challenges are host-gated.
+
+
+### Unified delivery evidence and convergence signals
+
+The host projects task status, open challenges, applicable memory checks and unknown
+effects into one read-only delivery report. It reuses the existing authorities rather
+than maintaining a second mutable obligation ledger. `inspect_delivery_evidence`
+refreshes artifact verification before returning the report; finalization refreshes
+and uses the same blocker lists, recording a `delivery.assessed` event.
+
+Red means an existing required gate is unresolved. Yellow means no such blocker but
+recorded coverage gaps remain. Green only means the recorded required gates are
+satisfied, never that the application is correct or secure. Empty evidence is
+unassessed. A blocked task is not a pass. Reports link declared artifacts and acceptance
+criteria to direct dependent verification tasks; all such checks must be recorded
+before reporting successor coverage. Artifact inspection remains distinct from this
+declared check relationship. Undeclared dependencies and logical test adequacy remain
+unknown. Detailed reports are bounded to 100 entries and 50 impact rows with omitted
+counts; blocker evaluation is not truncated. This is a tool/context report, not a new
+UI traffic-light indicator or automatic risk classifier.
+
+The deterministic controller separately tracks exact repeated trajectories and
+repeated operation targets whose output varies. Eight repeated targets without
+recorded task/check progress may trigger advisory plan review, at most once per
+12 batches. This signal never independently stops a run: changing timestamps can
+hide polling, but legitimate observation can also vary. Distinct request targets and
+event-driven waits are not treated as this loop. Task/check progress resets the
+window. Target novelty is a distinct-request ratio, not semantic novelty or a
+calibrated confidence estimate. Existing unchanged-cycle limits remain enforced.
+
+No new dependency, database migration or first-start change is needed. Restart the
+service to load backend changes; starting a second launcher does not reload an
+already-running service.

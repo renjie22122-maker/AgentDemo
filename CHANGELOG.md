@@ -4,6 +4,10 @@
 
 Entries below describe repository changes, not a semantic-version release series. Historical test counts belong to their recorded runs.
 
+## 2026-10-07 — Unified delivery assessment and bounded convergence advice
+
+One projection for existing task, challenge, memory and effect obligations; declared impact-to-check mapping; varying-output polling advice without an automatic stop. Existing safety gates stay enforced. No new dependency or launcher change.
+
 ## 2026-10-07 — Learning review and contract comparison
 
 Evidence-backed inactive experience candidates, same-conversation contract comparison, bounded outcome reporting and acceptance-bound applicability invalidation. No claim of calibrated learning or causal improvement.

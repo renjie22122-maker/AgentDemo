@@ -5,6 +5,8 @@ export interface CognitiveState {
   version: 1;
   step: number;
   window: string[];
+  targetWindow?: string[];
+  lastTargetAdvice?: number;
   warnedCycle?: string;
   lastAdvice: number;
   errorStreak: number;
@@ -25,6 +27,8 @@ export interface CognitiveState {
   signals: {
     convergence?: 'productive' | 'waiting' | 'repetitive' | 'blocked' | 'unassessed';
     repeated: boolean;
+    targetNovelty?: number;
+    variableOutputLoop?: boolean;
     toolErrors: number;
     blockedTasks: number;
     pendingVerification: number;
@@ -99,6 +103,7 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
   state.completedTasks = completed;
   if (advanced || newEvidence) {
     state.window = [];
+    state.targetWindow = [];
     state.warnedCycle = undefined;
   }
   const waitTools = new Set([
@@ -116,11 +121,14 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
       : observation.outputs.every((o) => !o.startsWith('Tool error:') && !o.startsWith('DENIED')))
   ) {
     state.window = [];
+    state.targetWindow = [];
     state.errorStreak = 0;
     state.warnedCycle = undefined;
     state.signals = {
       ...state.signals,
       convergence: 'waiting',
+      targetNovelty: 0,
+      variableOutputLoop: false,
       repeated: false,
       toolErrors: 0,
       completedTaskDelta: advanced,
@@ -132,6 +140,17 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
     return { state, action: 'none', reason: 'Event-driven waiting is not stagnation.' };
   }
   const trajectory = hash([observation.calls, observation.outputs]);
+  const target = hash(observation.calls);
+  const targets = [...(state.targetWindow || []), target].slice(-12);
+  state.targetWindow = targets;
+  const targetNovelty = new Set(targets).size / targets.length;
+  const variableOutputLoop =
+    targets.length >= 8 &&
+    targets.slice(-8).every((t) => t === target) &&
+    new Set(state.window.slice(-7)).size > 1 &&
+    !advanced &&
+    !newEvidence;
+
   state.window.push(hash([observation.calls, observation.outputs]));
   state.window = state.window.slice(-12);
   const errors = observation.outputs.filter((output, index) => {
@@ -195,6 +214,8 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
             ? 'blocked'
             : 'unassessed',
     repeated: !!cycle,
+    targetNovelty,
+    variableOutputLoop,
     toolErrors: errors,
     blockedTasks: blocked.length,
     pendingVerification: verification.length,
@@ -219,6 +240,15 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
       'change-strategy',
       'Four unchanged tool trajectories.',
       'Repeated calls returned unchanged results. Change the evidence-gathering approach, use existing observations, or explain the blocker. Do not claim success without evidence or repeat unknown side effects.',
+    );
+  }
+  if (variableOutputLoop && state.step - (state.lastTargetAdvice ?? -20) >= 12) {
+    state.lastTargetAdvice = state.step;
+    state.lastAdvice = state.step;
+    return decision(
+      'review-plan',
+      'Repeated target with changing output but no recorded task or verification progress.',
+      'The same operation target has repeated with changing output. Determine whether new evidence is being gained or this is polling. For an owned background job use event-driven waiting. Legitimate exploration need not produce edits; do not stop solely on this signal or replay uncertain effects.',
     );
   }
   if (state.step - state.lastAdvice < 4) return decision('none', 'Advice cooldown.');
