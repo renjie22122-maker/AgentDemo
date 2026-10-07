@@ -6,7 +6,7 @@ import { MemoryChecks } from './memory-checks.js';
 import { Teams } from './team-space.js';
 export interface EvidenceItem {
   id: string;
-  kind: 'task' | 'challenge' | 'memory' | 'effect';
+  kind: 'task' | 'challenge' | 'memory' | 'effect' | 'recovery';
   state: string;
   blocking: boolean;
   next: string;
@@ -31,7 +31,21 @@ export function deliveryEvidence(store: Store, run: Run) {
     );
   const memories = new MemoryChecks(store).list(run);
   const effects = store.unknownEffects(run.conversationId);
+  const recovery = store
+    .list<any>('recovery-action')
+    .filter(
+      (r) =>
+        r.runId === run.id &&
+        ['executing', 'waiting-action', 'waiting-check', 'unknown'].includes(r.status),
+    );
   const entries: EvidenceItem[] = [
+    ...recovery.map((r) => ({
+      id: r.id,
+      kind: 'recovery' as const,
+      state: r.status,
+      blocking: true,
+      next: 'Inspect recorded background job and continue the same contract. Never resubmit unknown commands.',
+    })),
     ...tasks.map((t) => ({
       id: t.id,
       kind: 'task' as const,
@@ -118,6 +132,7 @@ export function deliveryEvidence(store: Store, run: Run) {
     limitations:
       'Declared artifacts and direct verification dependencies only; no complete semantic impact graph or test-to-behavior proof.',
     blockers: {
+      recoveries: recovery.map((r) => r.id),
       effects: effects.map((e) => e.id),
       tasks: unfinished.map((t) => t.id),
       challenges: challenges.map((c) => c.id),

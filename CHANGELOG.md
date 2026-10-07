@@ -4,6 +4,10 @@
 
 Entries below describe repository changes, not a semantic-version release series. Historical test counts belong to their recorded runs.
 
+## 2026-10-07 — Background recovery continuation
+
+Recovery action and verification commands reuse normal yielding and 1–1800 second timeouts. Durable job IDs permit once-only continuation; pending/unknown recovery blocks delivery.
+
 ## 2026-10-07 — Guarded recovery actions and postcondition checks
 
 Bounded once-only action/check contracts reuse tool approval and effect journaling; no automatic replay or correctness claim.

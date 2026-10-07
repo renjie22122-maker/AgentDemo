@@ -240,7 +240,9 @@ export class ToolExecutor {
             id: call.id + ':step:' + index,
             name,
             arguments:
-              name === 'run_command' && !args.background ? { ...args, yieldAfterSeconds: 0 } : args,
+              name === 'run_command' && !args.background && call.name !== 'execute_recovery_action'
+                ? { ...args, yieldAfterSeconds: 0 }
+                : args,
           };
           const childImages = new Map<string, string[]>(),
             childOutcomes = new Map<string, ToolOutcome>();

@@ -165,11 +165,11 @@ artifact/dependency stamps, workspace identity, plan revision, one action and on
 check. `execute_recovery_action` dispatches the action and check through the normal
 audited tool executor, preserving per-tool permissions, approval, sandbox, hooks and
 effect records. Actions support write/edit/command; checks support read with an explicit
-expected substring or a foreground command (optionally an expected output substring).
+expected substring or a command (optionally an expected output substring).
 A zero command exit is an observed check result, not semantic proof.
 
-Contracts expire after ten minutes; each run can prepare at most three. Each command
-is foreground and limited to 120 seconds. Scope/plan/path changes and unresolved
+Contracts expire after ten minutes; each run can prepare at most three. Commands use the ordinary 1–1800 second execution timeout (default 120 seconds)
+and default 10-second yielding; the same process continues in the background. Scope/plan/path changes and unresolved
 effects reject execution. A contract is claimed once before dispatch: duplicates
 return its receipt, including executing/unknown receipts after interruption. There is
 no automatic retry or rollback. New actions cannot run concurrently with another
@@ -187,3 +187,14 @@ Declared paths must already exist. These snapshots are pre-dispatch checks, not 
 OS lock: external writes during approval/execution and undeclared dependencies remain
 limitations. Command-only checks must be designed to test the stated expectation;
 the host does not infer test adequacy. No new dependency or launcher change is needed.
+
+
+Background recovery persists waiting-action / waiting-check and original job IDs.
+Use event-driven wait_background_command, then execute_recovery_action with the same
+contract ID: only the unstarted dependent check may launch, never the action again.
+Check commands can yield too. Receipt reuse while waiting is nonblocking. Execution
+timeouts and approvals retain ordinary semantics; initial contract expiry does not
+cancel a started job. Unknown jobs stop the chain and block delivery, as do pending
+recovery phases. The model resumes from background completion notifications; this is
+not an independent scheduler that runs verification while the model is offline.
+No startup script changes: existing source fingerprint rebuilding applies.

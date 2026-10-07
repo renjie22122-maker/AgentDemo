@@ -37,7 +37,7 @@ export function installPlanning(registry: ToolRegistry) {
     name: 'execute_recovery_action',
     effect: 'execute',
     description:
-      'Execute a prepared recovery once through normal guarded tools, then its check. No unknown-effect replay. At most 120 seconds per command. Repeated calls return receipt; productive only means declared predicate observed.',
+      'Execute a prepared recovery once through normal guarded tools, then its check. No unknown-effect replay. Uses normal command timeout and background yielding. For waiting receipts, wait on the job then call again with the same ID; never repeat the command. Repeated calls return receipt; productive only means declared predicate observed.',
     schema: z.object({ id: z.string().min(1) }),
     run: async (a, c) => ({ content: JSON.stringify(await executeRecovery(c, a.id)) }),
   });

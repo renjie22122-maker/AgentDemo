@@ -19,6 +19,17 @@ export async function finalizeRun(store: Store, run: Run, files: FileScope) {
     'OUTCOME_UNKNOWN',
     'An operation has an unknown outcome. Inspect it before treating the task as complete.',
   );
+  assert(
+    !store
+      .list<any>('recovery-action')
+      .some(
+        (r) =>
+          r.runId === run.id &&
+          ['executing', 'waiting-action', 'waiting-check', 'unknown'].includes(r.status),
+      ),
+    'RECOVERY_PENDING',
+    'Recovery is pending or unknown. Inspect its recorded job and continue the same contract; do not replay.',
+  );
   await new Verification(store).refresh(run, files);
   const report = deliveryEvidence(store, run);
   store.event(run.conversationId, run.id, 'delivery.assessed', report);

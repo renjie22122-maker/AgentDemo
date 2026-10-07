@@ -92,6 +92,8 @@ export class CognitiveController {
               actionEventId: r.actionEventId,
               checkEventId: r.checkEventId,
               postconditionObserved: r.postconditionObserved,
+              actionJobId: r.actionJobId,
+              checkJobId: r.checkJobId,
               resolved: false,
             })),
           deliveryEvidence: deliveryEvidence(this.store, run),
