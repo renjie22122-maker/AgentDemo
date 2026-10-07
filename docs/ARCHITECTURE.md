@@ -133,3 +133,26 @@ confidence boost, automatic experience activation, new critic model or permissio
 grant results from these observations. Existing evidence-backed experience formation
 and next-task memory checks remain the learning boundary. No new dependencies or
 startup changes; backend restart is required to load this revision.
+
+
+### Guarded recovery inspections
+
+A recovery proposal has a unique ID. The agent can discover `inspect_recovery_step`
+and select a current step through the normal tool registry and permission checks.
+The dispatcher accepts only three diagnostic kinds: inspect recorded effects,
+refresh declared artifact verification, or inspect the delivery report. It does not
+run commands, arbitrary paths, installations, rollback, tests or permission changes.
+Other proposal kinds stay with normal guarded tools or a user scope decision.
+
+Each run/proposal/step is claimed once and has an audit receipt. Duplicate calls
+return that receipt, including an unfinished or failed inspection; they do not
+re-execute it. New execution requires a current pending proposal no more than four
+batches old. Reset removes the proposal, and a superseded or foreign ID is rejected.
+A crash during inspection can leave an inspecting receipt; it is diagnostic state,
+not an effect-resolution claim or a new completion blocker.
+
+Receipts return to run-local cognitive context. Inspection is not recovery success,
+does not resolve unknown effects, and cannot satisfy task completion evidence.
+The existing outcome assessment still distinguishes verified progress from a changed
+strategy. This is bounded diagnostic dispatch, not autonomous arbitrary recovery or
+a learned policy optimizer. No dependencies, migrations or launcher changes.

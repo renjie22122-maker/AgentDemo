@@ -1,3 +1,4 @@
+import { inspectRecovery } from '../services/recovery-actions.js';
 import { deliveryEvidence } from '../services/delivery-evidence.js';
 import {
   proposeExperience,
@@ -19,6 +20,19 @@ import { z } from 'zod';
 import type { ToolRegistry } from './registry.js';
 import { TaskBoard, taskInput, rootRun } from '../services/task-board.js';
 export function installPlanning(registry: ToolRegistry) {
+  registry.add({
+    name: 'inspect_recovery_step',
+    effect: 'coordinate',
+    description:
+      'Perform one bounded diagnostic step from this run current recovery proposal. Only recorded-effect inspection, declared verification refresh or delivery evidence inspection. Never runs commands, resolves effects, or proves acceptance. Repeated calls return the receipt.',
+    schema: z.object({ proposalId: z.string().min(1), index: z.number().int().min(0).max(3) }),
+    run: async (a, c) => ({
+      content: JSON.stringify(
+        await inspectRecovery(c.store, c.run, c.files, a.proposalId, a.index),
+      ),
+    }),
+  });
+
   registry.add({
     name: 'inspect_delivery_evidence',
     effect: 'coordinate',

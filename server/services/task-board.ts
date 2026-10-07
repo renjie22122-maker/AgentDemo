@@ -187,6 +187,7 @@ export class TaskBoard {
               'compare_acceptance_contracts',
               'inspect_learning_outcomes',
               'inspect_delivery_evidence',
+              'inspect_recovery_step',
               'record_task_challenge',
               'resolve_task_challenge',
               'inspect_task_challenges',

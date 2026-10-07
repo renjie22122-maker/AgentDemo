@@ -9,7 +9,7 @@ import { teamBlackboard } from '../services/team-blackboard.js';
 import { recoveryProposal, assessIntervention } from './recovery-planner.js';
 import type { Run, ModelMessage } from '../../shared/types.js';
 import { TaskBoard } from '../services/task-board.js';
-import type { Store } from '../storage/store.js';
+import { id, type Store } from '../storage/store.js';
 import { cognitivePolicy, initialCognitiveState, type CognitiveState } from './cognitive-policy.js';
 // Adapter owns observations and audit only. Policy has no executor, approval or filesystem port.
 export class CognitiveController {
@@ -18,7 +18,10 @@ export class CognitiveController {
     const shared = teamBlackboard(this.store, run);
     const memoryChecks = new MemoryChecks(this.store).list(run);
     const cognitive = this.store.maybe<CognitiveState>('cognitive-state', run.id);
-    const recovery = this.store.maybe<{ step: number }>('recovery-proposal', run.id);
+    const recovery = this.store.maybe<{ step: number; proposalId?: string; steps: unknown[] }>(
+      'recovery-proposal',
+      run.id,
+    );
     const feedback =
       cognitive && cognitive.step > 0
         ? {
@@ -40,6 +43,24 @@ export class CognitiveController {
               cognitive.step >= recovery.step
                 ? recovery
                 : undefined,
+            recoveryInspections: recovery?.proposalId
+              ? recovery.steps
+                  .slice(0, 4)
+                  .map((_, index) =>
+                    this.store.maybe<any>(
+                      'recovery-inspection',
+                      run.id + ':' + recovery.proposalId + ':' + index,
+                    ),
+                  )
+                  .filter(Boolean)
+                  .map((r) => ({
+                    proposalId: r.proposalId,
+                    index: r.index,
+                    kind: r.kind,
+                    status: r.status,
+                    resolved: r.resolved,
+                  }))
+              : [],
             meaning:
               'Observed progress and strategy outcomes, not causal learning or correctness. Recovery is a proposal, never execution permission.',
           }
@@ -85,6 +106,7 @@ export class CognitiveController {
   }
 
   reset(run: Run) {
+    this.store.remove('recovery-proposal', run.id);
     this.store.put('cognitive-state', { id: run.id, ...initialCognitiveState() });
   }
   observe(
@@ -120,7 +142,7 @@ export class CognitiveController {
         : undefined;
     if (proposal && decision.message)
       decision.message +=
-        '\nControlled recovery proposal (not executed; existing tool guards still apply): ' +
+        '\nControlled recovery proposal (not executed; discover inspect_recovery_step for bounded diagnostics; use proposalId from next snapshot; existing tool guards still apply): ' +
         JSON.stringify(proposal);
     this.store.transaction(() => {
       this.store.put('cognitive-state', { ...decision.state, id: run.id });
@@ -139,6 +161,7 @@ export class CognitiveController {
         this.store.put('recovery-proposal', {
           id: run.id,
           runId: run.id,
+          proposalId: id(),
           step: decision.state.step,
           ...proposal,
         });

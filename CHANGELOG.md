@@ -4,6 +4,10 @@
 
 Entries below describe repository changes, not a semantic-version release series. Historical test counts belong to their recorded runs.
 
+## 2026-10-07 — Guarded recovery inspections
+
+Unique proposal IDs, bounded diagnostic selection, once-only receipts and run-local feedback through existing tools. No command replay, permission expansion or diagnostic-as-verification claims.
+
 ## 2026-10-07 — Progress feedback integration
 
 Refresh recorded checks after tool batches; surface coverage regression before delivery; return bounded run-local intervention feedback to context without granting replay or promoting memories.
