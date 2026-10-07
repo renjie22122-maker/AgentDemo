@@ -17,6 +17,7 @@ export function termination(error: unknown, aborted = false): NonNullable<Run['t
     [
       'MODEL_INCOMPLETE',
       'MODEL_PROTOCOL',
+      'MEMORY_CHECK_PENDING',
       'TOOL_ARGUMENTS',
       'DUPLICATE_CALL_ID',
       'INVALID_ARGUMENTS',

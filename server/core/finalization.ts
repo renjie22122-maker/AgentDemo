@@ -1,3 +1,4 @@
+import { MemoryChecks } from '../services/memory-checks.js';
 import { TaskChallenges } from '../services/task-challenges.js';
 import type { Run } from '../../shared/types.js';
 import type { Store } from '../storage/store.js';
@@ -50,6 +51,16 @@ export async function finalizeRun(store: Store, run: Run, files: FileScope) {
     'Unresolved task challenges: ' +
       unresolved.map((c) => c.id).join(', ') +
       '. Inspect counterexamples, check current artifacts, and resolve with evidence.',
+  );
+  const pendingMemoryChecks = new MemoryChecks(store)
+    .list(run)
+    .filter((c) => c.status === 'pending');
+  assert(
+    !pendingMemoryChecks.length,
+    'MEMORY_CHECK_PENDING',
+    'Recalled experience checks remain pending: ' +
+      pendingMemoryChecks.map((c) => c.id).join(', ') +
+      '. Verify applicable lessons against current artifacts, or record a concrete non-applicability reason with resolve_memory_check.',
   );
   store.transition(run.id, 'completed');
 }

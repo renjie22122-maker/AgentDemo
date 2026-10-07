@@ -4,6 +4,10 @@
 
 Entries below describe repository changes, not a semantic-version release series. Historical test counts belong to their recorded runs.
 
+## 2026-10-07 — Experience-to-verification workflow
+
+Recalled active experiences create run-local verification items. Completion requires current version-bound checks or an explicit non-applicability reason. Disabled, changed or out-of-scope memories are excluded; outcomes do not automatically promote confidence or sharing. Generic review guidance adds unknown-value rejection, operation-key/content conflicts and multi-page coverage. Cross-version contract comparison and measured defect-rate improvements remain future work.
+
 ## 2026-10-07 — Draft previews and evidence-driven context
 
 Long pasted text becomes an attachment; safe Markdown/math draft preview. Task reflection exposes evidence gaps without fabricated confidence. Structured memory exceptions preserve broader preferences and report conflicts.

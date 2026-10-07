@@ -79,3 +79,21 @@ The host checks exact source quotes, revisions, permission, expiry, conflict and
 ## Applicability and scoped exceptions
 
 Recall includes applicability conditions, matching signals and explicit same-key conflicts. Relevance is not a calibrated truth probability. For an exact structured entity/attribute/condition match, conversation-local or project-specific records can shadow a broader preference in the returned context without deleting or modifying it. Different conditions remain separate and must be checked against the current request. Same-priority conflicting values remain visible rather than silently choosing one. Scope authorization, source checks and expiry run before this selection; user preferences are not automatically enabled for projects.
+
+### Experience checks
+
+Recalled, active experiences produce run-local pending verification items. Historical
+evidence does not prove the current implementation. The model adds applicable checks
+to its plan and uses resolve_memory_check to cite a current completed verify task
+with version-bound evidence, or records a reason for non-applicability. Outcomes are
+audited, not used to inflate confidence or automatically activate/share memories.
+Memory disablement, revision changes and scope changes remove old items from context.
+Candidates remain hypotheses and are not silently promoted. Planning/check selection
+and non-applicability remain model judgments; this is not a measured reduction in bugs.
+Prior contracts and regression tests should be preserved; removed scope is not a fix.
+
+Pending recalled-experience checks block final completion until checked or explicitly assessed as not applicable. The runtime allows bounded corrective steps; historical evidence is never replayed.
+
+### Installing this update
+
+No new dependency, model download or database migration is required. Existing launcher source fingerprints include this backend change. Stop the running service after tasks finish and run Start-Amadeus.cmd; new installations continue to use First-Start-Amadeus.cmd. Opening an existing process does not activate updated backend code. Existing memory records are retained; verification items are created only when eligible experiences are recalled.

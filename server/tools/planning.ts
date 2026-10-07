@@ -1,3 +1,4 @@
+import { MemoryChecks } from '../services/memory-checks.js';
 import { prepareSecurityReview, securitySurfaces } from '../services/security-review.js';
 import { TaskChallenges } from '../services/task-challenges.js';
 import { createHash } from 'node:crypto';
@@ -12,6 +13,24 @@ import { z } from 'zod';
 import type { ToolRegistry } from './registry.js';
 import { TaskBoard, taskInput, rootRun } from '../services/task-board.js';
 export function installPlanning(registry: ToolRegistry) {
+  registry.add({
+    name: 'resolve_memory_check',
+    effect: 'coordinate',
+    description:
+      'Record applicability or bind a recalled experience to a current completed verify task. Historical evidence does not count. Not-applicable needs an explanation; it is a model judgment, not a confirmed fact. Does not activate, share or promote memory.',
+    schema: z.object({
+      id: z.string(),
+      status: z.enum(['checked', 'not-applicable']),
+      reason: z.string().trim().min(1).max(2000),
+      taskId: z.string().optional(),
+    }),
+    run: async (a, c) => ({
+      content: JSON.stringify(
+        await new MemoryChecks(c.store).resolve(c.run, c.files, a.id, a.status, a.reason, a.taskId),
+      ),
+    }),
+  });
+
   registry.add({
     name: 'prepare_security_review',
     effect: 'read',

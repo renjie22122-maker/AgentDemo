@@ -182,6 +182,7 @@ export class TaskBoard {
               'create_plan',
               'preview_plan',
               'prepare_security_review',
+              'resolve_memory_check',
               'record_task_challenge',
               'resolve_task_challenge',
               'inspect_task_challenges',

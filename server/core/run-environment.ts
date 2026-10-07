@@ -1,3 +1,4 @@
+import { MemoryChecks } from '../services/memory-checks.js';
 import { planningPolicy } from '../services/planning-policy.js';
 import { executionSettings } from '../../shared/execution.js';
 import { Isolations } from '../services/isolation.js';
@@ -59,6 +60,7 @@ export class RunEnvironment {
         )
       : { memories: [], method: 'disabled', fallback: undefined };
     const memories = recalled.memories;
+    const memoryChecks = new MemoryChecks(this.store).register(run, memories);
     this.store.event(run.conversationId, run.id, 'memory.recalled', {
       ids: memories.map((m) => m.id),
       method: recalled.method,
@@ -81,6 +83,9 @@ export class RunEnvironment {
         os: process.platform,
         project: ctx.conversation.projectId,
         planningPolicy: planningPolicy(this.store, run),
+        memoryChecks,
+        memoryCheckGuidance:
+          'Recalled experience is a historical lesson, not current verification. For applicable pending checks add a verify task containing conditions, counterexample, invariant and regression path. Discover resolve_memory_check to bind current evidence or record why not applicable; never promote confidence merely from recall frequency.',
         memoryPolicy: {
           enabled: ctx.conversation.memory,
           automaticManagement: ctx.conversation.automaticMemory === true,

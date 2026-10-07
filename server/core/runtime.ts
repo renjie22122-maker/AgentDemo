@@ -811,7 +811,7 @@ export class Runtime implements TeamPort {
           } catch (error) {
             if (
               error instanceof AppError &&
-              ['PLAN_INCOMPLETE', 'CHALLENGE_OPEN'].includes(error.code) &&
+              ['PLAN_INCOMPLETE', 'CHALLENGE_OPEN', 'MEMORY_CHECK_PENDING'].includes(error.code) &&
               deliveryRepairs++ < 2
             ) {
               const message =

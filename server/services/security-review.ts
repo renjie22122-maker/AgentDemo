@@ -33,6 +33,7 @@ const checks: Record<Surface, { invariant: string; attacks: string[]; controls: 
     attacks: [
       'Exercise injection, stored/reflected script content, malformed types, negative/overflow values and oversized payloads.',
       'Tamper with client-provided amounts, identities, deadlines and computed fields.',
+      'Exercise every enum member plus unknown, missing, null and wrong-type values: unknown values must not default to a successful transition.',
     ],
     controls: [
       'Valid boundary inputs work; invalid inputs cannot change authoritative server state.',
@@ -43,6 +44,7 @@ const checks: Record<Surface, { invariant: string; attacks: string[]; controls: 
     attacks: [
       'Race conflicting operations using separate database connections and synchronized starts.',
       'Replay requests, reorder transitions, inject a failure between writes, restart and reconcile durable state.',
+      'Reuse an operation key with identical content, then change principal, resource or payload. Assert the declared conflict policy; identity alone must not silently authorize different semantics.',
     ],
     controls: [
       'Assert final database invariants and cardinality, not just HTTP success counts; no orphan or partial state.',
@@ -89,6 +91,8 @@ export function prepareSecurityReview(surfaces: Surface[]) {
       evidence: [],
       status: 'not-tested',
     })),
+    regressionGuidance:
+      'Preserve earlier acceptance contracts and reproducers. Removed functionality is scope reduction, not a fix. For collections test empty, one page, page-size plus one and multiple pages, stable ordering and UI reachability; a correct first page is insufficient.',
     method:
       'Read entry points and trust boundaries before author tests. Derive counterexamples from the contract, not the implementation. Use disposable local fixtures and authorized tools only. A scanner or a green suite alone is insufficient.',
     evidenceRequired: [
