@@ -170,3 +170,50 @@ test('changing targets remain exploration; changing timestamps on one target get
   assert.equal(waiting.state.signals.variableOutputLoop, false);
   assert.deepEqual(waiting.state.targetWindow, []);
 });
+
+test('lost coverage takes priority over new progress and cannot be assessed as improvement', () => {
+  const good = {
+    id: 'v',
+    kind: 'verify',
+    status: 'done',
+    verification: { status: 'checked', eventId: 10 },
+  };
+  let state = cognitivePolicy(initialCognitiveState(), { ...observation, tasks: [good] }).state;
+  state.pendingAdvice = { action: 'change-strategy', step: state.step, digest: 'old', errors: 0 };
+  const d = cognitivePolicy(state, {
+    ...observation,
+    outputs: ['changed'],
+    tasks: [
+      { ...good, verification: { status: 'stale', eventId: 10 } },
+      { id: 'new', status: 'done' },
+    ],
+  });
+  assert.equal(d.action, 'verify');
+  assert.equal(d.state.signals.lostVerificationCount, 1);
+  assert.equal(d.state.signals.reopenedTaskCount, 1);
+  assert.equal(d.state.signals.convergence, 'blocked');
+  assert.equal(d.state.lastAdviceOutcome?.result, 'verification-regressed');
+  const restored = cognitivePolicy(d.state, {
+    ...observation,
+    tasks: [
+      { ...good, verification: { status: 'checked', eventId: 11 } },
+      { id: 'new', status: 'done' },
+    ],
+  });
+  assert.equal(restored.state.signals.lostVerificationCount, 0);
+  assert.equal(restored.state.lastAdviceOutcome?.result, 'verification-recorded');
+});
+test('replacing a valid check with a new valid check is not coverage loss', () => {
+  const task = {
+    id: 'task:with:colons',
+    status: 'done',
+    verification: { status: 'checked', eventId: 1 },
+  };
+  const first = cognitivePolicy(initialCognitiveState(), { ...observation, tasks: [task] });
+  const next = cognitivePolicy(first.state, {
+    ...observation,
+    tasks: [{ ...task, verification: { status: 'checked', eventId: 2 } }],
+  });
+  assert.equal(next.state.signals.lostVerificationCount, 0);
+  assert.equal(next.state.signals.convergence, 'productive');
+});

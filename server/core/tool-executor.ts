@@ -4,7 +4,7 @@ import type { ToolOutcome } from '../../shared/types.js';
 import { compressToolText } from './context-reuse.js';
 import { verificationPaths } from '../services/verification-inputs.js';
 import { prepareCoordination } from '../services/coordination-journal.js';
-import { stamp } from '../services/verification.js';
+import { Verification, stamp } from '../services/verification.js';
 import { TaskBoard } from '../services/task-board.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -107,6 +107,8 @@ export class ToolExecutor {
       },
       ctx.signal,
     );
+    // Refresh existing checks after effects settle, before the controller observes progress.
+    await new Verification(this.store).refresh(run, ctx.files);
     this.latest.set(
       run.id,
       calls.map((c) => outcomes.get(c.id)!),

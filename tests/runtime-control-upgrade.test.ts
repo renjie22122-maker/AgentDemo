@@ -315,4 +315,19 @@ test('controller records completed strategy advice once without claiming a diffe
   controller.observe(r, [{ name: 'read_file', arguments: { path: 'another' } }], ['next']);
   assert.equal(s.list('cognitive-assessment').length, 1);
   assert.equal(s.get<any>('recovery-proposal', 'r').autoExecute, false);
+  s.put('conversation', { id: 'r', memory: false });
+  const content = String(controller.snapshot(r)!.content);
+  const snapshot = JSON.parse(content.slice(content.indexOf('{')));
+  assert.equal(
+    snapshot.cognitiveFeedback.lastIntervention.assessment,
+    'strategy-changed-not-verified',
+  );
+  assert.equal(snapshot.cognitiveFeedback.lastIntervention.causalClaim, false);
+  assert.equal(snapshot.cognitiveFeedback.recoveryProposal, undefined);
+  const other = run('other', 'running');
+  s.put('run', other);
+  s.put('conversation', { id: 'other', memory: false });
+  assert.equal(controller.snapshot(other), undefined);
+  controller.reset(r);
+  assert.equal(controller.snapshot(r), undefined);
 });

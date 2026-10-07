@@ -20,7 +20,8 @@ export interface CognitiveState {
       | 'task-advanced'
       | 'errors-cleared'
       | 'trajectory-changed'
-      | 'no-observed-change';
+      | 'no-observed-change'
+      | 'verification-regressed';
     afterBatches: number;
   };
   pendingAdvice?: { action: Intervention; step: number; digest: string; errors: number };
@@ -33,6 +34,8 @@ export interface CognitiveState {
     blockedTasks: number;
     pendingVerification: number;
     completedTaskDelta: number;
+    reopenedTaskCount?: number;
+    lostVerificationCount?: number;
     semanticDrift: null;
     confidence: null;
   };
@@ -98,6 +101,17 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
   const newEvidence = verified.filter(
     (key) => !(state.verifiedEvidence || []).includes(key),
   ).length;
+  const checkedIds = new Set(
+    observation.tasks
+      .filter(
+        (t) => t.verification?.status === 'checked' && Number.isFinite(t.verification.eventId),
+      )
+      .map((t) => t.id),
+  );
+  const lostVerification = (state.verifiedEvidence || []).filter(
+    (key) => !checkedIds.has(key.slice(0, key.lastIndexOf(':'))),
+  ).length;
+  const reopened = state.completedTasks.filter((id) => !completed.includes(id)).length;
   state.verifiedEvidence = verified;
   const advanced = completed.filter((id) => !state.completedTasks.includes(id)).length;
   state.completedTasks = completed;
@@ -114,6 +128,8 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
   ]);
   const calls = Array.isArray(observation.calls) ? observation.calls : [];
   if (
+    !lostVerification &&
+    !reopened &&
     calls.length &&
     calls.every((c) => Array.isArray(c) && waitTools.has(c[0])) &&
     (observation.outcomes
@@ -132,6 +148,8 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
       repeated: false,
       toolErrors: 0,
       completedTaskDelta: advanced,
+      reopenedTaskCount: reopened,
+      lostVerificationCount: lostVerification,
       blockedTasks: observation.tasks.filter((t) => t.status === 'blocked').length,
       pendingVerification: observation.tasks.filter(
         (t) => t.verification?.status === 'stale' || (t.kind === 'verify' && t.status !== 'done'),
@@ -178,15 +196,18 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
     const pending = state.pendingAdvice;
     const afterBatches = state.step - pending.step;
     const failed = errors > 0;
-    const result = newEvidence
-      ? 'verification-recorded'
-      : advanced
-        ? 'task-advanced'
-        : pending.errors && !failed
-          ? 'errors-cleared'
-          : trajectory !== pending.digest
-            ? 'trajectory-changed'
-            : 'no-observed-change';
+    const result =
+      lostVerification || reopened
+        ? 'verification-regressed'
+        : newEvidence
+          ? 'verification-recorded'
+          : advanced
+            ? 'task-advanced'
+            : pending.errors && !failed
+              ? 'errors-cleared'
+              : trajectory !== pending.digest
+                ? 'trajectory-changed'
+                : 'no-observed-change';
     state.lastAdviceOutcome = { action: pending.action, result, afterBatches };
     if (result !== 'no-observed-change' || afterBatches >= 4) state.pendingAdvice = undefined;
   }
@@ -206,13 +227,15 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
   }
   state.signals = {
     convergence:
-      advanced || newEvidence
-        ? 'productive'
-        : cycle
-          ? 'repetitive'
-          : blocked.length || errors
-            ? 'blocked'
-            : 'unassessed',
+      lostVerification || reopened
+        ? 'blocked'
+        : advanced || newEvidence
+          ? 'productive'
+          : cycle
+            ? 'repetitive'
+            : blocked.length || errors
+              ? 'blocked'
+              : 'unassessed',
     repeated: !!cycle,
     targetNovelty,
     variableOutputLoop,
@@ -220,6 +243,8 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
     blockedTasks: blocked.length,
     pendingVerification: verification.length,
     completedTaskDelta: advanced,
+    reopenedTaskCount: reopened,
+    lostVerificationCount: lostVerification,
     semanticDrift: null,
     confidence: null,
   };
@@ -227,6 +252,14 @@ export function cognitivePolicy(previous: CognitiveState, observation: Observati
     if (message) state.pendingAdvice = { action, step: state.step, digest: trajectory, errors };
     return { state, action, reason, message };
   };
+  if (lostVerification || reopened) {
+    state.lastAdvice = state.step;
+    return decision(
+      'verify',
+      'Previously recorded progress regressed.',
+      'Previously completed work reopened or a recorded check disappeared/became stale. Inspect the changed task contract and artifacts, preserve requirements, and obtain current evidence. A newly completed task does not cancel lost coverage. This observation does not authorize replay or prove a defect.',
+    );
+  }
   if (!cycle && state.window.length === 12) state.warnedCycle = undefined;
   if (state.errorStreak === 0)
     state.noticed = state.noticed.filter((k) => k !== 'consecutive-tool-errors');

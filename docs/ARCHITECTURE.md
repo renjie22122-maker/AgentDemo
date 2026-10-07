@@ -109,3 +109,27 @@ calibrated confidence estimate. Existing unchanged-cycle limits remain enforced.
 No new dependency, database migration or first-start change is needed. Restart the
 service to load backend changes; starting a second launcher does not reload an
 already-running service.
+
+
+### Closing the progress feedback loop
+
+After a tool batch settles, existing recorded checks are refreshed against current
+declared artifact/dependency stamps before cognitive observation. This reuses the
+verification service and does not execute tests. Modified artifacts can therefore
+produce coverage-regression feedback before final delivery.
+
+Progress records both gains and losses: reopened/removed completed tasks and lost
+recorded checks take priority over simultaneous new completions. Such a transition
+requests verification, not automatic replay. Scope revision may explain the change;
+the signal is not itself proof of a software defect. A replacement current check
+does not count as loss. Existing final gates still determine completion.
+
+Run-local context now includes the latest intervention assessment and any pending
+bounded recovery proposal, including when no task board exists. Resolved or older
+than four batches recovery proposals are omitted. Reset and separate runs do not
+inherit the feedback. Changing a trajectory remains distinct from verification;
+coverage regression is recorded separately in learning outcome summaries. No
+confidence boost, automatic experience activation, new critic model or permission
+grant results from these observations. Existing evidence-backed experience formation
+and next-task memory checks remain the learning boundary. No new dependencies or
+startup changes; backend restart is required to load this revision.

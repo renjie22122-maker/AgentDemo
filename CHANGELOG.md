@@ -4,6 +4,10 @@
 
 Entries below describe repository changes, not a semantic-version release series. Historical test counts belong to their recorded runs.
 
+## 2026-10-07 — Progress feedback integration
+
+Refresh recorded checks after tool batches; surface coverage regression before delivery; return bounded run-local intervention feedback to context without granting replay or promoting memories.
+
 ## 2026-10-07 — Unified delivery assessment and bounded convergence advice
 
 One projection for existing task, challenge, memory and effect obligations; declared impact-to-check mapping; varying-output polling advice without an automatic stop. Existing safety gates stay enforced. No new dependency or launcher change.

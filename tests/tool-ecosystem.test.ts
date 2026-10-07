@@ -1,3 +1,6 @@
+import { TaskBoard } from '../server/services/task-board.js';
+import { Verification, stamp } from '../server/services/verification.js';
+import { CognitiveController } from '../server/core/cognitive-controller.js';
 import { z } from 'zod';
 import { parseSkill, Skills } from '../server/services/skills.js';
 import { mkdirSync } from 'node:fs';
@@ -1135,4 +1138,54 @@ test('media catalog passes exact conversation scope and paginates without prompt
   assert.equal(next.jobs[0].hasText, true);
   assert.ok(!JSON.stringify(next).includes('private'));
   assert.equal(next.nextOffset, null);
+});
+
+test('tool completion invalidates changed checked artifacts before cognitive observation', async (t) => {
+  const f = fixture(t),
+    board = new TaskBoard(f.store),
+    verify = new Verification(f.store);
+  writeFileSync(join(f.dir, 'checked.txt'), 'original');
+  board.create(
+    f.run,
+    [
+      {
+        id: 'checked',
+        kind: 'inspect',
+        title: 'checked file',
+        acceptance: 'matches contract',
+        dependsOn: [],
+        artifacts: ['checked.txt'],
+      },
+    ],
+    0,
+  );
+  const snapshot = await stamp(f.ctx.files, ['checked.txt']);
+  const event = f.store.event('c', 'r', 'tool.completed', {
+    name: 'read_file',
+    output: 'original',
+    verification: {
+      before: snapshot,
+      after: snapshot,
+      passed: true,
+      checkedPaths: ['checked.txt'],
+    },
+  });
+  board.update(f.run, 'checked', 1, 'done', [event.id], '');
+  await verify.record(f.run, f.ctx.files, 'checked', 2, event.id);
+  const controller = new CognitiveController(f.store);
+  controller.observe(f.run, [['read_file', { path: 'checked.txt' }]], ['original']);
+  const executor = new ToolExecutor(f.store, f.registry, f.dir);
+  const calls = [
+    { id: 'edit', name: 'write_file', arguments: { path: 'checked.txt', content: 'changed' } },
+  ];
+  const outputs = await executor.batch(f.run, calls, f.ctx);
+  assert.equal(board.get(f.run).tasks[0].verification?.status, 'stale');
+  const decision = controller.observe(
+    f.run,
+    calls.map((c) => [c.name, c.arguments]),
+    outputs,
+    executor.takeOutcomes('r'),
+  );
+  assert.equal(decision.action, 'verify');
+  assert.equal(decision.state.signals.lostVerificationCount, 1);
 });

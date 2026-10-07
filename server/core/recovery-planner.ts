@@ -65,11 +65,13 @@ export function assessIntervention(outcome: NonNullable<CognitiveState['lastAdvi
     observation: outcome.result,
     assessment: ['verification-recorded', 'task-advanced'].includes(outcome.result)
       ? 'observed-progress'
-      : outcome.result === 'errors-cleared'
-        ? 'errors-cleared-not-verified'
-        : outcome.result === 'trajectory-changed'
-          ? 'strategy-changed-not-verified'
-          : 'no-observed-progress',
+      : outcome.result === 'verification-regressed'
+        ? 'coverage-regressed'
+        : outcome.result === 'errors-cleared'
+          ? 'errors-cleared-not-verified'
+          : outcome.result === 'trajectory-changed'
+            ? 'strategy-changed-not-verified'
+            : 'no-observed-progress',
     causalClaim: false,
   };
 }
